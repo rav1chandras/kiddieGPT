@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KiddieGPT Family Study Platform Mockup</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body{background:#f6f8f5}
+    .enterprise-shell{width:100vw;height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 72px;background:#f6f8f5;color:var(--ink);overflow:hidden}
+    .side-nav{background:#fff;border-left:1px solid var(--line);padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:7px;overflow:auto}
+    .side-brand{display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#083e52;padding:0 0 10px;border-bottom:1px solid var(--line);width:100%}
+    .side-brand img{width:34px;height:34px;border-radius:9px}
+    .side-brand span,.school-pill,.nav-label,.admin-card{display:none}
+    .school-pill{background:#f2f6ef;border:1px solid #dfe8d8;border-radius:12px;padding:12px}
+    .school-pill b{display:block;font-size:12px}
+    .school-pill span{font-size:10px;color:#60747d;font-weight:800}
+    .nav-group{display:grid;gap:5px;width:100%}
+    .nav-label{font-size:10px;text-transform:uppercase;color:#8a9aa6;font-weight:900;letter-spacing:.08em;margin:8px 8px 4px}
+    .side-link{width:100%;min-height:52px;border:0;background:transparent;border-radius:12px;color:#29495b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;font-size:12px;font-weight:900;text-align:center;cursor:pointer}
+    .side-link span{width:24px;height:24px;border-radius:8px;background:#f2f4f4;display:inline-flex;align-items:center;justify-content:center;color:#719900}
+    .side-link b{display:block;font-size:7px;line-height:1.1}
+    .side-link.active,.side-link:hover{background:#eef6b5;color:#173d4f}
+    .side-link.active span{background:#fff;color:#004f48}
+    .admin-card{margin-top:auto;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fbfaf0}
+    .admin-card b{display:block;font-size:12px;margin-bottom:5px}
+    .admin-card p{font-size:10px;color:#687b87;line-height:1.45;margin:0 0 10px}
+    .admin-card button{width:100%;border:0;border-radius:9px;background:var(--green);color:#fff;font-size:11px;font-weight:900;padding:9px}
+    .workspace-main{min-width:0;padding:16px 12px 24px;overflow:auto}
+    .mockup-kicker{display:inline-flex;align-items:center;gap:6px;background:#eef6b5;color:#496200;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:900;margin-bottom:12px}
+    .enterprise-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;border:1px solid #dfe8df;border-radius:18px;background:linear-gradient(135deg,#fff 0%,#f2f6ef 78%,#eef6b5 100%);padding:12px;box-shadow:0 12px 30px rgba(12,42,60,.055)}
+    .app-mark{display:flex;align-items:center;gap:10px;min-width:0}
+    .app-mark img{width:40px;height:40px;border-radius:12px;box-shadow:0 10px 22px rgba(12,42,60,.08)}
+    .brand-copy{min-width:0}
+    .brand-copy b{display:block;font-size:16px;color:#083e52;line-height:1.1}
+    .brand-copy small{display:block;font-size:10px;color:#60747d;font-weight:850;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .header-status{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .header-status span{border-radius:999px;background:#fff;border:1px solid rgba(0,79,72,.08);padding:7px 9px;font-size:10px;font-weight:900;color:#617500}
+    .context h1{font-size:23px;margin-bottom:5px;letter-spacing:0}
+    .context p{font-size:12px;color:#60747d;margin:0}
+    .top-controls{display:flex;align-items:center;gap:8px;width:100%;overflow:auto}
+    .role-tabs,.grade-tabs{display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px}
+    .role-tabs button,.grade-tabs button{border:0;background:transparent;border-radius:8px;padding:8px 10px;font-size:11px;font-weight:900;color:#506677}
+    .role-tabs .active,.grade-tabs .active{background:var(--green);color:#fff}
+    .search-box{display:none;height:38px;min-width:220px;border:1px solid var(--line);background:#fff;border-radius:11px;padding:0 12px;color:#587080;font-size:12px;font-weight:800;align-items:center}
+    .dashboard-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px}
+    .panel{border:1px solid var(--line);background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(12,42,60,.03)}
+    .panel-pad{padding:14px}
+    .hero-panel{display:grid;grid-template-columns:1fr;gap:12px;align-items:center;background:#fff}
+    .hero-panel h2{font-size:21px;line-height:1.16;margin:0 0 8px;color:#0b2d43}
+    .hero-panel p{font-size:12px;line-height:1.5;color:#5e7184;margin:0 0 14px;max-width:620px}
+    .hero-actions{display:flex;gap:9px;flex-wrap:wrap}
+    .hero-actions button,.small-button{border:0;border-radius:10px;background:#f2f4f4;color:#344f61;font-size:11px;font-weight:900;padding:10px 11px}
+    .hero-actions .primary-action,.small-button.primary-action{background:var(--green);color:#fff}
+    .readiness-card{height:auto;min-height:82px;border-radius:14px;background:#f2f6ef;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+    .readiness-card strong{font-size:30px;color:var(--green)}
+    .readiness-card small{font-size:10px;font-weight:900;color:#60747d}
+    .metric-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .metric{padding:12px;border:1px solid var(--line);border-radius:13px;background:#fff}
+    .metric span{font-size:10px;color:#778894;font-weight:900;text-transform:uppercase}
+    .metric strong{display:block;font-size:22px;color:#0b2d43;margin-top:6px}
+    .metric small{font-size:10px;color:#719900;font-weight:900}
+    .section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .section-title h3{font-size:14px}
+    .section-title a{font-size:10px;font-weight:900;color:#008778}
+    .tool-matrix{display:grid;grid-template-columns:1fr;gap:10px}
+    .enterprise-tool{border:1px solid var(--line);border-radius:13px;background:#fff;padding:13px;min-height:116px}
+    .enterprise-tool .icon{width:30px;height:30px;margin-bottom:9px}
+    .enterprise-tool b{display:block;font-size:12px;margin-bottom:5px}
+    .enterprise-tool p{font-size:10px;line-height:1.42;color:#667986;margin:0}
+    .builder-lab{border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 12px 34px rgba(12,42,60,.055);overflow:hidden}
+    .builder-level{padding:11px;border-bottom:1px solid var(--line)}
+    .builder-shell{position:relative;overflow:hidden;border-radius:15px;background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(242,246,239,.96));border:1px solid #dde8df;padding:10px}
+    .builder-shell:before{content:"";position:absolute;right:-42px;top:-44px;width:150px;height:150px;border-radius:50%;background:rgba(220,233,106,.26)}
+    .builder-shell:after{content:"";position:absolute;left:-38px;bottom:-54px;width:148px;height:148px;border:22px solid rgba(0,79,72,.045);border-radius:50%}
+    .builder-tools{position:relative;z-index:1;display:flex;gap:9px;overflow-x:auto;padding:3px 0 4px;scrollbar-width:none}
+    .builder-tools::-webkit-scrollbar{display:none}
+    .kg-tool-tile{position:relative;overflow:hidden;flex:0 0 148px;min-height:132px;border:1px solid rgba(0,79,72,.12);border-radius:16px;background:var(--tile-bg,#fff);padding:11px;display:flex;flex-direction:column;justify-content:space-between;text-align:left;cursor:pointer;box-shadow:0 8px 22px rgba(12,42,60,.055)}
+    .kg-tool-tile:after{content:"";position:absolute;right:-22px;bottom:-24px;width:82px;height:82px;border-radius:26px;background:var(--shape,rgba(0,79,72,.06));transform:rotate(12deg)}
+    .kg-tool-tile:before{content:"";position:absolute;right:13px;bottom:12px;width:27px;height:27px;border-radius:50%;background:var(--dot,rgba(255,255,255,.7));opacity:.65}
+    .kg-tool-tile.active{border-color:var(--green);box-shadow:0 16px 38px rgba(0,79,72,.16),0 0 0 4px rgba(0,79,72,.055);transform:translateY(-2px)}
+    .kg-tool-tile.dark{background:linear-gradient(135deg,#004f48,#006257);color:#fff;border-color:transparent}
+    .kg-tool-tile.lime{background:#dce96a;border-color:rgba(0,79,72,.16)}
+    .kg-tool-tile.studio{flex-basis:190px;background:linear-gradient(135deg,#004f48 0%,#006257 62%,#0b2d43 100%);color:#fff;border-color:transparent;box-shadow:0 18px 42px rgba(0,79,72,.2)}
+    .kg-tool-top,.kg-tool-body,.kg-tool-foot,.kg-tile-art{position:relative;z-index:1}
+    .kg-tool-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+    .kg-tool-icon{width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.78);color:var(--green);display:grid;place-items:center;border:1px solid rgba(0,79,72,.08);box-shadow:0 8px 20px rgba(12,42,60,.06);font-size:15px;font-weight:900}
+    .kg-tool-tile.dark .kg-tool-icon,.kg-tool-tile.studio .kg-tool-icon{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.14)}
+    .kg-tool-tile h3{margin:9px 0 4px;color:var(--green);font-size:13px;line-height:1.15;font-weight:900}
+    .kg-tool-tile p{margin:0;color:#60747d;font-size:10px;line-height:1.25;font-weight:750}
+    .kg-tool-tile.dark h3,.kg-tool-tile.dark p,.kg-tool-tile.dark .kg-tool-foot,.kg-tool-tile.studio h3,.kg-tool-tile.studio p,.kg-tool-tile.studio .kg-tool-foot{color:#fff}
+    .kg-tool-tile.dark p,.kg-tool-tile.dark .kg-tool-foot,.kg-tool-tile.studio p,.kg-tool-tile.studio .kg-tool-foot{opacity:.8}
+    .kg-tool-tile.lime h3,.kg-tool-tile.lime p,.kg-tool-tile.lime .kg-tool-foot{color:#0b2d43}
+    .kg-tool-foot{color:#7d8d98;font-size:10px;font-weight:900}
+    .kg-tile-art{margin-top:auto;padding-top:9px;display:flex;align-items:flex-end;gap:6px;min-height:35px}
+    .kg-bubble{border-radius:12px;background:rgba(255,255,255,.8);border:1px solid rgba(0,79,72,.08);padding:5px 7px;color:var(--green);font-size:9px;line-height:1.25;font-weight:900;box-shadow:0 8px 18px rgba(12,42,60,.06)}
+    .kg-tool-tile.dark .kg-bubble,.kg-tool-tile.studio .kg-bubble{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.14)}
+    .node-chart{display:flex;align-items:center;gap:6px;padding-left:2px}
+    .node{position:relative;width:9px;height:9px;border-radius:50%;background:#dce96a;box-shadow:0 0 0 4px rgba(220,233,106,.2)}
+    .node:after{content:"";position:absolute;top:4px;left:9px;width:13px;height:2px;border-radius:999px;background:rgba(220,233,106,.5)}
+    .node:last-child:after{display:none}
+    .shelf-dots{position:relative;z-index:1;display:flex;justify-content:center;gap:5px;margin-top:4px}
+    .shelf-dots span{width:6px;height:6px;border-radius:50%;background:#cfd9d8}
+    .shelf-dots span:first-child{width:16px;border-radius:999px;background:#a7bd28}
+    .builder-workspace{display:grid;grid-template-columns:1fr;gap:11px;padding:11px;background:linear-gradient(135deg,rgba(242,246,239,.9),rgba(255,255,255,.96))}
+    .builder-note,.builder-preview{border:1px solid #dde8df;border-radius:15px;background:#fff;padding:13px;box-shadow:0 8px 24px rgba(12,42,60,.045)}
+    .builder-note h3,.builder-preview h3{font-size:13px;margin:0 0 8px}
+    .builder-note p,.builder-preview p{font-size:11px;line-height:1.45;color:#60747d;margin:0}
+    .builder-steps{display:grid;gap:8px;margin-top:12px}
+    .builder-step{display:flex;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:11px;font-weight:900;color:#29495b;background:#fbfdf8}
+    .builder-preview-grid{display:grid;grid-template-columns:1fr;gap:9px;margin-top:12px}
+    .tool-detail-card{position:relative;border:1px solid #dce8df;border-radius:16px;background:#fff;padding:14px;box-shadow:0 10px 26px rgba(12,42,60,.05);overflow:hidden}
+    .tool-detail-card:after{content:"";position:absolute;right:-26px;bottom:-30px;width:94px;height:94px;border-radius:28px;background:rgba(220,233,106,.18);transform:rotate(12deg)}
+    .tool-detail-head{position:relative;z-index:1;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;margin-bottom:9px}
+    .tool-detail-head h3{font-size:18px;margin:0;color:#0b2d43;line-height:1.12}
+    .launch-tool{border:0;border-radius:999px;background:var(--green);color:#fff;padding:9px 12px;font-size:11px;font-weight:900;box-shadow:0 10px 22px rgba(0,79,72,.18);cursor:pointer}
+    .tool-detail-card p{position:relative;z-index:1;font-size:13px;line-height:1.5;color:#526a78;margin:0;font-weight:750}
+    .tool-detail-points{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:18px;padding:0 2px}
+    .tool-detail-points:before{content:"";position:absolute;left:16.5%;right:16.5%;top:30px;height:6px;border-radius:999px;background:#dfe7ee;z-index:0}
+    .tool-flow-step{position:relative;z-index:1;display:grid;justify-items:center;text-align:center;gap:7px;min-width:0}
+    .tool-flow-dot{width:62px;height:62px;border-radius:50%;background:#f7fafc;border:5px solid #dfe7ee;color:#617500;display:grid;place-items:center;font-size:0;font-weight:900;box-shadow:0 8px 22px rgba(12,42,60,.06)}
+    .tool-flow-dot:before{content:attr(data-icon);font-size:22px;line-height:1;color:#60747d}
+    .tool-flow-step:first-child .tool-flow-dot{background:#dce96a;border-color:#dce96a;color:#0b2d43}
+    .tool-flow-step:first-child .tool-flow-dot:before{color:#0b2d43}
+    .tool-flow-step span{display:block;font-size:12px;color:#0b2d43;font-weight:950;line-height:1.15;max-width:88px}
+    .tool-flow-step b{display:block;font-size:10px;color:#9a918b;font-weight:900;line-height:1.2;max-width:94px}
+    .assignment-list{display:grid;gap:8px}
+    .assignment{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eef1f2}
+    .assignment:last-child{border-bottom:0}
+    .assignment b{display:block;font-size:12px}
+    .assignment span{font-size:10px;color:#7b8c98;font-weight:800}
+    .status{border-radius:999px;padding:6px 9px;font-size:10px;font-weight:900;background:#eef6b5;color:#617500}
+    .status.warn{background:#fff1dc;color:#96610c}
+    .status.blue{background:#e8f4ff;color:#0f6fbf}
+    .table-scroll{overflow:auto}
+    .class-table{width:100%;min-width:520px;border-collapse:collapse}
+    .class-table th{text-align:left;font-size:10px;text-transform:uppercase;color:#8798a4;padding:8px 6px;border-bottom:1px solid var(--line)}
+    .class-table td{font-size:12px;padding:11px 6px;border-bottom:1px solid #eef1f2;color:#2d4a5b}
+    .student-cell{display:flex;align-items:center;gap:8px;font-weight:900}
+    .avatar{width:26px;height:26px;border-radius:9px;background:#eef6b5;color:#536900;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+    .mini-progress{height:7px;border-radius:999px;background:#edf1ef;overflow:hidden;min-width:92px}
+    .mini-progress span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#a4bd28,#dfe96b)}
+    .compliance-grid{display:grid;grid-template-columns:1fr;gap:9px}
+    .policy{padding:12px;border-radius:13px;background:#f2f6ef}
+    .policy b{display:block;font-size:12px;margin-bottom:5px}
+    .policy p{font-size:10px;color:#647884;line-height:1.45;margin:0}
+    .activity-feed{display:grid;gap:10px}
+    .feed-item{display:grid;grid-template-columns:30px 1fr;gap:9px;align-items:start}
+    .feed-item span{width:30px;height:30px;border-radius:9px;background:#eef6b5;display:flex;align-items:center;justify-content:center;color:#617500;font-weight:900}
+    .feed-item b{display:block;font-size:12px}
+    .feed-item small{font-size:10px;color:#81909d;line-height:1.35}
+    .math-flow{display:grid;gap:12px}
+    .math-hero{background:linear-gradient(135deg,#004f48,#006257);color:#fff;border-color:transparent;overflow:hidden;position:relative}
+    .math-hero:after{content:"";position:absolute;right:-28px;bottom:-34px;width:118px;height:118px;border-radius:34px;background:rgba(255,255,255,.08);transform:rotate(14deg)}
+    .math-hero h2,.math-hero p,.math-hero .mockup-kicker,.math-hero .tool-topline,.math-hero .tool-title-row{position:relative;z-index:1}
+    .math-hero h2{font-size:23px;line-height:1.12;margin:0;color:#fff}
+    .math-hero p{font-size:12px;line-height:1.48;margin:9px 0 0;color:rgba(255,255,255,.78)}
+    .math-hero .mockup-kicker{background:rgba(255,255,255,.14);color:#fff}
+    .tool-topline{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+    .back-pill{border:1px solid rgba(0,79,72,.12);background:#fff;color:#29495b;border-radius:999px;padding:8px 11px;font-size:11px;font-weight:900;display:inline-flex;align-items:center;gap:7px;box-shadow:0 8px 20px rgba(12,42,60,.055);cursor:pointer}
+    .back-pill span{font-size:15px;line-height:1}
+    .tool-chip{border-radius:999px;background:#eef6b5;color:#617500;padding:7px 9px;font-size:10px;font-weight:900;white-space:nowrap}
+    .math-hero .back-pill{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.18);box-shadow:none}
+    .math-hero .tool-chip{background:rgba(255,255,255,.14);color:#fff}
+    .tool-title-row{display:grid;grid-template-columns:40px 1fr;gap:11px;align-items:center}
+    .tool-badge{width:40px;height:40px;border-radius:14px;background:#fff;color:var(--green);display:grid;place-items:center;font-size:14px;font-weight:900;box-shadow:0 12px 26px rgba(12,42,60,.08)}
+    .math-hero .tool-badge{background:rgba(255,255,255,.15);color:#fff;box-shadow:none}
+    .capture-card{display:grid;gap:11px}
+    .capture-preview{position:relative;min-height:138px;border:1px solid #dbe7df;border-radius:15px;background:linear-gradient(135deg,#fbfdf8,#eef6f3);overflow:hidden;padding:13px}
+    .capture-toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+    .capture-toolbar span{border-radius:999px;background:#fff;border:1px solid var(--line);padding:6px 8px;font-size:10px;font-weight:900;color:#48616f}
+    .worksheet-snippet{position:relative;border:1px solid #d9e4e1;border-radius:12px;background:#fff;padding:12px;box-shadow:0 10px 24px rgba(12,42,60,.055)}
+    .worksheet-snippet b{display:block;font-size:11px;color:#7b8c98;margin-bottom:8px;text-transform:uppercase}
+    .worksheet-line{height:9px;border-radius:999px;background:#edf1ef;margin:7px 0}
+    .capture-box{position:absolute;left:22px;right:28px;bottom:20px;border:2px solid #a7bd28;border-radius:12px;background:rgba(220,233,106,.1);padding:12px;text-align:center;font-size:20px;font-weight:900;color:#0b2d43;box-shadow:0 0 0 4px rgba(220,233,106,.18)}
+    .ocr-result{border:1px solid #d4e56d;border-radius:14px;background:#fbfde6;padding:12px;display:grid;gap:8px}
+    .ocr-result small{font-size:10px;color:#6d7d27;font-weight:900}
+    .ocr-equation{display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:11px;background:#fff;padding:10px;font-size:18px;font-weight:900;color:#0b2d43}
+    .confidence-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;font-size:10px;font-weight:900;color:#657984}
+    .confidence-bar{height:7px;border-radius:999px;background:#e9eee9;overflow:hidden}
+    .confidence-bar span{display:block;height:100%;width:94%;background:linear-gradient(90deg,#a4bd28,#dfe96b)}
+    .problem-card textarea{min-height:86px}
+    .math-mode-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .mode-card{border:1px solid var(--line);border-radius:13px;background:#fff;padding:11px}
+    .mode-card b{display:block;font-size:12px;margin-bottom:4px}
+    .mode-card small{font-size:10px;color:#6e7f8b;font-weight:800;line-height:1.35}
+    .mode-card.active{background:#eef6b5;border-color:#d4e56d}
+    .step-card{border:1px solid var(--line);border-radius:15px;background:#fff;overflow:hidden}
+    .step-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border-bottom:1px solid var(--line)}
+    .step-head h3{font-size:13px}
+    .step-body{padding:14px;display:grid;gap:12px}
+    .equation-box{border:1px solid #dde8df;border-radius:14px;background:#fbfdf8;padding:15px;text-align:center;color:#0b2d43;font-size:22px;font-weight:900}
+    .hint-card{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;border-radius:13px;background:#f2f6ef;padding:12px}
+    .hint-card span{width:28px;height:28px;border-radius:9px;background:#dce96a;display:grid;place-items:center;font-size:12px;font-weight:900;color:#496200}
+    .hint-card b{display:block;font-size:12px;margin-bottom:3px}
+    .hint-card p{font-size:11px;line-height:1.45;color:#546b78;margin:0}
+    .work-line{display:grid;gap:6px}
+    .work-line label{font-size:10px;font-weight:900;color:#7b8c98;text-transform:uppercase}
+    .work-line input{height:42px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:0 12px;color:#0b2d43;font:inherit;font-size:13px;font-weight:800}
+    .step-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .step-actions button{flex:1;border:0;border-radius:10px;background:#f2f4f4;color:#344f61;font-size:11px;font-weight:900;padding:10px}
+    .step-actions .primary-action{background:var(--green);color:#fff}
+    .step-list{display:grid;gap:8px}
+    .step-row{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px}
+    .step-row span{width:30px;height:30px;border-radius:10px;background:#eef6b5;color:#617500;display:grid;place-items:center;font-size:11px;font-weight:900}
+    .step-row b{display:block;font-size:12px}
+    .step-row small{display:block;font-size:10px;color:#758894;font-weight:800;margin-top:2px}
+    .answer-reveal{border:1px solid #d4e56d;border-radius:14px;background:#fbfde6;padding:13px}
+    .answer-reveal b{display:block;font-size:12px;margin-bottom:5px}
+    .answer-reveal p{font-size:11px;line-height:1.45;color:#536570;margin:0}
+    .parent-note{display:grid;gap:8px}
+    .parent-note .policy{background:#fff}
+    .tool-flow{display:grid;gap:12px}
+    .tool-hero-panel{position:relative;overflow:hidden;border-color:#dfe8df;background:linear-gradient(135deg,#ffffff 0%,#f2f6ef 74%,#eef6b5 100%);box-shadow:0 14px 34px rgba(12,42,60,.06)}
+    .tool-hero-panel:after{content:"";position:absolute;right:-34px;bottom:-38px;width:124px;height:124px;border-radius:36px;background:rgba(0,79,72,.055);transform:rotate(14deg)}
+    .tool-hero-panel:before{content:"";position:absolute;right:18px;top:18px;width:46px;height:46px;border-radius:50%;background:rgba(220,233,106,.32)}
+    .tool-hero-panel h2{font-size:23px;line-height:1.12;margin:0;color:#0b2d43;position:relative;z-index:1}
+    .tool-hero-panel p{font-size:12px;line-height:1.48;color:#60747d;margin:9px 0 0;position:relative;z-index:1}
+    .upload-zone{border:1px dashed #b8c9c6;border-radius:15px;background:#fbfdf8;padding:16px;text-align:center;display:grid;gap:8px}
+    .upload-zone b{font-size:13px;color:#0b2d43}
+    .upload-zone small{font-size:10px;color:#6b7b8c;font-weight:800}
+    .result-stack{display:grid;gap:9px}
+    .result-item{border:1px solid var(--line);border-radius:13px;background:#fff;padding:12px}
+    .result-item b{display:block;font-size:12px;margin-bottom:5px}
+    .result-item p{font-size:11px;line-height:1.45;color:#60747d;margin:0}
+    .choice-list{display:grid;gap:8px}
+    .choice{border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px;font-size:12px;font-weight:900;color:#29495b}
+    .choice.correct{background:#fbfde6;border-color:#d4e56d}
+    .flashcard-preview{min-height:176px;border:1px solid var(--line);border-radius:16px;background:#fff;display:grid;place-items:center;text-align:center;padding:20px}
+    .flashcard-preview small{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase}
+    .flashcard-preview b{display:block;font-size:25px;color:var(--green);margin:8px 0}
+    .flashcard-preview p{font-size:12px;color:#60747d;line-height:1.45;margin:0}
+    .audio-player{display:grid;grid-template-columns:42px 1fr 38px;gap:10px;align-items:center;border-radius:15px;background:#f2f6ef;padding:12px}
+    .audio-player button{border:0;border-radius:50%;width:38px;height:38px;background:var(--green);color:#fff;font-weight:900}
+    .audio-player b{display:block;font-size:12px;margin-bottom:5px}
+    .audio-player small{font-size:10px;color:#60747d;font-weight:800}
+    .page-capture{border:1px solid #dbe7df;border-radius:15px;background:#fff;padding:13px;display:grid;gap:10px}
+    .page-bar{height:28px;border-radius:9px;background:#eef3f2;display:flex;align-items:center;padding:0 9px;color:#60747d;font-size:10px;font-weight:900}
+    .selected-text{border-left:4px solid #a7bd28;background:#fbfde6;border-radius:8px;padding:11px;font-size:12px;line-height:1.45;color:#29495b}
+    .safe-chat{display:grid;gap:9px}
+    .chat-bubble{border-radius:14px;padding:12px;font-size:12px;line-height:1.45}
+    .chat-bubble.user{background:#eef6b5;color:#29495b;margin-left:26px}
+    .chat-bubble.bot{background:#fff;border:1px solid var(--line);color:#415b6b;margin-right:20px}
+    .motivation-hero{position:relative;overflow:hidden;background:linear-gradient(135deg,#004f48 0%,#006257 58%,#0b2d43 100%);color:#fff;border-color:transparent}
+    .motivation-hero:after{content:"";position:absolute;right:-36px;bottom:-44px;width:150px;height:150px;border-radius:42px;background:rgba(255,255,255,.08);transform:rotate(14deg)}
+    .motivation-hero h2,.motivation-hero p,.motivation-hero .mockup-kicker,.mission-card,.xp-card{position:relative;z-index:1}
+    .motivation-hero h2{font-size:24px;line-height:1.12;margin:0 0 8px;color:#fff}
+    .motivation-hero p{font-size:12px;line-height:1.5;color:rgba(255,255,255,.78);margin:0 0 14px}
+    .motivation-hero .mockup-kicker{background:rgba(255,255,255,.14);color:#fff}
+    .mission-card{border-radius:15px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14);padding:13px;margin-top:12px}
+    .mission-card b{display:block;font-size:13px;margin-bottom:5px}
+    .mission-card small{font-size:10px;color:rgba(255,255,255,.76);font-weight:850}
+    .dashboard-compact{display:grid;gap:10px}
+    .dashboard-status{display:grid;grid-template-columns:1fr 112px;gap:12px;align-items:center}
+    .donut-card{position:relative;z-index:1;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#dce96a 0 259deg, rgba(255,255,255,.22) 0);box-shadow:inset 0 0 0 10px rgba(255,255,255,.16),0 12px 28px rgba(0,0,0,.12)}
+    .donut-card:after{content:"";position:absolute;width:66px;height:66px;border-radius:50%;background:#fff}
+    .donut-card strong{position:relative;z-index:1;font-size:23px;color:var(--green)}
+    .donut-card small{position:relative;z-index:1;font-size:9px;color:#60747d;font-weight:900;margin-top:-12px}
+    .mini-panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .compact-panel{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
+    .compact-panel h3{font-size:13px;margin-bottom:8px}
+    .compact-panel p{font-size:11px;line-height:1.4;color:#60747d;margin:0}
+    .next-up{display:grid;gap:8px}
+    .next-up-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-radius:12px;background:#f2f6ef;padding:10px}
+    .next-up-row b{font-size:12px}
+    .next-up-row small{display:block;font-size:10px;color:#6b7b8c;font-weight:850;margin-top:2px}
+    .motivation-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+    .stat-tile{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px;min-height:78px}
+    .stat-tile span{display:block;font-size:18px;line-height:1;margin-bottom:8px;color:#a7bd28}
+    .stat-tile b{display:block;font-size:18px;color:#0b2d43;margin-bottom:3px}
+    .stat-tile small{font-size:10px;color:#6b7b8c;font-weight:850}
+    .xp-card{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border-radius:15px;background:#fff;color:#0b2d43;padding:13px;margin-top:12px}
+    .xp-card b{font-size:13px}
+    .xp-card strong{font-size:24px;color:var(--green)}
+    .habit-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+    .habit-strip span{height:30px;border-radius:10px;background:#eef6b5;color:#617500;display:grid;place-items:center;font-size:10px;font-weight:900}
+    .habit-strip span.today{background:#dce96a;color:#0b2d43;box-shadow:0 8px 18px rgba(167,189,40,.25)}
+    .reward-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .reward-card{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
+    .reward-card span{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#eef6b5;color:#617500;font-weight:900;margin-bottom:9px}
+    .reward-card b{display:block;font-size:12px;margin-bottom:4px}
+    .reward-card small{font-size:10px;color:#6b7b8c;font-weight:850}
+    .quick-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .quick-actions button{border:0;border-radius:12px;background:#f2f4f4;color:#344f61;font-size:11px;font-weight:900;padding:11px}
+    .quick-actions .primary-action{background:var(--green);color:#fff}
+    .view-panel{display:none}
+    .view-panel.active{display:block}
+    @media(min-width:760px){
+      .enterprise-shell{grid-template-columns:minmax(0,1fr) 78px}
+      .workspace-main{padding:18px 16px 26px}
+      .enterprise-topbar{flex-direction:row;align-items:center}
+      .context h1{font-size:25px}
+      .metric-row{grid-template-columns:repeat(4,1fr)}
+      .builder-preview-grid{grid-template-columns:1fr 1fr}
+      .compliance-grid{grid-template-columns:1fr 1fr}
+      .kg-tool-tile{flex-basis:164px}
+      .kg-tool-tile.studio{flex-basis:220px}
+    }
+    @media(max-width:420px){
+      .enterprise-shell{grid-template-columns:minmax(0,1fr) 66px}
+      .side-nav{padding:12px 5px}
+      .side-link{min-height:54px}
+      .side-link b{font-size:7px}
+      .workspace-main{padding:14px 10px 22px}
+      .metric-row{grid-template-columns:1fr}
+      .role-tabs button,.grade-tabs button{padding:8px 8px}
+      .header-status{display:none}
+      .hero-actions button{flex:1 1 130px}
+      .dashboard-status{grid-template-columns:1fr}
+      .mini-panel-grid{grid-template-columns:1fr}
+      .motivation-stats{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="enterprise-shell">
+    <main class="workspace-main">
+      <header class="enterprise-topbar">
+        <div class="app-mark">
+          <img src="icons/icon48.png" alt="">
+          <div class="brand-copy">
+            <b>KiddieGPT</b>
+            <small>School-approved study companion</small>
+          </div>
+        </div>
+        <div class="header-status"><span>Parent visible</span><span>Grade safe</span></div>
+      </header>
+      <section class="view-panel active" id="dashboardPanel">
+        <div class="dashboard-compact">
+          <section class="panel panel-pad motivation-hero">
+            <div class="dashboard-status">
+              <div>
+                <div class="mockup-kicker">7-day streak active</div>
+                <h2>Welcome back, Alex.</h2>
+                <p>One focused session keeps your streak alive and moves you closer to the Problem Solver badge.</p>
+                <div class="mission-card"><b>Today: Beat Fractions Level 2</b><small>5 questions · about 7 minutes · hints allowed</small></div>
+              </div>
+              <div class="donut-card"><strong>72%</strong><small>Points</small></div>
+            </div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Streak</h3><span class="status">7 days</span></div>
+            <div class="habit-strip"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span class="today">Today</span></div>
+          </section>
+          <section class="mini-panel-grid">
+            <div class="compact-panel">
+              <h3>Almost Unlocked</h3>
+              <p>Complete 2 more quizzes to earn the Problem Solver badge.</p>
+            </div>
+            <div class="compact-panel next-up">
+              <h3>Next Up</h3>
+              <div class="next-up-row"><div><b>Fractions Drill</b><small>Saved from missed answers</small></div><span class="status warn">Review</span></div>
+            </div>
+          </section>
+          <section class="motivation-stats">
+            <div class="stat-tile"><span>★</span><b>18</b><small>stars earned</small></div>
+            <div class="stat-tile"><span>PP</span><b>720</b><small>progress points</small></div>
+            <div class="stat-tile"><span>✓</span><b>81%</b><small>quiz accuracy</small></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="toolsPanel">
+        <div class="section-title"><h3>Learning Tools</h3><a>Choose a tool</a></div>
+        <section class="builder-lab">
+          <div class="builder-level">
+            <div class="builder-shell">
+              <div class="builder-tools">
+                <button class="kg-tool-tile studio active" data-tool="pdf">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">▣</span><span class="status">PDF</span></div>
+                  <div class="kg-tool-body"><h3>PDF Study Helper</h3><p>Upload notes</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Upload</span><span class="kg-bubble">Explain</span><span class="kg-bubble">Quiz</span></div>
+                  <div class="kg-tool-foot">Grade 6-8 ready</div>
+                </button>
+                <button class="kg-tool-tile lime" data-tool="quiz">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">▥</span><span class="status blue">Fast</span></div>
+                  <div class="kg-tool-body"><h3>Quiz Me</h3><p>Practice check</p></div>
+                  <div class="kg-tile-art"><div class="node-chart"><span class="node"></span><span class="node"></span><span class="node"></span></div></div>
+                  <div class="kg-tool-foot">5, 10, or test mode</div>
+                </button>
+                <button class="kg-tool-tile" data-tool="cards">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">▤</span><span class="status">Save</span></div>
+                  <div class="kg-tool-body"><h3>Flashcards</h3><p>Review deck</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Term</span><span class="kg-bubble">Meaning</span></div>
+                  <div class="kg-tool-foot">Spaced review</div>
+                </button>
+                <button class="kg-tool-tile dark" data-tool="read">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">◉</span><span class="status blue">Audio</span></div>
+                  <div class="kg-tool-body"><h3>Read Aloud</h3><p>Listen back</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">1:42 left</span></div>
+                  <div class="kg-tool-foot">Listen and memorize</div>
+                </button>
+                <button class="kg-tool-tile" data-tool="math">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">∑</span><span class="status warn">Hint</span></div>
+                  <div class="kg-tool-body"><h3>Math Step Tutor</h3><p>Solve steps</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Capture</span><span class="kg-bubble">Check</span></div>
+                  <div class="kg-tool-foot">Answer guardrails</div>
+                </button>
+                <button class="kg-tool-tile" data-tool="page">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">⌕</span><span class="status">Page</span></div>
+                  <div class="kg-tool-body"><h3>Explain Web Page</h3><p>Use selection</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Select</span><span class="kg-bubble">Simplify</span></div>
+                  <div class="kg-tool-foot">Chrome-native</div>
+                </button>
+                <button class="kg-tool-tile dark" data-tool="ask">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">✓</span><span class="status">Safe</span></div>
+                  <div class="kg-tool-body"><h3>Safe Ask</h3><p>Ask safely</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Approved</span></div>
+                  <div class="kg-tool-foot">School policy on</div>
+                </button>
+              </div>
+              <div class="shelf-dots"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="builder-workspace">
+            <section class="tool-detail-card">
+              <div class="tool-detail-head">
+                <div>
+                  <div class="mockup-kicker">Selected tool</div>
+                  <h3 id="toolDetailTitle">PDF Study Helper</h3>
+                </div>
+                <button class="launch-tool" data-launch="pdf">Launch</button>
+              </div>
+              <p id="toolDetailDescription">Upload a homework PDF, worksheet, or notes packet. KiddieGPT extracts the lesson and builds a study sheet, quiz, flashcards, and read-aloud review with parent preview.</p>
+              <div class="tool-detail-points" id="toolDetailPoints">
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="⬢"></i><span>Input</span><b>Local PDF</b></div>
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="▣"></i><span>Output</span><b>Study pack</b></div>
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="✓"></i><span>Guardrail</span><b>Parent preview</b></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="pdfPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Local PDF</div></div>
+            <div class="tool-title-row"><div class="tool-badge">PDF</div><h2>PDF Study Helper</h2></div>
+            <p>Upload a worksheet, notes packet, or local PDF. KiddieGPT extracts the lesson and turns it into study materials.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>1. Upload Or Capture</h3><span class="status">Local PDF</span></div>
+            <div class="upload-zone"><b>Photosynthesis_Chapter_4.pdf</b><small>18 pages scanned · text extracted · school policy applied</small><button class="small-button primary-action">Build Study Pack</button></div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>2. Study Sheet</h3><span class="status">Ready</span></div>
+              <div class="result-stack">
+                <div class="result-item"><b>Main idea</b><p>Plants use sunlight, water, and carbon dioxide to make glucose and oxygen.</p></div>
+                <div class="result-item"><b>Key terms</b><p>Chlorophyll, chloroplast, glucose, stomata, carbon dioxide.</p></div>
+                <div class="result-item"><b>Remember this</b><p>Inputs go in, outputs come out. The chloroplast is where the process happens.</p></div>
+              </div>
+            </div>
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>3. Pack Actions</h3><a>Parent preview</a></div>
+              <div class="builder-steps">
+                <div class="builder-step"><span>Make Quiz</span><b>10 Qs</b></div>
+                <div class="builder-step"><span>Make Cards</span><b>12 cards</b></div>
+                <div class="builder-step"><span>Read Aloud</span><b>2 min</b></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="quizPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Hint-first</div></div>
+            <div class="tool-title-row"><div class="tool-badge">?</div><h2>Quiz Me</h2></div>
+            <p>Generate a short quiz from notes, a PDF, a web page, or a weak spot. Missed concepts become review cards.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Question 3 of 10</h3><span class="status blue">Science</span></div>
+            <p class="note">Which gas do plants take in during photosynthesis?</p>
+            <div class="choice-list">
+              <div class="choice">A. Oxygen</div>
+              <div class="choice correct">B. Carbon dioxide</div>
+              <div class="choice">C. Nitrogen</div>
+              <div class="choice">D. Hydrogen</div>
+            </div>
+            <div class="step-actions" style="margin-top:10px"><button>Hint</button><button class="primary-action">Next</button></div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad"><div class="section-title"><h3>Score</h3><span class="status">7 / 10</span></div><div class="result-item"><b>Missed concept</b><p>Alex confused carbon dioxide with oxygen. Saved to weak spots.</p></div></div>
+            <div class="panel panel-pad"><div class="section-title"><h3>Next</h3><a>Parent view</a></div><div class="builder-steps"><div class="builder-step"><span>Review deck</span><b>3 cards</b></div><div class="builder-step"><span>Mini drill</span><b>5 Qs</b></div></div></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="cardsPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Spaced review</div></div>
+            <div class="tool-title-row"><div class="tool-badge">□</div><h2>Flashcards</h2></div>
+            <p>Create decks from PDFs, vocab, quiz mistakes, or selected page text. KiddieGPT tracks “still learning” cards.</p>
+          </section>
+          <section class="flashcard-preview">
+            <div><small>Card 4 of 12</small><b>Chlorophyll</b><p>The green pigment in plants that captures sunlight for photosynthesis.</p></div>
+          </section>
+          <section class="math-mode-row">
+            <div class="mode-card"><b>Still Learning</b><small>Show again soon and add one simpler example.</small></div>
+            <div class="mode-card active"><b>Got It</b><small>Move this card into spaced review.</small></div>
+          </section>
+          <section class="panel panel-pad"><div class="section-title"><h3>Decks</h3><a>Parent summary</a></div><div class="chips"><span>Photosynthesis</span><span>Fractions</span><span>Civil War</span></div></section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="readPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Audio review</div></div>
+            <div class="tool-title-row"><div class="tool-badge">▶</div><h2>Read Aloud Coach</h2></div>
+            <p>Turn study sheets into short narrated review sessions with pause points and quick recall checks.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="audio-player"><button>▶</button><div><b>Photosynthesis Study Sheet</b><small>1:42 remaining · calm coach · grade 8</small><div class="progress"><span style="width:42%"></span></div></div><button>↻</button></div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Now Reading</h3><span class="status">Pause point</span></div>
+            <div class="result-item"><b>Listen for this</b><p>Plants take in carbon dioxide and water. With sunlight, chloroplasts make glucose and release oxygen.</p></div>
+            <div class="step-actions" style="margin-top:10px"><button>Repeat</button><button>Ask Recall</button><button class="primary-action">Continue</button></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="mathPanel">
+        <div class="math-flow">
+          <section class="panel panel-pad math-hero">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Screenshot OCR</div></div>
+            <div class="tool-title-row"><div class="tool-badge">∑</div><h2>Math Step Tutor</h2></div>
+            <p>Alex gets unstuck without jumping straight to the answer. KiddieGPT checks each step, explains mistakes, and saves weak spots for parent review.</p>
+          </section>
+
+          <section class="panel panel-pad capture-card">
+            <div class="section-title"><h3>1. Capture Problem</h3><span class="status">Page screenshot</span></div>
+            <div class="capture-preview">
+              <div class="capture-toolbar"><span>Visible tab</span><span>Select area</span><span>OCR on</span></div>
+              <div class="worksheet-snippet">
+                <b>Algebra Practice</b>
+                <div class="worksheet-line" style="width:72%"></div>
+                <div class="worksheet-line" style="width:56%"></div>
+                <div class="worksheet-line" style="width:68%"></div>
+              </div>
+              <div class="capture-box">3x + 7 = 22</div>
+            </div>
+            <div class="ocr-result">
+              <small>Detected from screenshot</small>
+              <div class="ocr-equation"><span>3x + 7 = 22</span><span class="status">Confirm</span></div>
+              <div class="confidence-row"><div class="confidence-bar"><span></span></div><b>94%</b></div>
+              <div class="step-actions"><button>Edit Problem</button><button>Retake</button><button class="primary-action">Start Tutor</button></div>
+            </div>
+          </section>
+
+          <section class="panel panel-pad problem-card">
+            <div class="section-title"><h3>2. Confirm Or Type</h3><span class="status">Grade 6-8</span></div>
+            <div class="prompt-card compact" style="margin:0">
+              <textarea>Solve for x: 3x + 7 = 22</textarea>
+              <div><em>Captured from screenshot. Student can edit before tutoring starts.</em><button class="send">→</button></div>
+            </div>
+          </section>
+
+          <section class="math-mode-row">
+            <div class="mode-card active"><b>Learn Mode</b><small>Hints first, then steps only when needed.</small></div>
+            <div class="mode-card"><b>Check My Work</b><small>Student enters steps and gets feedback.</small></div>
+          </section>
+
+          <section class="step-card">
+            <div class="step-head"><h3>3. Guided Walkthrough</h3><span class="status warn">Step 1 of 4</span></div>
+            <div class="step-body">
+              <div class="equation-box">3x + 7 = 22</div>
+              <div class="hint-card">
+                <span>?</span>
+                <div><b>Think before solving</b><p>What number is being added to the term with x? Undo that first by doing the opposite operation on both sides.</p></div>
+              </div>
+              <div class="work-line">
+                <label>Your next step</label>
+                <input value="3x = 15" />
+              </div>
+              <div class="step-actions"><button>Give Hint</button><button>Show Example</button><button class="primary-action">Check Step</button></div>
+            </div>
+          </section>
+
+          <section class="step-card">
+            <div class="step-head"><h3>4. Step Feedback</h3><span class="status">Correct</span></div>
+            <div class="step-body">
+              <div class="step-list">
+                <div class="step-row"><span>1</span><div><b>Subtract 7 from both sides</b><small>3x + 7 - 7 = 22 - 7</small></div><span class="status">Done</span></div>
+                <div class="step-row"><span>2</span><div><b>Simplify</b><small>3x = 15</small></div><span class="status">Now</span></div>
+                <div class="step-row"><span>3</span><div><b>Divide by 3</b><small>Find the value of one x.</small></div><span class="status blue">Next</span></div>
+              </div>
+              <div class="answer-reveal"><b>Why this works</b><p>Equations stay balanced when you do the same operation to both sides. Subtracting 7 isolates the x term.</p></div>
+              <div class="step-actions"><button>Try Similar</button><button class="primary-action">Continue</button></div>
+            </div>
+          </section>
+
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>5. Final Check</h3><span class="status">Saved</span></div>
+              <div class="answer-reveal"><b>x = 5</b><p>Check: 3(5) + 7 = 15 + 7 = 22. The answer fits the original equation.</p></div>
+              <div class="builder-steps">
+                <div class="builder-step"><span>Skill practiced</span><b>Inverse ops</b></div>
+                <div class="builder-step"><span>Weak spot</span><b>Division step</b></div>
+                <div class="builder-step"><span>Next drill</span><b>5 problems</b></div>
+              </div>
+            </div>
+            <div class="panel panel-pad parent-note">
+              <div class="section-title"><h3>Parent View</h3><a>Weekly summary</a></div>
+              <div class="policy"><b>What Alex needed</b><p>One hint to isolate the variable and one check on dividing both sides.</p></div>
+              <div class="policy"><b>Guardrail used</b><p>Answer was shown only after Alex entered a correct intermediate step.</p></div>
+              <div class="policy"><b>Recommended next</b><p>Practice 5 linear equations before moving to word problems.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="pagePanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Current page</div></div>
+            <div class="tool-title-row"><div class="tool-badge">⌕</div><h2>Explain Web Page</h2></div>
+            <p>Use the current page or selected text. KiddieGPT explains at the chosen grade level and can turn it into practice.</p>
+          </section>
+          <section class="page-capture">
+            <div class="page-bar">school.edu/science/photosynthesis</div>
+            <div class="selected-text">Photosynthesis is the process by which green plants and some other organisms use sunlight to synthesize foods from carbon dioxide and water.</div>
+            <div class="step-actions"><button>Use Selection</button><button>Use Page</button><button class="primary-action">Explain</button></div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Grade 8 Explanation</h3><span class="status">Approved</span></div>
+            <div class="result-stack">
+              <div class="result-item"><b>Simple version</b><p>Plants use sunlight like energy to make food from air and water.</p></div>
+              <div class="result-item"><b>Try next</b><p>Make a quiz, flashcards, or a study sheet from this selected text.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="askPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">School policy</div></div>
+            <div class="tool-title-row"><div class="tool-badge">⚑</div><h2>Safe Ask</h2></div>
+            <p>Ask school questions with grade bands, source rules, blocked topics, and parent-visible safety events.</p>
+          </section>
+          <section class="panel panel-pad safe-chat">
+            <div class="chat-bubble user">Why do plants need sunlight?</div>
+            <div class="chat-bubble bot"><b>Short answer:</b> Sunlight gives plants the energy they need to make glucose, which is a kind of sugar they use for food.</div>
+            <div class="chat-bubble user">Can you just give me the worksheet answers?</div>
+            <div class="chat-bubble bot"><b>Let’s learn it:</b> I can help with hints, check your work, or walk through one problem at a time.</div>
+          </section>
+          <section class="panel panel-pad"><div class="section-title"><h3>Safety Event</h3><span class="status warn">Logged</span></div><div class="policy"><b>Guardrail used</b><p>Homework answer request redirected to hint-first learning mode. Parent summary updated.</p></div></section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="classroomPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Student Profile</h3><button class="small-button primary-action">Add Goal</button></div>
+          <div class="table-scroll">
+            <table class="class-table">
+              <thead><tr><th>Area</th><th>Grade</th><th>Current Unit</th><th>Best Tool</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Science</td><td>8</td><td>Photosynthesis</td><td>PDF Study Helper</td><td><span class="status">On track</span></td></tr>
+                <tr><td>Math</td><td>6</td><td>Fractions</td><td>Math Step Tutor</td><td><span class="status warn">Review</span></td></tr>
+                <tr><td>ELA</td><td>7</td><td>Argument writing</td><td>Writing Coach</td><td><span class="status">Improving</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="assignmentsPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Study Planner</h3><button class="small-button primary-action">Save Plan</button></div>
+          <div class="dashboard-grid">
+            <div class="prompt-card tall" style="margin:0"><textarea>Upload a Grade 8 science PDF, create a study sheet, then schedule a 10-question quiz with flashcards for missed concepts.</textarea><div><em>Parent can review before the child starts</em><button class="send">→</button></div></div>
+            <div class="compliance-grid">
+              <div class="policy"><b>Output Level</b><p>Grade 8 reading level, vocabulary scaffolded.</p></div>
+              <div class="policy"><b>Mode</b><p>Hints before answers for homework help.</p></div>
+              <div class="policy"><b>Sources</b><p>Homework PDF plus approved school domains.</p></div>
+              <div class="policy"><b>Parent Summary</b><p>Weekly digest enabled.</p></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="insightsPanel">
+        <div class="dashboard-grid">
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Parent Insights</h3><a>Export PDF</a></div>
+            <div class="metric-row">
+              <div class="metric"><span>Top Gap</span><strong>Fractions</strong><small>Grade 6</small></div>
+              <div class="metric"><span>Best Tool</span><strong>Quiz</strong><small>68% repeat use</small></div>
+              <div class="metric"><span>Reading Level</span><strong>7.4</strong><small>avg content</small></div>
+              <div class="metric"><span>Flags</span><strong>12</strong><small>resolved</small></div>
+            </div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Recommended Actions</h3><a>Apply</a></div>
+            <div class="assignment-list">
+              <div class="assignment"><div><b>Create review deck</b><span>For vocabulary terms Alex keeps missing</span></div><span class="status">Ready</span></div>
+              <div class="assignment"><div><b>Shorten science explanations</b><span>Current reading level is a little high</span></div><span class="status blue">Suggested</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="safetyPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Settings & Safety</h3><button class="small-button primary-action">Save Rules</button></div>
+          <h4 style="margin-top:0">Grade Level</h4>
+          <div class="grade-tabs" style="margin-bottom:12px"><button>K-2</button><button>3-5</button><button class="active">6-8</button></div>
+          <div class="compliance-grid">
+            <div class="policy"><b>Grade Band Controls</b><p>Separate K-2, 3-5, and 6-8 response styles, vocabulary, and blocked categories.</p></div>
+            <div class="policy"><b>Answer Guardrails</b><p>Homework mode gives hints and checks work before revealing final answers.</p></div>
+            <div class="policy"><b>Parent Activity Summary</b><p>Weekly progress and safety summaries without exposing unnecessary private content.</p></div>
+            <div class="policy"><b>Approved Sources</b><p>School allowlist for web explanations, citations, and page summarization.</p></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="adminPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>School Approval</h3><button class="small-button primary-action">Share Approval Pack</button></div>
+          <div class="table-scroll">
+            <table class="class-table">
+              <thead><tr><th>Review Area</th><th>Status</th><th>Owner</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td>Approved source list</td><td><span class="status">Ready</span></td><td>School</td><td>Allowed domains and citations</td></tr>
+                <tr><td>Grade band policy</td><td><span class="status">Ready</span></td><td>School</td><td>K-2, 3-5, and 6-8 rules</td></tr>
+                <tr><td>Parent weekly email</td><td><span class="status">Ready</span></td><td>Parent</td><td>Progress and practice summary</td></tr>
+                <tr><td>Data retention</td><td><span class="status warn">Review</span></td><td>School</td><td>Confirm deletion window</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <aside class="side-nav">
+      <div class="side-brand"><img src="icons/icon48.png" alt=""><span>KiddieGPT</span></div>
+      <div class="school-pill"><b>Lincoln Middle School</b><span>Approved for grades K-8</span></div>
+      <nav class="nav-group">
+        <div class="nav-label">Platform</div>
+        <button class="side-link active" data-view="dashboard" title="Dashboard"><span>⌂</span><b>Dashboard</b></button>
+        <button class="side-link" data-view="tools" title="Learning Tools"><span>▤</span><b>Tools</b></button>
+        <button class="side-link" data-view="pdf" title="PDF Study Helper"><span>PDF</span><b>PDF</b></button>
+        <button class="side-link" data-view="quiz" title="Quiz Me"><span>?</span><b>Quiz</b></button>
+        <button class="side-link" data-view="cards" title="Flashcards"><span>□</span><b>Cards</b></button>
+        <button class="side-link" data-view="read" title="Read Aloud"><span>▶</span><b>Read</b></button>
+        <button class="side-link" data-view="math" title="Math Step Tutor"><span>∑</span><b>Math</b></button>
+        <button class="side-link" data-view="page" title="Explain Web Page"><span>⌕</span><b>Page</b></button>
+        <button class="side-link" data-view="ask" title="Safe Ask"><span>⚑</span><b>Ask</b></button>
+        <button class="side-link" data-view="classroom" title="Student Profile"><span>◫</span><b>Profile</b></button>
+        <button class="side-link" data-view="assignments" title="Study Plan"><span>✓</span><b>Plan</b></button>
+        <button class="side-link" data-view="insights" title="Insights"><span>◎</span><b>Insights</b></button>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Controls</div>
+        <button class="side-link" data-view="safety" title="Safety Rules"><span>⚑</span><b>Safety</b></button>
+        <button class="side-link" data-view="admin" title="School Approval"><span>⚙</span><b>School</b></button>
+      </nav>
+      <div class="admin-card">
+        <b>School approval pack</b>
+        <p>Grade bands, source rules, privacy notes, and parent summaries.</p>
+        <button>Share Pack</button>
+      </div>
+    </aside>
+  </div>
+  <script>
+    const panels={
+      dashboard:"dashboardPanel",
+      tools:"toolsPanel",
+      pdf:"pdfPanel",
+      quiz:"quizPanel",
+      cards:"cardsPanel",
+      read:"readPanel",
+      math:"mathPanel",
+      page:"pagePanel",
+      ask:"askPanel",
+      classroom:"classroomPanel",
+      assignments:"assignmentsPanel",
+      insights:"insightsPanel",
+      safety:"safetyPanel",
+      admin:"adminPanel"
+    };
+	    function showPanel(name){
+	      const panelId=panels[name]||panels.dashboard;
+	      document.querySelectorAll(".view-panel").forEach(panel=>panel.classList.toggle("active",panel.id===panelId));
+	      document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));
+	    }
+	    const toolDetails={
+	      pdf:{
+	        title:"PDF Study Helper",
+		        description:"Upload a homework PDF, worksheet, or notes packet. KiddieGPT extracts the lesson and builds a study sheet, quiz, flashcards, and read-aloud review with parent preview.",
+	        points:[["Input","Local PDF"],["Output","Study pack"],["Guardrail","Parent preview"]]
+	      },
+	      quiz:{
+	        title:"Quiz Me",
+		        description:"Create a short practice quiz from a PDF, web page, notes, or weak spot. Each missed answer gets a simple explanation and becomes review material.",
+	        points:[["Input","Notes or topic"],["Output","5-10 questions"],["Guardrail","Hints first"]]
+	      },
+	      cards:{
+	        title:"Flashcards",
+		        description:"Build flashcards from vocabulary, notes, quiz mistakes, or selected page text. KiddieGPT tracks what is still being learned and resurfaces it later.",
+	        points:[["Input","Terms or lesson"],["Output","Review deck"],["Guardrail","Spaced practice"]]
+	      },
+	      read:{
+	        title:"Read Aloud Coach",
+		        description:"Turn a study sheet into a short narrated review. Students can pause, repeat, and answer quick recall checks while listening.",
+	        points:[["Input","Study sheet"],["Output","Audio review"],["Guardrail","Short sessions"]]
+	      },
+	      math:{
+	        title:"Math Step Tutor",
+		        description:"Capture a math problem from the page, confirm the OCR result, then solve with hint-first step checking. The final answer appears only after student work.",
+	        points:[["Input","Screenshot"],["Output","Guided steps"],["Guardrail","No answer dump"]]
+	      },
+	      page:{
+	        title:"Explain Web Page",
+		        description:"Use the current page or selected text to create a grade-safe explanation. Then turn the same source into a quiz, flashcards, or study notes.",
+	        points:[["Input","Page selection"],["Output","Explanation"],["Guardrail","Approved sources"]]
+	      },
+	      ask:{
+	        title:"Safe Ask",
+		        description:"Ask school questions with grade-band responses, blocked topics, and parent-visible safety events. Homework answer requests are redirected into hints.",
+	        points:[["Input","Question"],["Output","Safe answer"],["Guardrail","Policy checked"]]
+	      }
+	    };
+	    function selectTool(name){
+	      const detail=toolDetails[name]||toolDetails.pdf;
+	      document.querySelectorAll("[data-tool]").forEach(tile=>tile.classList.toggle("active",tile.dataset.tool===name));
+	      document.getElementById("toolDetailTitle").textContent=detail.title;
+	      document.getElementById("toolDetailDescription").textContent=detail.description;
+	      document.querySelector("[data-launch]").dataset.launch=name;
+	      const icons=["⬢","▣","✓"];
+	      document.getElementById("toolDetailPoints").innerHTML=detail.points.map(([label,value],index)=>`<div class="tool-flow-step"><i class="tool-flow-dot" data-icon="${icons[index]}"></i><span>${label}</span><b>${value}</b></div>`).join("");
+	    }
+	    document.addEventListener("click",event=>{
+	      const target=event.target.closest("[data-view]");
+	      if(target) showPanel(target.dataset.view);
+	      const tool=event.target.closest("[data-tool]");
+	      if(tool) selectTool(tool.dataset.tool);
+	      const launch=event.target.closest("[data-launch]");
+	      if(launch) showPanel(launch.dataset.launch);
+	    });
+  </script>
+</body>
+</html>

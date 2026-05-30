@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,800&family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/webapp.css?v=2">
+</head>
+<body data-page="admin">
+  <main class="portal-shell">
+    <aside class="rail">
+      <a class="brand-mark" href="/index.html" aria-label="KiddieGPT home">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </a>
+      <nav class="rail-nav" aria-label="Admin console">
+        <a href="/index.html"><i data-lucide="home"></i><span>Parent Portal</span></a>
+        <a class="active" href="/admin.html"><i data-lucide="layout-dashboard"></i><span>Admin</span></a>
+        <a href="#families"><i data-lucide="users-round"></i><span>Families</span></a>
+        <a href="#ops"><i data-lucide="activity"></i><span>Ops</span></a>
+      </nav>
+      <div class="rail-card">
+        <span class="mini-label">Support mode</span>
+        <strong>Local demo data is stored in this browser.</strong>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Admin console</p>
+          <h1>See every family, subscription, and safety signal at a glance.</h1>
+          <p class="hero-copy">A lightweight command center for support, billing readiness, and parent onboarding health.</p>
+        </div>
+        <div class="head-actions">
+          <button class="button ghost" type="button" id="seed-data"><i data-lucide="database"></i>Add demo data</button>
+          <a class="button primary" href="/index.html"><i data-lucide="user-plus"></i>New family</a>
+        </div>
+      </header>
+
+      <section class="admin-metrics">
+        <article class="metric-card">
+          <i data-lucide="users"></i>
+          <span>Families</span>
+          <strong id="total-families">0</strong>
+        </article>
+        <article class="metric-card">
+          <i data-lucide="badge-check"></i>
+          <span>Active subscriptions</span>
+          <strong id="active-subs">0</strong>
+        </article>
+        <article class="metric-card">
+          <i data-lucide="graduation-cap"></i>
+          <span>Students</span>
+          <strong id="student-count">0</strong>
+        </article>
+        <article class="metric-card">
+          <i data-lucide="mail-check"></i>
+          <span>Weekly summaries</span>
+          <strong id="weekly-summary-count">0</strong>
+        </article>
+      </section>
+
+      <section class="admin-grid">
+        <article class="ops-panel" id="ops">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Health</p>
+              <h2>Operational Readiness</h2>
+            </div>
+            <span class="state-chip ok">Demo healthy</span>
+          </div>
+          <div class="ops-list">
+            <div><i data-lucide="webhook"></i><span>Stripe webhook</span><strong>Mocked</strong></div>
+            <div><i data-lucide="lock"></i><span>Auth session</span><strong>Mocked</strong></div>
+            <div><i data-lucide="shield-check"></i><span>Guardrails</span><strong>Enabled</strong></div>
+            <div><i data-lucide="panel-right"></i><span>Extension entitlement</span><strong>Ready to wire</strong></div>
+          </div>
+        </article>
+
+        <article class="family-detail">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Selected family</p>
+              <h2 id="detail-name">No family selected</h2>
+            </div>
+            <span class="state-chip" id="detail-status">Waiting</span>
+          </div>
+          <dl>
+            <div><dt>Email</dt><dd id="detail-email">-</dd></div>
+            <div><dt>Student</dt><dd id="detail-student">-</dd></div>
+            <div><dt>Grade</dt><dd id="detail-grade">-</dd></div>
+            <div><dt>Usage cap</dt><dd id="detail-cap">-</dd></div>
+            <div><dt>Goal</dt><dd id="detail-goal">-</dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <section class="table-card" id="families">
+        <div class="table-toolbar">
+          <div>
+            <p class="eyebrow">Families</p>
+            <h2>Subscription Records</h2>
+          </div>
+          <div class="filters">
+            <label>
+              <i data-lucide="search"></i>
+              <input id="family-search" type="search" placeholder="Search family, email, student">
+            </label>
+            <select id="status-filter" aria-label="Filter by status">
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Parent</th>
+                <th>Email</th>
+                <th>Student</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Guardrails</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="family-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/webapp/webapp.js?v=2"></script>
+</body>
+</html>

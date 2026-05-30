@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KiddieGPT</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="enterprise-shell">
+    <main class="workspace-main">
+      <header class="enterprise-topbar">
+        <div class="app-mark">
+          <img src="icons/icon48.png" alt="">
+          <div class="brand-copy">
+            <b>KiddieGPT</b>
+            <small>School-approved study companion</small>
+          </div>
+        </div>
+        <div class="header-status"><span>Parent visible</span><span>Grade safe</span></div>
+      </header>
+      <section class="view-panel active" id="dashboardPanel">
+        <div class="dashboard-compact">
+          <section class="panel panel-pad motivation-hero">
+            <div class="dashboard-status">
+              <div>
+                <div class="mockup-kicker">7-day streak active</div>
+                <h2>Welcome back, Alex.</h2>
+                <p>One focused session keeps your streak alive and moves you closer to the Problem Solver badge.</p>
+                <div class="mission-card"><b>Today: Beat Fractions Level 2</b><small>5 questions · about 7 minutes · hints allowed</small></div>
+              </div>
+              <div class="donut-card"><strong>72%</strong><small>Points</small></div>
+            </div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Streak</h3><span class="status">7 days</span></div>
+            <div class="habit-strip"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span class="today">Today</span></div>
+          </section>
+          <section class="mini-panel-grid">
+            <div class="compact-panel">
+              <h3>Almost Unlocked</h3>
+              <p>Complete 2 more quizzes to earn the Problem Solver badge.</p>
+            </div>
+            <div class="compact-panel next-up">
+              <h3>Next Up</h3>
+              <div class="next-up-row"><div><b>Fractions Drill</b><small>Saved from missed answers</small></div><span class="status warn">Review</span></div>
+            </div>
+          </section>
+          <section class="motivation-stats">
+            <div class="stat-tile"><span>★</span><b>18</b><small>stars earned</small></div>
+            <div class="stat-tile"><span>PP</span><b>720</b><small>progress points</small></div>
+            <div class="stat-tile"><span>✓</span><b>81%</b><small>quiz accuracy</small></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="toolsPanel">
+        <div class="section-title"><h3>Learning Tools</h3><a>Choose a tool</a></div>
+        <section class="builder-lab">
+          <div class="builder-level">
+            <div class="builder-shell">
+              <div class="builder-tools">
+                <button class="kg-tool-tile studio active" data-tool="pdf">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 12h6"></path><path d="M10 15h6"></path><path d="M10 18h4"></path></svg></span><span class="status">PDF</span></div>
+                  <div class="kg-tool-body"><h3>PDF Study Helper</h3><p>Upload notes</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Upload</span><span class="kg-bubble">Explain</span><span class="kg-bubble">Quiz</span></div>
+                </button>
+                <button class="kg-tool-tile lime" data-tool="quiz">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M8 14c-1.2-1.1-2-2.7-2-4.4A6 6 0 0 1 18 9.6c0 1.7-.8 3.3-2 4.4-.7.6-1 1.3-1 2H9c0-.7-.3-1.4-1-2Z"></path><path d="M12 7.5a1.7 1.7 0 0 1 1.8 1.7c0 1.4-1.8 1.5-1.8 2.8"></path><path d="M12 15h.01"></path></svg></span><span class="status blue">Fast</span></div>
+                  <div class="kg-tool-body"><h3>Quiz Me</h3><p>Practice check</p></div>
+                  <div class="kg-tile-art kg-text-row"><span>5 Qs</span><span>10 Qs</span><span>Test</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="cards">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="7" width="13" height="10" rx="2"></rect><path d="M8 7V5.8c0-1 .8-1.8 1.8-1.8H17c1 0 1.8.8 1.8 1.8V13"></path><path d="M8 11h7"></path><path d="M8 14h4"></path></svg></span><span class="status">Save</span></div>
+                  <div class="kg-tool-body"><h3>Flashcards</h3><p>Review deck</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Term</span><span class="kg-bubble">Meaning</span></div>
+                </button>
+                <button class="kg-tool-tile dark" data-tool="read">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11v3a2 2 0 0 0 2 2h2l6 4V5L8 9H6a2 2 0 0 0-2 2Z"></path><path d="M17 9c1 .8 1.5 1.8 1.5 3s-.5 2.2-1.5 3"></path><path d="M19.5 6.5A8 8 0 0 1 22 12a8 8 0 0 1-2.5 5.5"></path></svg></span><span class="status blue">Audio</span></div>
+                  <div class="kg-tool-body"><h3>Read Aloud</h3><p>Listen back</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">1:42 left</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="math">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">∑</span><span class="status warn">Hint</span></div>
+                  <div class="kg-tool-body"><h3>Math Step Tutor</h3><p>Solve steps</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Capture</span><span class="kg-bubble">Check</span></div>
+                </button>
+                <button class="kg-tool-tile lime" data-tool="write">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">✎</span><span class="status blue">Draft</span></div>
+                  <div class="kg-tool-body"><h3>Writing Coach</h3><p>Revise safely</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Plan</span><span class="kg-bubble">Revise</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="screenshot">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H5a1 1 0 0 0-1 1v3"></path><path d="M16 4h3a1 1 0 0 1 1 1v3"></path><path d="M20 16v3a1 1 0 0 1-1 1h-3"></path><path d="M8 20H5a1 1 0 0 1-1-1v-3"></path><rect x="8" y="8" width="8" height="8" rx="1.5"></rect><path d="M12 6v12"></path><path d="M6 12h12"></path></svg></span><span class="status">Image</span></div>
+                  <div class="kg-tool-body"><h3>Screenshot Explainer</h3><p>Explain visuals</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Snap</span><span class="kg-bubble">Describe</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="page">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v8"></path><path d="M14 3v5h5"></path><path d="M6 3v18h7"></path><circle cx="16" cy="16" r="3"></circle><path d="m18.3 18.3 2.7 2.7"></path><path d="M9 11h4"></path><path d="M9 14h2"></path></svg></span><span class="status">Page</span></div>
+                  <div class="kg-tool-body"><h3>Explain Web Page</h3><p>Use selection</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Select</span><span class="kg-bubble">Simplify</span></div>
+                </button>
+                <button class="kg-tool-tile dark" data-tool="ask">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">✓</span><span class="status">Safe</span></div>
+                  <div class="kg-tool-body"><h3>Safe Ask</h3><p>Ask safely</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Approved</span></div>
+                </button>
+              </div>
+              <div class="shelf-dots"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="builder-workspace">
+            <section class="tool-detail-card">
+              <div class="tool-detail-head">
+                <div>
+                  <h3 id="toolDetailTitle">PDF Study Helper</h3>
+                </div>
+                <button class="launch-tool" data-launch="pdf">Launch</button>
+              </div>
+              <p id="toolDetailDescription">Upload a homework PDF, worksheet, or notes packet. KiddieGPT extracts the lesson and builds a study sheet, quiz, flashcards, and read-aloud review with parent preview.</p>
+              <div class="tool-detail-points" id="toolDetailPoints">
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="▣"></i><span>Open It</span><b>Worksheet or chapter</b></div>
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="≡"></i><span>Find Big Ideas</span><b>Notes kids can read</b></div>
+                <div class="tool-flow-step"><i class="tool-flow-dot" data-icon="✓"></i><span>Practice</span><b>Quiz and cards</b></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="pdfPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Local PDF</div></div>
+            <div class="tool-title-row"><div class="tool-badge">PDF</div><h2>PDF Study Helper</h2></div>
+            <p>Upload a worksheet, notes packet, or local PDF. KiddieGPT extracts the lesson and turns it into study materials.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>1. Upload Or Capture</h3><span class="status">Local PDF</span></div>
+            <div class="upload-zone"><b>Photosynthesis_Chapter_4.pdf</b><small>18 pages scanned · text extracted · school policy applied</small><button class="small-button primary-action">Build Study Pack</button></div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>2. Study Sheet</h3><span class="status">Ready</span></div>
+              <div class="result-stack">
+                <div class="result-item"><b>Main idea</b><p>Plants use sunlight, water, and carbon dioxide to make glucose and oxygen.</p></div>
+                <div class="result-item"><b>Key terms</b><p>Chlorophyll, chloroplast, glucose, stomata, carbon dioxide.</p></div>
+                <div class="result-item"><b>Remember this</b><p>Inputs go in, outputs come out. The chloroplast is where the process happens.</p></div>
+              </div>
+            </div>
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>3. Pack Actions</h3><a>Parent preview</a></div>
+              <div class="builder-steps">
+                <div class="builder-step"><span>Make Quiz</span><b>10 Qs</b></div>
+                <div class="builder-step"><span>Make Cards</span><b>12 cards</b></div>
+                <div class="builder-step"><span>Read Aloud</span><b>2 min</b></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="quizPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Hint-first</div></div>
+            <div class="tool-title-row"><div class="tool-badge">?</div><h2>Quiz Me</h2></div>
+            <p>Generate a short quiz from notes, a PDF, a web page, or a weak spot. Missed concepts become review cards.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Question 3 of 10</h3><span class="status blue">Science</span></div>
+            <p class="note">Which gas do plants take in during photosynthesis?</p>
+            <div class="choice-list">
+              <div class="choice">A. Oxygen</div>
+              <div class="choice correct">B. Carbon dioxide</div>
+              <div class="choice">C. Nitrogen</div>
+              <div class="choice">D. Hydrogen</div>
+            </div>
+            <div class="step-actions" style="margin-top:10px"><button>Hint</button><button class="primary-action">Next</button></div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad"><div class="section-title"><h3>Score</h3><span class="status">7 / 10</span></div><div class="result-item"><b>Missed concept</b><p>Alex confused carbon dioxide with oxygen. Saved to weak spots.</p></div></div>
+            <div class="panel panel-pad"><div class="section-title"><h3>Next</h3><a>Parent view</a></div><div class="builder-steps"><div class="builder-step"><span>Review deck</span><b>3 cards</b></div><div class="builder-step"><span>Mini drill</span><b>5 Qs</b></div></div></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="cardsPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Spaced review</div></div>
+            <div class="tool-title-row"><div class="tool-badge">□</div><h2>Flashcards</h2></div>
+            <p>Create decks from PDFs, vocab, quiz mistakes, or selected page text. KiddieGPT tracks “still learning” cards.</p>
+          </section>
+          <section class="flashcard-preview">
+            <div><small>Card 4 of 12</small><b>Chlorophyll</b><p>The green pigment in plants that captures sunlight for photosynthesis.</p></div>
+          </section>
+          <section class="math-mode-row">
+            <div class="mode-card"><b>Still Learning</b><small>Show again soon and add one simpler example.</small></div>
+            <div class="mode-card active"><b>Got It</b><small>Move this card into spaced review.</small></div>
+          </section>
+          <section class="panel panel-pad"><div class="section-title"><h3>Decks</h3><a>Parent summary</a></div><div class="chips"><span>Photosynthesis</span><span>Fractions</span><span>Civil War</span></div></section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="readPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Audio review</div></div>
+            <div class="tool-title-row"><div class="tool-badge">▶</div><h2>Read Aloud Coach</h2></div>
+            <p>Turn study sheets into short narrated review sessions with pause points and quick recall checks.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="audio-player"><button>▶</button><div><b>Photosynthesis Study Sheet</b><small>1:42 remaining · calm coach · grade 8</small><div class="progress"><span style="width:42%"></span></div></div><button>↻</button></div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Now Reading</h3><span class="status">Pause point</span></div>
+            <div class="result-item"><b>Listen for this</b><p>Plants take in carbon dioxide and water. With sunlight, chloroplasts make glucose and release oxygen.</p></div>
+            <div class="step-actions" style="margin-top:10px"><button>Repeat</button><button>Ask Recall</button><button class="primary-action">Continue</button></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="mathPanel">
+        <div class="math-flow">
+          <section class="panel panel-pad math-hero">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Screenshot OCR</div></div>
+            <div class="tool-title-row"><div class="tool-badge">∑</div><h2>Math Step Tutor</h2></div>
+            <p>Alex gets unstuck without jumping straight to the answer. KiddieGPT checks each step, explains mistakes, and saves weak spots for parent review.</p>
+          </section>
+
+          <section class="panel panel-pad capture-card">
+            <div class="section-title"><h3>1. Capture Problem</h3><span class="status">Page screenshot</span></div>
+            <div class="capture-preview">
+              <div class="capture-toolbar"><span>Visible tab</span><span>Select area</span><span>OCR on</span></div>
+              <div class="worksheet-snippet">
+                <b>Algebra Practice</b>
+                <div class="worksheet-line" style="width:72%"></div>
+                <div class="worksheet-line" style="width:56%"></div>
+                <div class="worksheet-line" style="width:68%"></div>
+              </div>
+              <div class="capture-box">3x + 7 = 22</div>
+            </div>
+            <div class="ocr-result">
+              <small>Detected from screenshot</small>
+              <div class="ocr-equation"><span>3x + 7 = 22</span><span class="status">Confirm</span></div>
+              <div class="confidence-row"><div class="confidence-bar"><span></span></div><b>94%</b></div>
+              <div class="step-actions"><button>Edit Problem</button><button data-action="capture-screenshot">Retake</button><button class="primary-action">Start Tutor</button></div>
+            </div>
+          </section>
+
+          <section class="panel panel-pad problem-card">
+            <div class="section-title"><h3>2. Confirm Or Type</h3><span class="status">Grade 6-8</span></div>
+            <div class="prompt-card compact" style="margin:0">
+              <textarea>Solve for x: 3x + 7 = 22</textarea>
+              <div><em>Captured from screenshot. Student can edit before tutoring starts.</em><button class="send">→</button></div>
+            </div>
+          </section>
+
+          <section class="math-mode-row">
+            <div class="mode-card active"><b>Learn Mode</b><small>Hints first, then steps only when needed.</small></div>
+            <div class="mode-card"><b>Check My Work</b><small>Student enters steps and gets feedback.</small></div>
+          </section>
+
+          <section class="step-card">
+            <div class="step-head"><h3>3. Guided Walkthrough</h3><span class="status warn">Step 1 of 4</span></div>
+            <div class="step-body">
+              <div class="equation-box">3x + 7 = 22</div>
+              <div class="hint-card">
+                <span>?</span>
+                <div><b>Think before solving</b><p>What number is being added to the term with x? Undo that first by doing the opposite operation on both sides.</p></div>
+              </div>
+              <div class="work-line">
+                <label>Your next step</label>
+                <input value="3x = 15" />
+              </div>
+              <div class="step-actions"><button>Give Hint</button><button>Show Example</button><button class="primary-action">Check Step</button></div>
+            </div>
+          </section>
+
+          <section class="step-card">
+            <div class="step-head"><h3>4. Step Feedback</h3><span class="status">Correct</span></div>
+            <div class="step-body">
+              <div class="step-list">
+                <div class="step-row"><span>1</span><div><b>Subtract 7 from both sides</b><small>3x + 7 - 7 = 22 - 7</small></div><span class="status">Done</span></div>
+                <div class="step-row"><span>2</span><div><b>Simplify</b><small>3x = 15</small></div><span class="status">Now</span></div>
+                <div class="step-row"><span>3</span><div><b>Divide by 3</b><small>Find the value of one x.</small></div><span class="status blue">Next</span></div>
+              </div>
+              <div class="answer-reveal"><b>Why this works</b><p>Equations stay balanced when you do the same operation to both sides. Subtracting 7 isolates the x term.</p></div>
+              <div class="step-actions"><button>Try Similar</button><button class="primary-action">Continue</button></div>
+            </div>
+          </section>
+
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>5. Final Check</h3><span class="status">Saved</span></div>
+              <div class="answer-reveal"><b>x = 5</b><p>Check: 3(5) + 7 = 15 + 7 = 22. The answer fits the original equation.</p></div>
+              <div class="builder-steps">
+                <div class="builder-step"><span>Skill practiced</span><b>Inverse ops</b></div>
+                <div class="builder-step"><span>Weak spot</span><b>Division step</b></div>
+                <div class="builder-step"><span>Next drill</span><b>5 problems</b></div>
+              </div>
+            </div>
+            <div class="panel panel-pad parent-note">
+              <div class="section-title"><h3>Parent View</h3><a>Weekly summary</a></div>
+              <div class="policy"><b>What Alex needed</b><p>One hint to isolate the variable and one check on dividing both sides.</p></div>
+              <div class="policy"><b>Guardrail used</b><p>Answer was shown only after Alex entered a correct intermediate step.</p></div>
+              <div class="policy"><b>Recommended next</b><p>Practice 5 linear equations before moving to word problems.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="writePanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Feedback first</div></div>
+            <div class="tool-title-row"><div class="tool-badge">✎</div><h2>Writing Coach</h2></div>
+            <p>Paste a paragraph or assignment prompt. KiddieGPT gives grade-aware revision notes, asks one planning question, and avoids writing the final answer for the student.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Draft Check</h3><span class="status blue">Grade 7 ELA</span></div>
+            <div class="prompt-card compact" style="margin:0">
+              <textarea>School uniforms should be optional because students need to feel comfortable and show who they are.</textarea>
+              <div><em>Coach checks claim, evidence, and tone before suggesting edits.</em><button class="send">→</button></div>
+            </div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>Revision Notes</h3><span class="status">Ready</span></div>
+              <div class="result-stack">
+                <div class="result-item"><b>Strong start</b><p>Your claim is clear. Add one reason that connects comfort to learning or focus.</p></div>
+                <div class="result-item"><b>Evidence needed</b><p>Use a school example, survey result, or quote from the article before your opinion sentence.</p></div>
+                <div class="result-item"><b>Try this move</b><p>Write one sentence that starts with “For example,” then explain why it supports your claim.</p></div>
+              </div>
+            </div>
+            <div class="panel panel-pad parent-note">
+              <div class="section-title"><h3>Guardrails</h3><a>Parent summary</a></div>
+              <div class="policy"><b>No ghostwriting</b><p>Suggestions stay at planning, structure, and sentence-improvement level.</p></div>
+              <div class="policy"><b>Grade fit</b><p>Vocabulary and rubric language are tuned for middle school writing.</p></div>
+              <div class="policy"><b>Next step</b><p>Student writes the evidence sentence before KiddieGPT reviews again.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="screenshotPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Visible tab</div></div>
+            <div class="tool-title-row"><div class="tool-badge">▧</div><h2>Screenshot Explainer</h2></div>
+            <p>Capture the current tab, describe what is visible, and turn diagrams, tables, and homework images into grade-safe explanations.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Capture</h3><span class="status" id="screenshotStatus">Ready</span></div>
+            <div class="screenshot-preview" id="screenshotPreview">
+              <div>
+                <b>No screenshot yet</b>
+                <p>Use the button below while a school page, worksheet, or diagram is open in the active tab.</p>
+              </div>
+            </div>
+            <div class="step-actions" style="margin-top:10px"><button data-action="capture-screenshot" class="primary-action">Capture Visible Tab</button><button data-action="mock-screenshot">Use Sample</button></div>
+          </section>
+          <section class="dashboard-grid">
+            <div class="panel panel-pad">
+              <div class="section-title"><h3>Explanation</h3><span class="status blue">Grade aware</span></div>
+              <div class="result-stack">
+                <div class="result-item"><b>What I notice</b><p id="screenshotObservation">A diagram or worksheet can be summarized here after capture. The student gets a plain-language explanation before any quiz is made.</p></div>
+                <div class="result-item"><b>Student prompt</b><p>What part looks confusing: labels, steps, vocabulary, or the question being asked?</p></div>
+              </div>
+            </div>
+            <div class="panel panel-pad parent-note">
+              <div class="section-title"><h3>Safety</h3><a>Logged</a></div>
+              <div class="policy"><b>Visual privacy</b><p>Only the visible tab is captured after the student presses the button.</p></div>
+              <div class="policy"><b>Homework mode</b><p>Explains the image and asks for the next step instead of giving worksheet answers.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="pagePanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Current page</div></div>
+            <div class="tool-title-row"><div class="tool-badge">⌕</div><h2>Explain Web Page</h2></div>
+            <p>Use the current page or selected text. KiddieGPT explains at the chosen grade level and can turn it into practice.</p>
+          </section>
+          <section class="page-capture">
+            <div class="page-bar">school.edu/science/photosynthesis</div>
+            <div class="selected-text">Photosynthesis is the process by which green plants and some other organisms use sunlight to synthesize foods from carbon dioxide and water.</div>
+            <div class="step-actions"><button>Use Selection</button><button>Use Page</button><button class="primary-action">Explain</button></div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Grade 8 Explanation</h3><span class="status">Approved</span></div>
+            <div class="result-stack">
+              <div class="result-item"><b>Simple version</b><p>Plants use sunlight like energy to make food from air and water.</p></div>
+              <div class="result-item"><b>Try next</b><p>Make a quiz, flashcards, or a study sheet from this selected text.</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="askPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tool-hero-panel">
+            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">School policy</div></div>
+            <div class="tool-title-row"><div class="tool-badge">⚑</div><h2>Safe Ask</h2></div>
+            <p>Ask school questions with grade bands, source rules, blocked topics, and parent-visible safety events.</p>
+          </section>
+          <section class="panel panel-pad safe-chat">
+            <div class="chat-bubble user">Why do plants need sunlight?</div>
+            <div class="chat-bubble bot"><b>Short answer:</b> Sunlight gives plants the energy they need to make glucose, which is a kind of sugar they use for food.</div>
+            <div class="chat-bubble user">Can you just give me the worksheet answers?</div>
+            <div class="chat-bubble bot"><b>Let’s learn it:</b> I can help with hints, check your work, or walk through one problem at a time.</div>
+          </section>
+          <section class="panel panel-pad"><div class="section-title"><h3>Safety Event</h3><span class="status warn">Logged</span></div><div class="policy"><b>Guardrail used</b><p>Homework answer request redirected to hint-first learning mode. Parent summary updated.</p></div></section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="classroomPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Student Profile</h3><button class="small-button primary-action">Add Goal</button></div>
+          <div class="table-scroll">
+            <table class="class-table">
+              <thead><tr><th>Area</th><th>Grade</th><th>Current Unit</th><th>Best Tool</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Science</td><td>8</td><td>Photosynthesis</td><td>PDF Study Helper</td><td><span class="status">On track</span></td></tr>
+                <tr><td>Math</td><td>6</td><td>Fractions</td><td>Math Step Tutor</td><td><span class="status warn">Review</span></td></tr>
+                <tr><td>ELA</td><td>7</td><td>Argument writing</td><td>Writing Coach</td><td><span class="status">Improving</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="assignmentsPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Study Planner</h3><button class="small-button primary-action">Save Plan</button></div>
+          <div class="dashboard-grid">
+            <div class="prompt-card tall" style="margin:0"><textarea>Upload a Grade 8 science PDF, create a study sheet, then schedule a 10-question quiz with flashcards for missed concepts.</textarea><div><em>Parent can review before the child starts</em><button class="send">→</button></div></div>
+            <div class="compliance-grid">
+              <div class="policy"><b>Output Level</b><p>Grade 8 reading level, vocabulary scaffolded.</p></div>
+              <div class="policy"><b>Mode</b><p>Hints before answers for homework help.</p></div>
+              <div class="policy"><b>Sources</b><p>Homework PDF plus approved school domains.</p></div>
+              <div class="policy"><b>Parent Summary</b><p>Weekly digest enabled.</p></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="insightsPanel">
+        <div class="dashboard-grid">
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Parent Insights</h3><a>Export PDF</a></div>
+            <div class="metric-row">
+              <div class="metric"><span>Top Gap</span><strong>Fractions</strong><small>Grade 6</small></div>
+              <div class="metric"><span>Best Tool</span><strong>Quiz</strong><small>68% repeat use</small></div>
+              <div class="metric"><span>Reading Level</span><strong>7.4</strong><small>avg content</small></div>
+              <div class="metric"><span>Flags</span><strong>12</strong><small>resolved</small></div>
+            </div>
+          </section>
+          <section class="panel panel-pad">
+            <div class="section-title"><h3>Recommended Actions</h3><a>Apply</a></div>
+            <div class="assignment-list">
+              <div class="assignment"><div><b>Create review deck</b><span>For vocabulary terms Alex keeps missing</span></div><span class="status">Ready</span></div>
+              <div class="assignment"><div><b>Shorten science explanations</b><span>Current reading level is a little high</span></div><span class="status blue">Suggested</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="safetyPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Settings & Safety</h3><button class="small-button primary-action">Save Rules</button></div>
+          <h4 style="margin-top:0">Grade Level</h4>
+          <div class="grade-tabs" style="margin-bottom:12px"><button>K-2</button><button>3-5</button><button class="active">6-8</button></div>
+          <div class="compliance-grid">
+            <div class="policy"><b>Grade Band Controls</b><p>Separate K-2, 3-5, and 6-8 response styles, vocabulary, and blocked categories.</p></div>
+            <div class="policy"><b>Answer Guardrails</b><p>Homework mode gives hints and checks work before revealing final answers.</p></div>
+            <div class="policy"><b>Parent Activity Summary</b><p>Weekly progress and safety summaries without exposing unnecessary private content.</p></div>
+            <div class="policy"><b>Approved Sources</b><p>School allowlist for web explanations, citations, and page summarization.</p></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view-panel" id="adminPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>School Approval</h3><button class="small-button primary-action">Share Approval Pack</button></div>
+          <div class="table-scroll">
+            <table class="class-table">
+              <thead><tr><th>Review Area</th><th>Status</th><th>Owner</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td>Approved source list</td><td><span class="status">Ready</span></td><td>School</td><td>Allowed domains and citations</td></tr>
+                <tr><td>Grade band policy</td><td><span class="status">Ready</span></td><td>School</td><td>K-2, 3-5, and 6-8 rules</td></tr>
+                <tr><td>Parent weekly email</td><td><span class="status">Ready</span></td><td>Parent</td><td>Progress and practice summary</td></tr>
+                <tr><td>Data retention</td><td><span class="status warn">Review</span></td><td>School</td><td>Confirm deletion window</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <aside class="side-nav">
+      <div class="side-brand"><img src="icons/icon48.png" alt=""><span>KiddieGPT</span></div>
+      <div class="school-pill"><b>Lincoln Middle School</b><span>Approved for grades K-8</span></div>
+      <nav class="nav-group">
+        <div class="nav-label">Platform</div>
+        <button class="side-link active" data-view="dashboard" title="Dashboard"><span>⌂</span><b>Dashboard</b></button>
+        <button class="side-link" data-view="tools" title="Learning Tools"><span>▤</span><b>Tools</b></button>
+        <button class="side-link" data-view="pdf" title="PDF Study Helper"><span>PDF</span><b>PDF</b></button>
+        <button class="side-link" data-view="quiz" title="Quiz Me"><span>?</span><b>Quiz</b></button>
+        <button class="side-link" data-view="cards" title="Flashcards"><span>□</span><b>Cards</b></button>
+        <button class="side-link" data-view="read" title="Read Aloud"><span>▶</span><b>Read</b></button>
+        <button class="side-link" data-view="math" title="Math Step Tutor"><span>∑</span><b>Math</b></button>
+        <button class="side-link" data-view="write" title="Writing Coach"><span>✎</span><b>Write</b></button>
+        <button class="side-link" data-view="screenshot" title="Screenshot Explainer"><span>▧</span><b>Shot</b></button>
+        <button class="side-link" data-view="page" title="Explain Web Page"><span>⌕</span><b>Page</b></button>
+        <button class="side-link" data-view="ask" title="Safe Ask"><span>⚑</span><b>Ask</b></button>
+        <button class="side-link" data-view="classroom" title="Student Profile"><span>◫</span><b>Profile</b></button>
+        <button class="side-link" data-view="assignments" title="Study Plan"><span>✓</span><b>Plan</b></button>
+        <button class="side-link" data-view="insights" title="Insights"><span>◎</span><b>Insights</b></button>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Controls</div>
+        <button class="side-link" data-view="safety" title="Safety Rules"><span>⚑</span><b>Safety</b></button>
+        <button class="side-link" data-view="admin" title="School Approval"><span>⚙</span><b>School</b></button>
+      </nav>
+      <div class="admin-card">
+        <b>School approval pack</b>
+        <p>Grade bands, source rules, privacy notes, and parent summaries.</p>
+        <button>Share Pack</button>
+      </div>
+    </aside>
+  </div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KiddieGPT Study Tools Mockup</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .mockup-kicker{display:inline-flex;align-items:center;gap:6px;background:#eef6b5;color:#496200;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:900;margin-bottom:12px}
+    .tool-hero{display:grid;grid-template-columns:1fr 112px;gap:14px;align-items:center;margin-bottom:16px}
+    .tool-hero h1{font-size:27px}
+    .tool-hero p{font-size:12px;color:var(--muted);line-height:1.45;margin:0}
+    .tool-score{height:96px;border-radius:18px;background:#f2f6ef;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+    .tool-score strong{font-size:28px;color:var(--green)}
+    .tool-score small{font-size:10px;font-weight:900;color:#60747d}
+    .tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}
+    .tool-card{border:1px solid var(--line);background:#fff;border-radius:14px;padding:14px;min-height:116px;text-align:left;cursor:pointer;box-shadow:0 4px 14px rgba(10,50,70,.04)}
+    .tool-card:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+    .tool-card .icon{margin-bottom:12px}
+    .tool-card strong{display:block;font-size:13px;margin-bottom:6px}
+    .tool-card p{font-size:11px;line-height:1.4;color:#5c6d7e;margin:0}
+    .workspace{display:grid;grid-template-columns:1fr;gap:12px}
+    .output-card{padding:16px;margin-bottom:14px}
+    .output-card h3{font-size:13px;margin-bottom:10px}
+    .study-list{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+    .study-list li{display:grid;grid-template-columns:24px 1fr;gap:9px;align-items:start;font-size:12px;line-height:1.45;color:#314b5c}
+    .study-list span{width:24px;height:24px;border-radius:8px;background:#eef6b5;color:#6f8500;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px}
+    .quiz-option{width:100%;border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px 12px;text-align:left;font-size:12px;font-weight:800;color:#2b5267;margin-top:8px}
+    .quiz-option.good{border-color:#c7d85d;background:#fbfde6}
+    .flashcard{min-height:180px;border:1px solid var(--line);border-radius:16px;background:#fff;padding:24px 18px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-bottom:12px}
+    .flashcard small{font-size:10px;font-weight:900;color:#8aab00;text-transform:uppercase}
+    .flashcard strong{font-size:23px;color:var(--green);margin:8px 0}
+    .flashcard p{font-size:12px;color:#53697a;line-height:1.5;margin:0;max-width:270px}
+    .player{display:grid;grid-template-columns:52px 1fr 42px;gap:12px;align-items:center;background:#f2f6ef;border-radius:14px;padding:13px;margin-bottom:16px}
+    .player button{border:0;border-radius:50%;background:var(--green);color:#fff;width:42px;height:42px;font-size:17px;font-weight:900}
+    .player b{display:block;font-size:12px;margin-bottom:6px}
+    .player small{font-size:10px;color:#667986}
+    .weak-row{display:grid;grid-template-columns:1fr 56px;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid #eef1f2}
+    .weak-row:last-child{border-bottom:0}
+    .weak-row b{display:block;font-size:12px}
+    .weak-row small{font-size:10px;color:#7d8d98}
+    .weak-row button{height:30px;border:0;border-radius:9px;background:#eef6b5;color:#617500;font-weight:900;font-size:10px}
+    .action-row{display:flex;gap:8px;margin-top:10px}
+    .action-row button{flex:1;border:0;border-radius:10px;background:#f2f4f4;color:#344f61;font-size:11px;font-weight:900;padding:11px}
+    .action-row .dark{background:var(--green);color:#fff}
+    .rail .nav small{font-size:8px}
+    @media(max-width:420px){.tool-hero,.tool-grid{grid-template-columns:1fr}.tool-score{height:auto;padding:14px}.player{grid-template-columns:42px 1fr}}
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <main class="content">
+      <section class="view active" id="homeView">
+        <header class="topbar">
+          <div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div>
+          <div class="top-actions"><button title="Saved">♡</button><button title="Settings">⚙</button><button title="More">⋮</button></div>
+        </header>
+        <div class="mockup-kicker">New study toolkit</div>
+        <section class="tool-hero">
+          <div>
+            <h1>Turn any lesson into practice.</h1>
+            <p>Paste notes, use selected page text, or start from a topic. KiddieGPT makes study sheets, quizzes, flashcards, and read-aloud review.</p>
+          </div>
+          <div class="tool-score"><strong>84%</strong><small>Ready for quiz</small></div>
+        </section>
+        <section class="tool-grid">
+          <button class="tool-card" data-nav="study"><span class="icon lime">▤</span><strong>Study Sheet</strong><p>Summarize notes into key ideas, terms, examples, and memory cues.</p></button>
+          <button class="tool-card" data-nav="quiz"><span class="icon blue">?</span><strong>Quiz Me</strong><p>Create a quick test and explain every missed answer.</p></button>
+          <button class="tool-card" data-nav="cards"><span class="icon sky">□</span><strong>Flashcards</strong><p>Build review cards from notes, vocab, or weak spots.</p></button>
+          <button class="tool-card" data-nav="read"><span class="icon purple">▶</span><strong>Read Aloud</strong><p>Recite a lesson so kids can listen, pause, and replay.</p></button>
+        </section>
+        <section class="card output-card">
+          <div class="card-head"><h3>Practice Weak Spots</h3><a data-nav="weak">Review</a></div>
+          <div class="weak-row"><div><b>Photosynthesis inputs</b><small>Missed 2 quiz questions</small></div><button>Drill</button></div>
+          <div class="weak-row"><div><b>Cellular respiration</b><small>Needs one more review</small></div><button>Drill</button></div>
+        </section>
+      </section>
+
+      <section class="view" id="studyView">
+        <header class="topbar"><div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div><div class="top-actions"><button>♡</button><button>⚙</button><button>⋮</button></div></header>
+        <h1>Study Sheet</h1><p class="subtitle">Make notes easier to review before a quiz or test.</p>
+        <div class="prompt-card tall"><textarea placeholder="Paste class notes, textbook text, or a topic.">Photosynthesis is how plants use sunlight, carbon dioxide, and water to make glucose and oxygen.</textarea><div><em>Output: key ideas, terms, examples</em><button class="send">→</button></div></div>
+        <section class="card output-card">
+          <h3>Generated Study Sheet</h3>
+          <ul class="study-list">
+            <li><span>1</span><div><b>Main idea:</b> Plants make their own food using sunlight.</div></li>
+            <li><span>2</span><div><b>Inputs:</b> Sunlight, carbon dioxide, and water.</div></li>
+            <li><span>3</span><div><b>Outputs:</b> Glucose for energy and oxygen released into the air.</div></li>
+            <li><span>4</span><div><b>Remember:</b> Chlorophyll captures light inside chloroplasts.</div></li>
+          </ul>
+          <div class="action-row"><button>Make Flashcards</button><button class="dark">Quiz Me</button></div>
+        </section>
+      </section>
+
+      <section class="view" id="quizView">
+        <header class="topbar"><div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div><div class="top-actions"><button>♡</button><button>⚙</button><button>⋮</button></div></header>
+        <h1>Quiz Me</h1><p class="subtitle">Generate practice questions and learn from mistakes.</p>
+        <div class="segmented"><button>5 Questions</button><button class="selected">10 Questions</button><button>Test Mode</button></div>
+        <section class="card output-card">
+          <h3>Question 3 of 10</h3>
+          <p class="note">Which gas do plants take in during photosynthesis?</p>
+          <button class="quiz-option">A. Oxygen</button>
+          <button class="quiz-option good">B. Carbon dioxide</button>
+          <button class="quiz-option">C. Nitrogen</button>
+          <button class="quiz-option">D. Hydrogen</button>
+          <div class="action-row"><button>Hint</button><button class="dark">Next</button></div>
+        </section>
+        <section class="helper-panel"><div class="chips"><span>Score 7 / 10</span><span>2 weak spots</span><span>Review saved</span></div></section>
+      </section>
+
+      <section class="view" id="cardsView">
+        <header class="topbar"><div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div><div class="top-actions"><button>♡</button><button>⚙</button><button>⋮</button></div></header>
+        <h1>Flashcards</h1><p class="subtitle">Quick cards from notes, vocabulary, or quiz mistakes.</p>
+        <div class="flashcard"><small>Card 4 of 12</small><strong>Chlorophyll</strong><p>The green pigment in plants that captures sunlight for photosynthesis.</p></div>
+        <div class="action-row"><button>Still Learning</button><button class="dark">Got It</button></div>
+        <h4>Decks</h4><div class="chips"><span>Photosynthesis</span><span>Algebra Terms</span><span>Civil War</span></div>
+      </section>
+
+      <section class="view" id="readView">
+        <header class="topbar"><div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div><div class="top-actions"><button>♡</button><button>⚙</button><button>⋮</button></div></header>
+        <h1>Read Aloud</h1><p class="subtitle">Listen to a lesson like a study coach is reading it with you.</p>
+        <div class="player"><button>▶</button><div><b>Photosynthesis Study Sheet</b><small>1:42 remaining · calm voice · middle school</small><div class="progress"><span style="width:38%"></span></div></div><button>↻</button></div>
+        <section class="card output-card"><h3>Now Reading</h3><p class="note">Plants use sunlight as energy. They take in carbon dioxide from the air and water from the soil. Inside chloroplasts, they make glucose and release oxygen.</p></section>
+        <label class="select-row">Voice Style<select><option>Calm Coach</option><option>Fast Review</option><option>Bedtime Study</option></select></label>
+      </section>
+
+      <section class="view" id="weakView">
+        <header class="topbar"><div class="brand"><img src="icons/icon48.png" alt=""/><span>KiddieGPT</span></div><div class="top-actions"><button>♡</button><button>⚙</button><button>⋮</button></div></header>
+        <h1>Weak Spots</h1><p class="subtitle">A short list of what to review next.</p>
+        <section class="card output-card">
+          <div class="weak-row"><div><b>Photosynthesis inputs</b><small>Try 3 more questions</small></div><button>Start</button></div>
+          <div class="weak-row"><div><b>Glucose vs oxygen</b><small>Review one flashcard</small></div><button>Start</button></div>
+          <div class="weak-row"><div><b>Chloroplast function</b><small>Listen again for 45 seconds</small></div><button>Start</button></div>
+        </section>
+        <button class="primary">Build Mini Practice Set</button>
+      </section>
+    </main>
+
+    <aside class="rail">
+      <img src="icons/icon48.png" alt="" class="rail-logo" />
+      <button class="nav active" data-nav="home"><span>⌂</span><small>Home</small></button>
+      <button class="nav" data-nav="study"><span>▤</span><small>Study</small></button>
+      <button class="nav" data-nav="quiz"><span>?</span><small>Quiz</small></button>
+      <button class="nav" data-nav="cards"><span>□</span><small>Cards</small></button>
+      <button class="nav" data-nav="read"><span>▶</span><small>Read</small></button>
+      <button class="nav" data-nav="weak"><span>◎</span><small>Weak</small></button>
+      <button class="nav" data-nav="home"><span>⚙</span><small>Settings</small></button>
+      <button class="nav upgrade"><span>♢</span><small>Plus</small></button>
+      <button class="more">→</button>
+    </aside>
+  </div>
+  <script>
+    const views={home:"homeView",study:"studyView",quiz:"quizView",cards:"cardsView",read:"readView",weak:"weakView"};
+    function show(view){
+      const id=views[view]||views.home;
+      document.querySelectorAll(".view").forEach(item=>item.classList.toggle("active",item.id===id));
+      document.querySelectorAll(".nav").forEach(item=>item.classList.toggle("active",item.dataset.nav===view));
+    }
+    document.addEventListener("click",event=>{
+      const target=event.target.closest("[data-nav]");
+      if(target) show(target.dataset.nav);
+    });
+  </script>
+</body>
+</html>

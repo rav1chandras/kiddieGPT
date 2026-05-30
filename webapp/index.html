@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT Parent Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,800&family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/webapp.css?v=3">
+</head>
+<body data-page="parent">
+  <main class="portal-shell">
+    <aside class="rail">
+      <a class="brand-mark" href="/index.html" aria-label="KiddieGPT home">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </a>
+      <nav class="rail-nav" aria-label="Parent portal">
+        <a class="active" href="/index.html"><i data-lucide="home"></i><span>Parent Portal</span></a>
+        <a href="#subscription"><i data-lucide="credit-card"></i><span>Billing</span></a>
+        <a href="#children"><i data-lucide="users-round"></i><span>Children</span></a>
+        <a href="/admin.html"><i data-lucide="layout-dashboard"></i><span>Admin</span></a>
+      </nav>
+      <div class="rail-card">
+        <span class="mini-label">Demo mode</span>
+        <strong>Stripe and auth are simulated locally.</strong>
+      </div>
+    </aside>
+
+    <section class="workspace compact-workspace">
+      <header class="page-head compact-head">
+        <div>
+          <p class="eyebrow">Parent portal</p>
+          <h1>One family setup. All study tools unlocked.</h1>
+          <p class="hero-copy">Manage payment, child profiles, guardrails, and extension access from one calm page.</p>
+        </div>
+        <div class="head-actions">
+          <a class="button ghost" href="/admin.html"><i data-lucide="settings"></i>Admin</a>
+          <a class="button primary" href="/sidepanel.html"><i data-lucide="panel-right-open"></i>Extension preview</a>
+        </div>
+      </header>
+
+      <form id="onboarding-form" class="one-page-layout">
+        <section class="parent-main">
+          <article class="setup-card compact-card">
+            <div class="section-title">
+              <i data-lucide="user-round"></i>
+              <div>
+                <h2>Parent Account</h2>
+                <p>Billing, progress emails, and account recovery use this parent profile.</p>
+              </div>
+            </div>
+            <div class="field-grid">
+              <label>Parent full name<input type="text" name="parentName" value="Ravi Parent" required></label>
+              <label>Email<input type="email" name="email" value="parent@kiddiegpt.test" required></label>
+            </div>
+            <label>Password<input type="password" name="password" value="kiddiegpt123" minlength="8" required></label>
+          </article>
+
+          <article class="setup-card compact-card" id="subscription">
+            <div class="section-title">
+              <i data-lucide="badge-dollar-sign"></i>
+              <div>
+                <h2>Family Subscription</h2>
+                <p>One monthly plan unlocks all student tools in the Chrome extension.</p>
+              </div>
+            </div>
+            <div class="subscription-strip">
+              <div>
+                <span class="mini-label">Family Monthly</span>
+                <p class="price">$19<span>/mo</span></p>
+              </div>
+              <ul>
+                <li>All learning tools</li>
+                <li>Up to 3 child profiles</li>
+                <li>Parent progress summaries</li>
+              </ul>
+              <div class="checkout-actions">
+                <button class="button primary" type="button" id="mock-stripe">Simulate payment</button>
+                <span class="state-chip warning" id="payment-state">Payment pending</span>
+              </div>
+            </div>
+            <div class="launch-card mini-launch" id="completion-panel">
+              <div>
+                <p class="mini-label">Launch status</p>
+                <h2 id="completion-title">Waiting for payment</h2>
+                <p id="completion-text">Pay, add children, then activate the family account.</p>
+              </div>
+              <div class="launch-actions">
+                <button class="button primary" type="submit" id="finish">Activate</button>
+                <a class="button ghost" href="/sidepanel.html">Open extension</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="setup-card compact-card" id="guardrails">
+            <div class="section-title">
+              <i data-lucide="shield"></i>
+              <div>
+                <h2>Parent Guardrails</h2>
+                <p>These rules apply to every child profile unless customized later.</p>
+              </div>
+            </div>
+            <div class="guardrail-grid compact-guardrails">
+              <label class="switch-card"><input type="checkbox" name="showSteps" checked><span></span><strong>Explain-first math</strong><small>Steps before final answer.</small></label>
+              <label class="switch-card"><input type="checkbox" name="blockDirectAnswers" checked><span></span><strong>Homework coaching</strong><small>Prompts for thinking, not copying.</small></label>
+              <label class="switch-card"><input type="checkbox" name="weeklySummary" checked><span></span><strong>Weekly summary</strong><small>Email learning highlights.</small></label>
+            </div>
+            <label>Daily usage cap<input type="range" min="10" max="180" value="60" step="5" name="usageCap" id="usage-cap"><b id="usage-cap-label">60 min</b></label>
+          </article>
+        </section>
+
+        <aside class="children-panel" id="children">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Children</p>
+              <h2>Child Profiles</h2>
+            </div>
+            <button class="button ghost icon-button" type="button" id="add-child" aria-label="Add child"><i data-lucide="plus"></i></button>
+          </div>
+
+          <div id="child-list" class="child-list">
+            <section class="child-profile" data-child-index="0">
+              <div class="child-profile-head">
+                <span class="avatar">A</span>
+                <div>
+                  <h3>Child 1</h3>
+                  <p>Grade-aware tutoring profile</p>
+                </div>
+                <button class="ghost-icon remove-child hidden" type="button" aria-label="Remove child"><i data-lucide="x"></i></button>
+              </div>
+              <label>Student first name<input type="text" name="studentName" value="Ava" required></label>
+              <label>Grade<select name="grade" required>
+                <option value="">Select grade</option>
+                <option>Grade 1</option>
+                <option>Grade 2</option>
+                <option>Grade 3</option>
+                <option>Grade 4</option>
+                <option selected>Grade 5</option>
+                <option>Grade 6</option>
+                <option>Grade 7</option>
+                <option>Grade 8</option>
+              </select></label>
+              <label>Learning goal<input type="text" name="goal" value="Build confidence in math word problems"></label>
+            </section>
+          </div>
+
+          <div class="summary-panel embedded-summary">
+            <div class="status-stack">
+              <div><span>Subscription</span><strong id="preview-subscription">Pending</strong></div>
+              <div><span>Children</span><strong id="preview-children">1 profile</strong></div>
+              <div><span>Daily cap</span><strong id="preview-cap">60 min</strong></div>
+              <div><span>Extension access</span><strong id="preview-access">Locked</strong></div>
+            </div>
+            <div class="tool-preview">
+              <p class="mini-label">Unlocked tools</p>
+              <div class="tool-chips">
+                <span><i data-lucide="calculator"></i>Math</span>
+                <span><i data-lucide="file-text"></i>PDF</span>
+                <span><i data-lucide="copy-check"></i>Flashcards</span>
+                <span><i data-lucide="book-open"></i>Reading</span>
+                <span><i data-lucide="pencil-line"></i>Writing</span>
+                <span><i data-lucide="camera"></i>Screenshot</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+      </form>
+    </section>
+  </main>
+
+  <template id="child-template">
+    <section class="child-profile">
+      <div class="child-profile-head">
+        <span class="avatar">N</span>
+        <div>
+          <h3>Child</h3>
+          <p>Grade-aware tutoring profile</p>
+        </div>
+        <button class="ghost-icon remove-child" type="button" aria-label="Remove child"><i data-lucide="x"></i></button>
+      </div>
+      <label>Student first name<input type="text" name="studentName" required></label>
+      <label>Grade<select name="grade" required>
+        <option value="">Select grade</option>
+        <option>Grade 1</option>
+        <option>Grade 2</option>
+        <option>Grade 3</option>
+        <option>Grade 4</option>
+        <option>Grade 5</option>
+        <option>Grade 6</option>
+        <option>Grade 7</option>
+        <option>Grade 8</option>
+      </select></label>
+      <label>Learning goal<input type="text" name="goal" placeholder="Example: Reading confidence"></label>
+    </section>
+  </template>
+
+  <script src="/webapp/webapp.js?v=3"></script>
+</body>
+</html>

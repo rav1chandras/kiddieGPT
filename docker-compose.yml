@@ -1,0 +1,9 @@
+services:
+  kiddiegpt-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kiddiegpt-web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
