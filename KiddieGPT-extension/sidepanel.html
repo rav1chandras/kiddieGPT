@@ -131,29 +131,46 @@
       <section class="view-panel" id="pdfPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Local PDF</div></div>
-            <div class="tool-title-row"><div class="tool-badge">PDF</div><h2>PDF Study Helper</h2></div>
-            <p>Upload a worksheet, notes packet, or local PDF. KiddieGPT extracts the lesson and turns it into study materials.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>PDF Study Helper</h2></div>
           </section>
-          <section class="panel panel-pad">
-            <div class="section-title"><h3>1. Upload Or Capture</h3><span class="status">Local PDF</span></div>
-            <div class="upload-zone"><b>Photosynthesis_Chapter_4.pdf</b><small>18 pages scanned · text extracted · school policy applied</small><button class="small-button primary-action">Build Study Pack</button></div>
+          <section class="panel panel-pad upload-panel" id="pdfUploadPanel">
+            <div class="section-title"><h3>Upload Source</h3><button class="small-button" id="toggleUploadButton" type="button">Collapse</button></div>
+            <div class="upload-summary" id="uploadSummary" hidden><span>✓</span><div><b id="uploadSummaryTitle">Study source ready</b><small id="uploadSummaryMeta">Open upload tools</small></div></div>
+            <div class="upload-zone" id="pdfUploadZone">
+              <input id="pdfFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
+              <div class="drop-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg>
+              </div>
+              <b id="pdfFileName">Choose a file or drag & drop it here</b>
+              <small id="pdfFileMeta">PDF, TXT, JPG, and PNG formats, up to 5 MB</small>
+              <button class="browse-button" id="pdfChooseButton" type="button">Browse <span class="doc-icon">▣</span></button>
+              <div class="upload-divider"><span>or</span></div>
+              <div class="url-upload">
+                <h4>Upload from URL</h4>
+                <div class="url-row"><input id="sourceUrlInput" type="url" placeholder="https://school.edu/lesson.pdf" /><button id="sourceUrlButton" type="button">Upload</button></div>
+              </div>
+              <div class="upload-actions">
+                <button class="small-button primary-action" id="pdfBuildButton" type="button">Build Study Pack</button>
+              </div>
+              <small class="pdf-status" id="pdfBuildStatus">Demo mode can use your Settings OpenAI key.</small>
+              <div class="pdf-progress" id="pdfProgress" hidden><span></span><b>Preparing study pack</b></div>
+            </div>
           </section>
           <section class="dashboard-grid">
             <div class="panel panel-pad">
-              <div class="section-title"><h3>2. Study Sheet</h3><span class="status">Ready</span></div>
-              <div class="result-stack">
-                <div class="result-item"><b>Main idea</b><p>Plants use sunlight, water, and carbon dioxide to make glucose and oxygen.</p></div>
-                <div class="result-item"><b>Key terms</b><p>Chlorophyll, chloroplast, glucose, stomata, carbon dioxide.</p></div>
-                <div class="result-item"><b>Remember this</b><p>Inputs go in, outputs come out. The chloroplast is where the process happens.</p></div>
+              <div class="section-title"><h3>Study Sheet</h3><span class="status" id="pdfReadyStatus">Sample</span></div>
+              <div class="result-stack" id="pdfStudySheet">
+                <div class="result-item"><b>Main idea</b><p>Upload a PDF and build a study pack to replace this sample.</p></div>
+                <div class="result-item"><b>Key terms</b><p>Important vocabulary from the PDF will appear here.</p></div>
+                <div class="result-item"><b>Remember this</b><p>KiddieGPT will keep the explanation grade-aware and practice-focused.</p></div>
               </div>
             </div>
             <div class="panel panel-pad">
-              <div class="section-title"><h3>3. Pack Actions</h3><a>Parent preview</a></div>
-              <div class="builder-steps">
-                <div class="builder-step"><span>Make Quiz</span><b>10 Qs</b></div>
-                <div class="builder-step"><span>Make Cards</span><b>12 cards</b></div>
-                <div class="builder-step"><span>Read Aloud</span><b>2 min</b></div>
+              <div class="section-title"><h3>Pack Actions</h3><a>Parent preview</a></div>
+              <div class="builder-steps" id="pdfPackActions">
+                <div class="builder-step"><span>Make Quiz</span><b>Waiting</b></div>
+                <div class="builder-step"><span>Make Cards</span><b>Waiting</b></div>
+                <div class="builder-step"><span>Read Aloud</span><b>Waiting</b></div>
               </div>
             </div>
           </section>
@@ -163,9 +180,18 @@
       <section class="view-panel" id="quizPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Hint-first</div></div>
-            <div class="tool-title-row"><div class="tool-badge">?</div><h2>Quiz Me</h2></div>
-            <p>Generate a short quiz from notes, a PDF, a web page, or a weak spot. Missed concepts become review cards.</p>
+            <div class="tool-compact-row">
+              <button class="back-pill" data-view="tools"><span>←</span>Tools</button>
+              <h2>Quiz Me</h2>
+              <div class="source-pills" data-source-group="quiz"><button class="active" data-source-option="browser">Active Tab</button><button data-source-option="pdf">PDF</button></div>
+            </div>
+          </section>
+          <section class="panel panel-pad source-panel" data-source-panel="quiz">
+            <div class="section-title"><h3>Build From</h3><span class="status blue" data-source-status="quiz">Active tab</span></div>
+            <div class="source-card-grid">
+              <div class="source-card active" data-source-card="quiz-browser"><b>Active browser window</b><p>Use selected page text or the visible lesson page to build a quick practice check.</p></div>
+              <div class="source-card" data-source-card="quiz-pdf"><b>Uploaded PDF</b><p>Use the latest PDF study pack or upload a worksheet before generating questions.</p></div>
+            </div>
           </section>
           <section class="panel panel-pad">
             <div class="section-title"><h3>Question 3 of 10</h3><span class="status blue">Science</span></div>
@@ -188,9 +214,18 @@
       <section class="view-panel" id="cardsPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Spaced review</div></div>
-            <div class="tool-title-row"><div class="tool-badge">□</div><h2>Flashcards</h2></div>
-            <p>Create decks from PDFs, vocab, quiz mistakes, or selected page text. KiddieGPT tracks “still learning” cards.</p>
+            <div class="tool-compact-row">
+              <button class="back-pill" data-view="tools"><span>←</span>Tools</button>
+              <h2>Flashcards</h2>
+              <div class="source-pills" data-source-group="cards"><button class="active" data-source-option="browser">Active Tab</button><button data-source-option="pdf">PDF</button></div>
+            </div>
+          </section>
+          <section class="panel panel-pad source-panel" data-source-panel="cards">
+            <div class="section-title"><h3>Build From</h3><span class="status blue" data-source-status="cards">Active tab</span></div>
+            <div class="source-card-grid">
+              <div class="source-card active" data-source-card="cards-browser"><b>Active browser window</b><p>Turn highlighted words, article sections, or lesson vocabulary into review cards.</p></div>
+              <div class="source-card" data-source-card="cards-pdf"><b>Uploaded PDF</b><p>Pull terms and definitions from the latest PDF study pack.</p></div>
+            </div>
           </section>
           <section class="flashcard-preview">
             <div><small>Card 4 of 12</small><b>Chlorophyll</b><p>The green pigment in plants that captures sunlight for photosynthesis.</p></div>
@@ -206,9 +241,7 @@
       <section class="view-panel" id="readPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Audio review</div></div>
-            <div class="tool-title-row"><div class="tool-badge">▶</div><h2>Read Aloud Coach</h2></div>
-            <p>Turn study sheets into short narrated review sessions with pause points and quick recall checks.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Read Aloud Coach</h2></div>
           </section>
           <section class="panel panel-pad">
             <div class="audio-player"><button>▶</button><div><b>Photosynthesis Study Sheet</b><small>1:42 remaining · calm coach · grade 8</small><div class="progress"><span style="width:42%"></span></div></div><button>↻</button></div>
@@ -224,9 +257,7 @@
       <section class="view-panel" id="mathPanel">
         <div class="math-flow">
           <section class="panel panel-pad math-hero">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Screenshot OCR</div></div>
-            <div class="tool-title-row"><div class="tool-badge">∑</div><h2>Math Step Tutor</h2></div>
-            <p>Alex gets unstuck without jumping straight to the answer. KiddieGPT checks each step, explains mistakes, and saves weak spots for parent review.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Math Step Tutor</h2></div>
           </section>
 
           <section class="panel panel-pad capture-card">
@@ -314,9 +345,7 @@
       <section class="view-panel" id="writePanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Feedback first</div></div>
-            <div class="tool-title-row"><div class="tool-badge">✎</div><h2>Writing Coach</h2></div>
-            <p>Paste a paragraph or assignment prompt. KiddieGPT gives grade-aware revision notes, asks one planning question, and avoids writing the final answer for the student.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Writing Coach</h2></div>
           </section>
           <section class="panel panel-pad">
             <div class="section-title"><h3>Draft Check</h3><span class="status blue">Grade 7 ELA</span></div>
@@ -347,9 +376,7 @@
       <section class="view-panel" id="screenshotPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Visible tab</div></div>
-            <div class="tool-title-row"><div class="tool-badge">▧</div><h2>Screenshot Explainer</h2></div>
-            <p>Capture the current tab, describe what is visible, and turn diagrams, tables, and homework images into grade-safe explanations.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Screenshot Explainer</h2></div>
           </section>
           <section class="panel panel-pad">
             <div class="section-title"><h3>Capture</h3><span class="status" id="screenshotStatus">Ready</span></div>
@@ -381,9 +408,7 @@
       <section class="view-panel" id="pagePanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">Current page</div></div>
-            <div class="tool-title-row"><div class="tool-badge">⌕</div><h2>Explain Web Page</h2></div>
-            <p>Use the current page or selected text. KiddieGPT explains at the chosen grade level and can turn it into practice.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Explain Web Page</h2></div>
           </section>
           <section class="page-capture">
             <div class="page-bar">school.edu/science/photosynthesis</div>
@@ -403,9 +428,7 @@
       <section class="view-panel" id="askPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-topline"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><div class="tool-chip">School policy</div></div>
-            <div class="tool-title-row"><div class="tool-badge">⚑</div><h2>Safe Ask</h2></div>
-            <p>Ask school questions with grade bands, source rules, blocked topics, and parent-visible safety events.</p>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Safe Ask</h2></div>
           </section>
           <section class="panel panel-pad safe-chat">
             <div class="chat-bubble user">Why do plants need sunlight?</div>
@@ -483,6 +506,19 @@
         </section>
       </section>
 
+      <section class="view-panel" id="settingsPanel">
+        <section class="panel panel-pad">
+          <div class="section-title"><h3>Settings</h3><button class="small-button primary-action" id="saveSettingsButton">Save</button></div>
+          <div class="settings-stack">
+            <label class="settings-toggle"><input type="checkbox" id="openaiDemoToggle" /><span>Use OpenAI during demo</span></label>
+            <label class="settings-field"><span>OpenAI API key</span><input id="openaiApiKeyInput" type="password" placeholder="sk-..." autocomplete="off" /></label>
+            <label class="settings-field"><span>Model</span><input id="openaiModelInput" type="text" value="gpt-4.1" /></label>
+            <div class="step-actions"><button id="testOpenAIButton">Test Key</button><button id="clearOpenAIButton">Clear Key</button></div>
+            <div class="settings-note" id="settingsStatus">Key is stored only in this browser profile for demo use.</div>
+          </div>
+        </section>
+      </section>
+
       <section class="view-panel" id="adminPanel">
         <section class="panel panel-pad">
           <div class="section-title"><h3>School Approval</h3><button class="small-button primary-action">Share Approval Pack</button></div>
@@ -522,6 +558,7 @@
       </nav>
       <nav class="nav-group">
         <div class="nav-label">Controls</div>
+        <button class="side-link" data-view="settings" title="Settings"><span>⚙</span><b>Settings</b></button>
         <button class="side-link" data-view="safety" title="Safety Rules"><span>⚑</span><b>Safety</b></button>
         <button class="side-link" data-view="admin" title="School Approval"><span>⚙</span><b>School</b></button>
       </nav>
@@ -532,6 +569,7 @@
       </div>
     </aside>
   </div>
+  <script src="local-settings.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
