@@ -62,7 +62,7 @@
               <div class="builder-tools">
                 <button class="kg-tool-tile studio active" data-tool="pdf">
                   <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 12h6"></path><path d="M10 15h6"></path><path d="M10 18h4"></path></svg></span><span class="status">PDF</span></div>
-                  <div class="kg-tool-body"><h3>PDF Study Helper</h3><p>Upload notes</p></div>
+                  <div class="kg-tool-body"><h3>Study Mission</h3><p>Upload notes</p></div>
                   <div class="kg-tile-art"><span class="kg-bubble">Upload</span><span class="kg-bubble">Explain</span><span class="kg-bubble">Quiz</span></div>
                 </button>
                 <button class="kg-tool-tile lime" data-tool="quiz">
@@ -113,7 +113,7 @@
             <section class="tool-detail-card">
               <div class="tool-detail-head">
                 <div>
-                  <h3 id="toolDetailTitle">PDF Study Helper</h3>
+                  <h3 id="toolDetailTitle">Study Mission</h3>
                 </div>
                 <button class="launch-tool" data-launch="pdf">Launch</button>
               </div>
@@ -131,11 +131,13 @@
       <section class="view-panel" id="pdfPanel">
         <div class="tool-flow">
           <section class="panel panel-pad tool-hero-panel">
-            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>PDF Study Helper</h2></div>
+            <div class="tool-compact-row"><button class="back-pill" data-view="tools"><span>←</span>Tools</button><h2>Study Mission</h2></div>
           </section>
           <section class="panel panel-pad upload-panel" id="pdfUploadPanel">
-            <div class="section-title"><h3>Upload Source</h3><button class="small-button" id="toggleUploadButton" type="button">Collapse</button></div>
-            <div class="upload-summary" id="uploadSummary" hidden><span>✓</span><div><b id="uploadSummaryTitle">Study source ready</b><small id="uploadSummaryMeta">Open upload tools</small></div></div>
+            <div class="section-title upload-title-row">
+              <div class="upload-summary" id="uploadSummary" hidden><span>✓</span><div><b id="uploadSummaryTitle">Study source ready</b><small id="uploadSummaryMeta">Open upload tools</small></div></div>
+              <button class="upload-toggle" id="toggleUploadButton" type="button" aria-label="Toggle source upload">↓</button>
+            </div>
             <div class="upload-zone" id="pdfUploadZone">
               <input id="pdfFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
               <div class="drop-icon">
@@ -150,7 +152,7 @@
                 <div class="url-row"><input id="sourceUrlInput" type="url" placeholder="https://school.edu/lesson.pdf" /><button id="sourceUrlButton" type="button">Upload</button></div>
               </div>
               <div class="upload-actions">
-                <button class="small-button primary-action" id="pdfBuildButton" type="button">Build Study Pack</button>
+                <button class="small-button primary-action" id="pdfBuildButton" type="button">Build Mission</button>
               </div>
               <small class="pdf-status" id="pdfBuildStatus">Demo mode can use your Settings OpenAI key.</small>
               <div class="pdf-progress" id="pdfProgress" hidden><span></span><b>Preparing study pack</b></div>
@@ -158,19 +160,19 @@
           </section>
           <section class="dashboard-grid">
             <div class="panel panel-pad">
-              <div class="section-title"><h3>Study Mission</h3><span class="status" id="pdfReadyStatus">Sample</span></div>
+              <div class="section-title"><h3>Today’s Mission</h3><span class="status" id="pdfReadyStatus">Sample</span></div>
               <div class="result-stack" id="pdfStudySheet">
-                <div class="result-item"><b>Today’s mission</b><p>Upload a source and build a study pack to replace this sample.</p></div>
+                <div class="result-item"><b>Mission preview</b><p>Upload a source and build a mission to replace this sample.</p></div>
                 <div class="result-item"><b>Must-know list</b><p>Important facts and vocabulary from the source will appear here.</p></div>
                 <div class="result-item"><b>Practice next</b><p>KiddieGPT will turn the same source into quiz and card practice.</p></div>
               </div>
             </div>
             <div class="panel panel-pad">
               <div class="section-title"><h3>Practice</h3><span class="status">Next steps</span></div>
-              <div class="builder-steps" id="pdfPackActions">
-                <div class="builder-step"><span>Start Quiz</span><b>Waiting</b></div>
-                <div class="builder-step"><span>Practice Cards</span><b>Waiting</b></div>
-                <div class="builder-step"><span>Read Aloud</span><b>Waiting</b></div>
+              <div class="practice-tiles" id="pdfPackActions">
+                <div class="practice-tile"><span>Quiz</span><b>Waiting</b><small>Start practice</small></div>
+                <div class="practice-tile"><span>Cards</span><b>Waiting</b><small>Flip review</small></div>
+                <div class="practice-tile"><span>Read</span><b>Waiting</b><small>Listen aloud</small></div>
               </div>
             </div>
           </section>
@@ -447,7 +449,7 @@
             <table class="class-table">
               <thead><tr><th>Area</th><th>Grade</th><th>Current Unit</th><th>Best Tool</th><th>Status</th></tr></thead>
               <tbody>
-                <tr><td>Science</td><td>8</td><td>Photosynthesis</td><td>PDF Study Helper</td><td><span class="status">On track</span></td></tr>
+                <tr><td>Science</td><td>8</td><td>Photosynthesis</td><td>Study Mission</td><td><span class="status">On track</span></td></tr>
                 <tr><td>Math</td><td>6</td><td>Fractions</td><td>Math Step Tutor</td><td><span class="status warn">Review</span></td></tr>
                 <tr><td>ELA</td><td>7</td><td>Argument writing</td><td>Writing Coach</td><td><span class="status">Improving</span></td></tr>
               </tbody>
@@ -543,7 +545,7 @@
         <div class="nav-label">Platform</div>
         <button class="side-link active" data-view="dashboard" title="Dashboard"><span>⌂</span><b>Dashboard</b></button>
         <button class="side-link" data-view="tools" title="Learning Tools"><span>▤</span><b>Tools</b></button>
-        <button class="side-link" data-view="pdf" title="PDF Study Helper"><span>PDF</span><b>PDF</b></button>
+        <button class="side-link" data-view="pdf" title="Study Mission"><span>PDF</span><b>Mission</b></button>
         <button class="side-link" data-view="quiz" title="Quiz Me"><span>?</span><b>Quiz</b></button>
         <button class="side-link" data-view="cards" title="Flashcards"><span>□</span><b>Cards</b></button>
         <button class="side-link" data-view="read" title="Read Aloud"><span>▶</span><b>Read</b></button>

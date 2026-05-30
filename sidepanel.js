@@ -30,7 +30,7 @@ const sourceState = {
 
 const toolDetails = {
   pdf: {
-    title: "PDF Study Helper",
+    title: "Study Mission",
     description: "Upload a homework PDF, worksheet, or notes packet. KiddieGPT turns it into a study mission with must-know facts, quiz practice, flashcards, and read-aloud review.",
     points: [["▣", "Open It", "Worksheet or chapter"], ["≡", "Find Big Ideas", "Notes kids can read"], ["✓", "Practice", "Quiz and cards"]]
   },
@@ -286,7 +286,7 @@ function setPdfBusy(isBusy) {
   const progress = document.getElementById("pdfProgress");
   if (button) {
     button.disabled = isBusy;
-    button.textContent = isBusy ? "Building..." : "Build Study Pack";
+    button.textContent = isBusy ? "Building..." : "Build Mission";
   }
   if (progress) {
     progress.hidden = !isBusy;
@@ -300,7 +300,8 @@ function setUploadCollapsed(collapsed) {
   if (!panel || !summary || !button) return;
   panel.classList.toggle("collapsed", collapsed);
   summary.hidden = !collapsed;
-  button.textContent = collapsed ? "Change Source" : "Collapse";
+  button.textContent = collapsed ? "↑" : "↓";
+  button.setAttribute("aria-label", collapsed ? "Open source upload" : "Collapse source upload");
 }
 
 function choosePdfFile() {
@@ -330,7 +331,7 @@ function handleStudyFile(file) {
   document.getElementById("pdfFileMeta").textContent = `${formatBytes(file.size)} selected · ${fileKindLabel(file)} · ready to build`;
   document.getElementById("uploadSummaryTitle").textContent = file.name;
   document.getElementById("uploadSummaryMeta").textContent = `${fileKindLabel(file)} · ${formatBytes(file.size)}`;
-  setPdfStatus(`${fileKindLabel(file)} selected. Press Build Study Pack when ready.`, "blue");
+  setPdfStatus(`${fileKindLabel(file)} selected. Press Build Mission when ready.`, "blue");
 }
 
 function formatBytes(bytes) {
@@ -423,7 +424,7 @@ async function buildPdfStudyPack() {
       useOpenAI ? "blue" : ""
     );
     const pack = useOpenAI ? await buildPdfWithOpenAI(selectedPdfFile, settings) : sampleStudyPack(selectedPdfFile?.name);
-    renderPdfStudyPack(pack, useOpenAI ? "OpenAI" : "Sample");
+    renderPdfStudyPack(pack, useOpenAI ? "Ready" : "Sample");
     setUploadCollapsed(true);
     setPdfStatus(useOpenAI ? "Study pack built with OpenAI." : "Sample study pack loaded.", "");
   } catch (error) {
@@ -544,7 +545,7 @@ function renderPdfStudyPack(pack, sourceLabel) {
   const termChips = pack.keyTerms.map(term => `<span>${escapeHtml(term)}</span>`).join("");
   document.getElementById("pdfStudySheet").innerHTML = `
     <div class="study-celebration">
-      <div><span>Today’s mission</span><h3>${escapeHtml(pack.mainIdea)}</h3></div>
+      <div><h3>${escapeHtml(pack.mainIdea)}</h3></div>
       <button class="studied-button" type="button" data-action="studied-sheet"><span>✓</span> I reviewed it <b>→</b></button>
     </div>
     <div class="study-card-grid">
@@ -556,9 +557,9 @@ function renderPdfStudyPack(pack, sourceLabel) {
     <div class="term-cloud">${termChips || "<span>No key terms yet</span>"}</div>
   `;
   document.getElementById("pdfPackActions").innerHTML = `
-    <div class="builder-step"><span>Start Quiz</span><b>${pack.quiz.length || 0} Qs</b></div>
-    <div class="builder-step"><span>Practice Cards</span><b>${pack.flashcards.length || 0} cards</b></div>
-    <div class="builder-step"><span>Read Aloud</span><b>Ready</b></div>
+    <div class="practice-tile"><span>Quiz</span><b>${pack.quiz.length || 0}</b><small>questions</small></div>
+    <div class="practice-tile"><span>Cards</span><b>${pack.flashcards.length || 0}</b><small>flashcards</small></div>
+    <div class="practice-tile"><span>Read</span><b>1</b><small>read aloud</small></div>
   `;
 }
 
