@@ -31,7 +31,7 @@ const sourceState = {
 const toolDetails = {
   pdf: {
     title: "PDF Study Helper",
-    description: "Upload a homework PDF, worksheet, or notes packet. KiddieGPT extracts the lesson and builds a study sheet, quiz, flashcards, and read-aloud review with parent preview.",
+    description: "Upload a homework PDF, worksheet, or notes packet. KiddieGPT turns it into a study mission with must-know facts, quiz practice, flashcards, and read-aloud review.",
     points: [["▣", "Open It", "Worksheet or chapter"], ["≡", "Find Big Ideas", "Notes kids can read"], ["✓", "Practice", "Quiz and cards"]]
   },
   quiz: {
@@ -46,7 +46,7 @@ const toolDetails = {
   },
   read: {
     title: "Read Aloud Coach",
-    description: "Turn a study sheet into a short narrated review. Students can pause, repeat, and answer quick recall checks while listening.",
+    description: "Turn a study mission into a short narrated review. Students can pause, repeat, and answer quick recall checks while listening.",
     points: [["▶", "Listen", "Study sheet read aloud"], ["Ⅱ", "Pause", "Stop at tricky parts"], ["◌", "Say It Back", "Quick recall check"]]
   },
   math: {
@@ -475,7 +475,7 @@ async function buildPdfWithOpenAI(file, settings) {
           content: [
             {
               type: "input_text",
-              text: `Create a grade-aware study pack from this uploaded study source. It may be a PDF, text file, or image. If it is an image, read the visible text, diagrams, tables, and labels. If it is a PDF, assume the app asks students to keep uploads under 50 pages. Return JSON with keys: mainIdea string, keyTerms array of 5 short strings, rememberThis string, quiz array of 5 objects with question, choices array of 4 strings, answer string, flashcards array of 6 objects with term and meaning, readAloud string, parentNote string. Filename: ${file.name}`
+              text: `Create a grade-aware kid-facing study pack from this uploaded study source. It may be a PDF, text file, or image. If it is an image, read the visible text, diagrams, tables, and labels. If it is a PDF, assume the app asks students to keep uploads under 50 pages. Return JSON with keys: mainIdea string, keyTerms array of 5 short strings, rememberThis string, quiz array of 5 objects with question, choices array of 4 strings, answer string, flashcards array of 6 objects with term and meaning, readAloud string. Do not include parent summaries or parent notes. Filename: ${file.name}`
             },
             studySourcePart
           ]
@@ -517,8 +517,7 @@ function normalizeStudyPack(pack) {
     rememberThis: pack.rememberThis || "Review the big idea, then practice with a few questions.",
     quiz: Array.isArray(pack.quiz) ? pack.quiz.slice(0, 10) : [],
     flashcards: Array.isArray(pack.flashcards) ? pack.flashcards.slice(0, 12) : [],
-    readAloud: pack.readAloud || "Read the study sheet slowly, then pause and say the main idea back.",
-    parentNote: pack.parentNote || "Parent can preview the study pack before practice."
+    readAloud: pack.readAloud || "Read the mission slowly, then pause and say the main idea back."
   };
 }
 
@@ -536,8 +535,7 @@ function sampleStudyPack(filename = "Photosynthesis_Chapter_4.pdf") {
       { term: "Glucose", meaning: "Sugar plants make for energy." },
       { term: "Stomata", meaning: "Tiny openings that let gases move in and out." }
     ],
-    readAloud: "Plants use sunlight to make food. They take in carbon dioxide and water, then release oxygen.",
-    parentNote: "Sample mode shown. Enable OpenAI in Settings to analyze the uploaded PDF."
+    readAloud: "Plants use sunlight to make food. They take in carbon dioxide and water, then release oxygen."
   });
 }
 
@@ -546,20 +544,21 @@ function renderPdfStudyPack(pack, sourceLabel) {
   const termChips = pack.keyTerms.map(term => `<span>${escapeHtml(term)}</span>`).join("");
   document.getElementById("pdfStudySheet").innerHTML = `
     <div class="study-celebration">
-      <div><span>Study sheet ready</span><h3>${escapeHtml(pack.mainIdea)}</h3></div>
-      <button class="studied-button" type="button" data-action="studied-sheet"><span>✓</span> Studied this <b>→</b></button>
+      <div><span>Today’s mission</span><h3>${escapeHtml(pack.mainIdea)}</h3></div>
+      <button class="studied-button" type="button" data-action="studied-sheet"><span>✓</span> I reviewed it <b>→</b></button>
     </div>
     <div class="study-card-grid">
-      <div class="study-card big"><span>Big idea</span><p>${escapeHtml(pack.mainIdea)}</p></div>
-      <div class="study-card"><span>Remember</span><p>${escapeHtml(pack.rememberThis)}</p></div>
-      <div class="study-card"><span>Read aloud</span><p>${escapeHtml(pack.readAloud)}</p></div>
+      <div class="study-card big"><span>Must-know</span><p>${escapeHtml(pack.rememberThis)}</p></div>
+      <div class="study-card"><span>Practice quiz</span><p>${pack.quiz.length || 0} questions ready from this source.</p></div>
+      <div class="study-card"><span>Flashcards</span><p>${pack.flashcards.length || 0} cards ready for quick review.</p></div>
+      <div class="study-card wide"><span>Read aloud</span><p>${escapeHtml(pack.readAloud)}</p></div>
     </div>
     <div class="term-cloud">${termChips || "<span>No key terms yet</span>"}</div>
   `;
   document.getElementById("pdfPackActions").innerHTML = `
-    <div class="builder-step"><span>Make Quiz</span><b>${pack.quiz.length || 0} Qs</b></div>
-    <div class="builder-step"><span>Make Cards</span><b>${pack.flashcards.length || 0} cards</b></div>
-    <div class="builder-step"><span>Parent Note</span><b>${escapeHtml(pack.parentNote.slice(0, 24))}${pack.parentNote.length > 24 ? "..." : ""}</b></div>
+    <div class="builder-step"><span>Start Quiz</span><b>${pack.quiz.length || 0} Qs</b></div>
+    <div class="builder-step"><span>Practice Cards</span><b>${pack.flashcards.length || 0} cards</b></div>
+    <div class="builder-step"><span>Read Aloud</span><b>Ready</b></div>
   `;
 }
 
@@ -625,8 +624,8 @@ document.addEventListener("click", event => {
   if (action?.dataset.action === "mock-screenshot") useSampleScreenshot();
   if (action?.dataset.action === "studied-sheet") {
     action.classList.add("done");
-    action.innerHTML = "<span>✓</span> Studied <b>→</b>";
-    setPdfStatus("Nice work. This study sheet is marked as studied.", "blue");
+    action.innerHTML = "<span>✓</span> Reviewed <b>→</b>";
+    setPdfStatus("Nice work. This mission is marked as reviewed.", "blue");
   }
 
   if (event.target.closest("#pdfChooseButton")) event.preventDefault();

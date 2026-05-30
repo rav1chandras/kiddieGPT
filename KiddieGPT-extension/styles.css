@@ -350,7 +350,7 @@ body{background:#f6f8f5}
       .compliance-grid{grid-template-columns:1fr 1fr}
       .source-card-grid{grid-template-columns:1fr 1fr}
       .study-card-grid{grid-template-columns:1fr 1fr}
-      .study-card.big{grid-column:1/-1}
+      .study-card.big,.study-card.wide{grid-column:1/-1}
       .kg-tool-tile{flex-basis:164px}
       .kg-tool-tile.studio{flex-basis:220px}
     }
