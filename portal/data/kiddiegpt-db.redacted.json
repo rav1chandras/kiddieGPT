@@ -1,0 +1,2948 @@
+{
+  "version": 1,
+  "pricing": {
+    "monthly": {
+      "label": "Family Monthly",
+      "amount": 29.99,
+      "interval": "mo",
+      "stripePriceId": "price-redacted",
+      "familyMemberCount": 3,
+      "active": true
+    },
+    "yearly": {
+      "label": "Family Yearly",
+      "amount": 299,
+      "interval": "yr",
+      "stripePriceId": "price-redacted",
+      "familyMemberCount": 3,
+      "active": true
+    },
+    "promotion": {
+      "code": "save50",
+      "monthlyAmount": 14.99,
+      "yearlyAmount": 0,
+      "planKey": "monthly",
+      "price": 14.99,
+      "description": "Launch Offer",
+      "showAfterDays": 0,
+      "durationDays": 0
+    }
+  },
+  "users": [
+    {
+      "id": "usr_demo_admin",
+      "role": "admin",
+      "name": "Sample Parent 1",
+      "email": "user1@example.local",
+      "passwordHash": "REDACTED",
+      "createdAt": "2026-07-04T01:43:36.503Z"
+    },
+    {
+      "id": "usr_demo_parent",
+      "role": "parent",
+      "name": "Sample Parent 2",
+      "email": "user2@example.local",
+      "passwordHash": "REDACTED",
+      "familyId": "fam_demo_parent",
+      "authProvider": "password",
+      "emailVerified": true,
+      "createdAt": "2026-07-04T01:43:36.520Z",
+      "accountLocked": false,
+      "unlockedAt": "2026-07-04T02:16:44.132Z"
+    },
+    {
+      "id": "usr_4115c7a310eb",
+      "role": "parent",
+      "email": "user3@example.local",
+      "familyId": "fam_eef91cee68f5",
+      "createdAt": "2026-07-04T02:11:20.870Z",
+      "name": "Sample Parent 3",
+      "passwordHash": "REDACTED",
+      "accountLocked": true,
+      "unlockedAt": "2026-07-04T13:03:51.576Z",
+      "deletionRequestedAt": "2026-07-04T13:09:06.765Z",
+      "lockedAt": "2026-07-04T13:09:28.984Z",
+      "anonymizedAt": "2026-07-04T13:09:34.356Z",
+      "deletionCompletedAt": "2026-07-04T13:09:34.356Z",
+      "deletedEmail": "user3@example.local"
+    },
+    {
+      "id": "usr_2dc0fe11e92c",
+      "role": "parent",
+      "email": "user4@example.local",
+      "familyId": "fam_6390ff1ac33e",
+      "createdAt": "2026-07-04T13:09:56.788Z",
+      "name": "Sample Parent 4",
+      "passwordHash": "REDACTED",
+      "authProvider": "password",
+      "emailVerified": true,
+      "accountLocked": true,
+      "unlockedAt": "2026-07-05T15:10:51.349Z",
+      "lockedAt": "2026-07-05T15:19:26.351Z"
+    }
+  ],
+  "families": [
+    {
+      "parentName": "Sample Parent 4",
+      "email": "user4@example.local",
+      "loginType": "Parent",
+      "subscriptionStatus": "cancelled",
+      "paymentStatus": "paid",
+      "accountLocked": true,
+      "id": "fam_6390ff1ac33e",
+      "plan": "Family Yearly",
+      "children": [
+        {
+          "id": "child_6d0048569d8e",
+          "studentName": "Sample Student 1",
+          "grade": "Grade 5",
+          "readingLevel": "On track",
+          "learningGoals": []
+        }
+      ],
+      "studentName": "Sample Student 1",
+      "grade": "Grade 5",
+      "readingLevel": "On track",
+      "createdAt": "2026-07-04T13:09:56.788Z",
+      "lastLoginAt": "2026-07-05T14:43:30.139Z",
+      "lastExtensionUseAt": "2026-07-04T12:39:56.788Z",
+      "emailVerified": true,
+      "stripeCustomerId": "cus-redacted",
+      "stripeSubscriptionId": "sub-redacted",
+      "stripeCheckoutSessionId": "cs-redacted",
+      "refundedAt": "2026-07-05T15:06:35.522Z",
+      "stripePaymentId": "pi-redacted",
+      "lastPaymentAmountCents": 29900,
+      "lastPaymentCurrency": "usd",
+      "lastPaymentAt": "2026-07-05T01:42:12.582Z",
+      "yearlyUpgrade": {
+        "status": "scheduled",
+        "mode": "stripe",
+        "alreadyScheduled": true,
+        "billingMode": "immediate_15_month",
+        "bonusMonths": 3,
+        "accessMonths": 15,
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ],
+        "yearlySubscriptionId": "sub-redacted",
+        "yearlyScheduleId": "sub-redacted",
+        "yearlyNextRenewalAt": 1822682081,
+        "monthlyEndsAt": 1785873148,
+        "chargedAt": "2026-07-05T01:42:12.582Z",
+        "acceptedAt": "2026-07-05T01:42:12.582Z"
+      },
+      "stripePreviousMonthlySubscriptionIds": [
+        "sub-redacted"
+      ],
+      "cancellationRequested": false,
+      "cancellationStatus": "completed",
+      "cancelAtPeriodEnd": false,
+      "cancelReason": "Admin ended subscription immediately",
+      "cancelAccessUntil": "2026-07-05T15:19:22.802Z",
+      "cancellationAccessUntil": "2026-07-05T15:19:22.802Z",
+      "cancellationSubscriptionId": "sub-redacted",
+      "cancelRequestedAt": "2026-07-04T21:50:09.056Z",
+      "refunds": [
+        {
+          "refundId": "re-redacted",
+          "paymentId": "pi-redacted",
+          "amountCents": 29900,
+          "status": "succeeded",
+          "createdAt": "2026-07-05T15:06:35.522Z"
+        },
+        {
+          "refundId": "re-redacted",
+          "paymentId": "pi-redacted",
+          "amountCents": 1499,
+          "status": "succeeded",
+          "createdAt": "2026-07-05T15:05:49.409Z"
+        }
+      ],
+      "lockedAt": "2026-07-05T15:19:26.351Z",
+      "unlockedAt": "2026-07-05T15:10:51.349Z",
+      "cancelledAt": "2026-07-05T15:19:22.802Z",
+      "cancellationCompletedAt": "2026-07-05T15:19:22.802Z",
+      "manualSubscriptionEndedAt": "2026-07-05T15:19:22.802Z"
+    },
+    {
+      "parentName": "Sample Parent 3",
+      "email": "user3@example.local",
+      "loginType": "Deleted",
+      "subscriptionStatus": "deleted",
+      "paymentStatus": "deleted",
+      "accountLocked": true,
+      "id": "fam_eef91cee68f5",
+      "plan": "Family Monthly",
+      "children": [],
+      "studentName": "",
+      "grade": "",
+      "readingLevel": "",
+      "createdAt": "2026-07-04T02:11:20.870Z",
+      "lastLoginAt": "2026-07-04T13:09:02.284Z",
+      "lastExtensionUseAt": "2026-07-04T01:41:20.870Z",
+      "lockedAt": "2026-07-04T13:09:28.984Z",
+      "unlockedAt": "2026-07-04T13:03:51.576Z",
+      "deletionRequestedAt": "2026-07-04T13:09:06.765Z",
+      "goal": "",
+      "reward": "",
+      "learningGoals": [],
+      "guardrails": {},
+      "supportNote": "",
+      "favoriteTool": "",
+      "anonymizedAt": "2026-07-04T13:09:34.356Z",
+      "deletionCompletedAt": "2026-07-04T13:09:34.356Z",
+      "deletedEmail": "user3@example.local",
+      "cancellationRequested": false,
+      "cancellationStatus": "",
+      "cancelAtPeriodEnd": false,
+      "cancelReason": "",
+      "cancelAccessUntil": "",
+      "cancellationAccessUntil": "",
+      "cancellationSubscriptionId": ""
+    },
+    {
+      "id": "fam_demo_parent",
+      "parentName": "Sample Parent 2",
+      "email": "user2@example.local",
+      "loginType": "Parent",
+      "studentName": "Sample Student 1",
+      "readingLevel": "On track",
+      "grade": "Grade 5",
+      "goal": "Build confidence in math word problems",
+      "reward": "Movie night",
+      "children": [
+        {
+          "id": "child_demo_ava",
+          "studentName": "Sample Student 1",
+          "readingLevel": "On track",
+          "grade": "Grade 5",
+          "goal": "Build confidence in math word problems",
+          "reward": "Movie night",
+          "learningGoals": [
+            {
+              "goal": "Build confidence in math word problems",
+              "reward": "Movie night",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "plan": "Family Monthly",
+      "subscriptionStatus": "cancel_scheduled",
+      "paymentStatus": "paid",
+      "accountLocked": false,
+      "emailVerified": true,
+      "lastActivityDays": 1,
+      "favoriteTool": "Math Step Tutor",
+      "supportNote": "Demo account for local testing.",
+      "createdAt": "2026-07-04T01:43:36.520Z",
+      "lastLoginAt": "2026-07-05T03:54:07.710Z",
+      "lastExtensionUseAt": "2026-07-04T01:43:36.520Z",
+      "unlockedAt": "2026-07-04T02:16:44.132Z",
+      "lockedAt": "2026-07-04T02:16:41.044Z",
+      "cancellationRequested": true,
+      "cancellationStatus": "scheduled",
+      "cancelAtPeriodEnd": true,
+      "cancelReason": "Too expensive",
+      "cancelAccessUntil": "2026-08-04T21:45:50.000Z",
+      "cancellationAccessUntil": "2026-08-04T21:45:50.000Z",
+      "cancellationSubscriptionId": "sub-redacted",
+      "cancelRequestedAt": "2026-07-04T21:45:50.304Z"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log_bf9f55614236",
+      "action": "email.send",
+      "payload": {
+        "to": "user4@example.local",
+        "template": "Winback offer"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-05T15:36:50.660Z"
+    },
+    {
+      "id": "log_eda09810a33b",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "userId": "usr_2dc0fe11e92c"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:19:26.351Z"
+    },
+    {
+      "id": "log_468f055f357a",
+      "action": "subscription.end.immediate",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "stripeResult": [
+          {
+            "id": "sub-redacted",
+            "status": "canceled"
+          }
+        ]
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T15:19:22.802Z"
+    },
+    {
+      "id": "log_c66d4df327f2",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "userId": "usr_2dc0fe11e92c"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:10:51.349Z"
+    },
+    {
+      "id": "log_870f2c9a22b7",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "userId": "usr_2dc0fe11e92c"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:10:47.971Z"
+    },
+    {
+      "id": "log_a49e41e5b5f4",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:06:55.115Z"
+    },
+    {
+      "id": "log_363614c85b6d",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:06:54.892Z"
+    },
+    {
+      "id": "log_cbd7f31fc8d4",
+      "action": "email.send",
+      "payload": {
+        "to": "user4@example.local",
+        "template": "Refund note"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-05T15:06:36.002Z"
+    },
+    {
+      "id": "log_3718950a2eef",
+      "action": "refund.create",
+      "payload": {
+        "paymentIntentId": "pi-redacted",
+        "resolvedPaymentId": "pi-redacted",
+        "email": "user4@example.local",
+        "refundId": "re-redacted",
+        "amountCents": 29900
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:06:35.522Z"
+    },
+    {
+      "id": "log_2274f4a059d1",
+      "action": "email.send",
+      "payload": {
+        "to": "user4@example.local",
+        "template": "Refund note"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-05T15:05:49.920Z"
+    },
+    {
+      "id": "log_2d67a7da7cc1",
+      "action": "refund.create",
+      "payload": {
+        "paymentIntentId": "pi-redacted",
+        "resolvedPaymentId": "pi-redacted",
+        "email": "user4@example.local",
+        "refundId": "re-redacted",
+        "amountCents": 1499
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:05:49.410Z"
+    },
+    {
+      "id": "log_6e71c7130f88",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:04:48.783Z"
+    },
+    {
+      "id": "log_eff7d00314e0",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:04:48.761Z"
+    },
+    {
+      "id": "log_e6231d3722cf",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:00:24.220Z"
+    },
+    {
+      "id": "log_7287983b4e85",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:00:24.153Z"
+    },
+    {
+      "id": "log_fb15de49da7b",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_2dc0fe11e92c",
+        "role": "parent",
+        "email": "user4@example.local",
+        "provider": "password"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T14:43:30.139Z"
+    },
+    {
+      "id": "log_e21d4a4106a3",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T14:43:11.383Z"
+    },
+    {
+      "id": "log_8ffddaa3db9c",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T14:43:11.360Z"
+    },
+    {
+      "id": "log_f72ba2664b82",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-05T03:54:07.710Z"
+    },
+    {
+      "id": "log_1d965d03ed04",
+      "action": "ai_settings.update",
+      "payload": {
+        "hasOpenAIKey": false,
+        "mathProblemsPerUserDaily": 20,
+        "tutorVoiceMinutesPerUserDaily": 10,
+        "tutorVoiceEnabled": true
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:53:57.980Z"
+    },
+    {
+      "id": "log_d85352bd6a9a",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:53:57.977Z"
+    },
+    {
+      "id": "log_1b9a5030bc38",
+      "action": "ai_settings.update",
+      "payload": {
+        "hasOpenAIKey": false,
+        "mathProblemsPerUserDaily": 25,
+        "tutorVoiceMinutesPerUserDaily": 12,
+        "tutorVoiceEnabled": true
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:53:44.581Z"
+    },
+    {
+      "id": "log_52d11817f5be",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:53:44.575Z"
+    },
+    {
+      "id": "log_f16719d0674e",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:48:30.535Z"
+    },
+    {
+      "id": "log_9d0985f86b8b",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T03:47:57.762Z"
+    },
+    {
+      "id": "log_0533910a90b0",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:43:21.579Z"
+    },
+    {
+      "id": "log_04b880c3233d",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:43:21.571Z"
+    },
+    {
+      "id": "log_a60bbf2b46f6",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:27:17.887Z"
+    },
+    {
+      "id": "log_1b56ccc1bae5",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:27:17.882Z"
+    },
+    {
+      "id": "log_e612e25b9c5e",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:27:11.046Z"
+    },
+    {
+      "id": "log_b0b7f851b21d",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:27:11.040Z"
+    },
+    {
+      "id": "log_d6289d6abe23",
+      "action": "subscription.cancel_requested",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "subscriptionId": "sub-redacted",
+        "reason": "Too expensive",
+        "accessUntil": "2026-08-04T19:52:28.000Z"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:22:00.211Z"
+    },
+    {
+      "id": "log_60e98fe31270",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:21:41.013Z"
+    },
+    {
+      "id": "log_33711da1d5d4",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T03:21:41.005Z"
+    },
+    {
+      "id": "log_7ac50ded7319",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T02:55:43.523Z"
+    },
+    {
+      "id": "log_0cee84f63ac4",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T02:55:43.519Z"
+    },
+    {
+      "id": "log_39d435d3bfec",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:48:47.398Z"
+    },
+    {
+      "id": "log_d99342d4ec7c",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:48:47.361Z"
+    },
+    {
+      "id": "log_234f5b1dcdaa",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-05T01:47:36.215Z"
+    },
+    {
+      "id": "log_509dad12bccb",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T01:47:28.574Z"
+    },
+    {
+      "id": "log_a077db529875",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:42:32.700Z"
+    },
+    {
+      "id": "log_d4dab937c40b",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:42:32.646Z"
+    },
+    {
+      "id": "log_3e8ebe8f6e18",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ]
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:42:12.583Z"
+    },
+    {
+      "id": "log_659828770b93",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:42:02.614Z"
+    },
+    {
+      "id": "log_f5966f7b6a15",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:42:02.607Z"
+    },
+    {
+      "id": "log_678fff00737f",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T00:16:58.854Z"
+    },
+    {
+      "id": "log_cae5e1ebe244",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T00:04:58.415Z"
+    },
+    {
+      "id": "log_40fbd04275e5",
+      "action": "subscription.cancel_requested",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "subscriptionId": "sub-redacted",
+        "reason": "Too expensive",
+        "accessUntil": "2026-08-04T19:52:28.000Z"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T21:50:09.056Z"
+    },
+    {
+      "id": "log_30a52c7db4b8",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T21:50:02.174Z"
+    },
+    {
+      "id": "log_69c30ee04164",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T21:50:02.004Z"
+    },
+    {
+      "id": "log_d642bc9347a0",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T21:45:50.328Z"
+    },
+    {
+      "id": "log_73b905f62a1b",
+      "action": "subscription.cancel_requested.mock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "reason": "Too expensive",
+        "accessUntil": "2026-08-04T21:45:50.000Z"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T21:45:50.304Z"
+    },
+    {
+      "id": "log_32f4f2b086ac",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T21:45:50.298Z"
+    },
+    {
+      "id": "log_7cd883a3cee5",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T21:16:14.217Z"
+    },
+    {
+      "id": "log_78a45ff90ed7",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T21:16:14.148Z"
+    },
+    {
+      "id": "log_814223017b67",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ]
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:37:41.716Z"
+    },
+    {
+      "id": "log_6f06c1df96a6",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": []
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:36:32.927Z"
+    },
+    {
+      "id": "log_58abb70e5374",
+      "action": "subscription.upgrade_yearly",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ],
+        "yearlySubscriptionId": "sub-redacted",
+        "yearlyScheduleId": "sub-redacted",
+        "bonusMonths": 3,
+        "accessMonths": 15,
+        "nextRenewalAt": 1822682081
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:34:41.664Z"
+    },
+    {
+      "id": "log_9e8935b1e839",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T20:23:33.189Z"
+    },
+    {
+      "id": "log_59c591f4e12f",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ]
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:23:24.071Z"
+    },
+    {
+      "id": "log_b6737d3de215",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:20:36.113Z"
+    },
+    {
+      "id": "log_fa326eb3a18e",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:20:36.104Z"
+    },
+    {
+      "id": "log_0e29fcc1d5d4",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ]
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:19:15.950Z"
+    },
+    {
+      "id": "log_68c1407e1eb8",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:19:11.179Z"
+    },
+    {
+      "id": "log_12fb2615b0e0",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:19:11.175Z"
+    },
+    {
+      "id": "log_acb3f19a135c",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T20:15:08.268Z"
+    },
+    {
+      "id": "log_9fba1419aabd",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T20:13:23.509Z"
+    },
+    {
+      "id": "log_9200f2810995",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:12:46.071Z"
+    },
+    {
+      "id": "log_320a6057f939",
+      "action": "admin.state.save",
+      "payload": {
+        "families": 3
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T20:05:23.035Z"
+    },
+    {
+      "id": "log_d445ff01c0de",
+      "action": "refund.mock",
+      "payload": {
+        "paymentIntentId": "pi-redacted",
+        "email": "user4@example.local",
+        "amountCents": 2999
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:05:23.024Z"
+    },
+    {
+      "id": "log_04f6d0569cf9",
+      "action": "subscription.upgrade_yearly.exists",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "yearlySubscriptionId": "sub-redacted",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ]
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:04:44.303Z"
+    },
+    {
+      "id": "log_32d4e2033df7",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:03:54.946Z"
+    },
+    {
+      "id": "log_b17974d5106d",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:03:54.942Z"
+    },
+    {
+      "id": "log_64d7202f0103",
+      "action": "subscription.upgrade_yearly",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "monthlySubscriptionIds": [
+          "sub-redacted"
+        ],
+        "yearlySubscriptionId": "sub-redacted",
+        "bonusMonths": 3,
+        "trialEnd": 1793821948
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:03:42.505Z"
+    },
+    {
+      "id": "log_ddb28a539c7b",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:03:28.628Z"
+    },
+    {
+      "id": "log_9461fe0d54c3",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:03:28.624Z"
+    },
+    {
+      "id": "log_c946488050a9",
+      "action": "stripe.checkout.confirm",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:02:11.396Z"
+    },
+    {
+      "id": "log_a56ada3c2b06",
+      "action": "stripe.checkout.create",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "parentEmail": "user4@example.local",
+        "promoCode": "save50"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T19:51:40.721Z"
+    },
+    {
+      "id": "log_31c5a1e3e512",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T19:51:40.053Z"
+    },
+    {
+      "id": "log_3faec8771ac2",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 29.99,
+          "interval": "mo",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "promotion": {
+          "code": "save50",
+          "monthlyAmount": 14.99,
+          "yearlyAmount": 0,
+          "planKey": "monthly",
+          "price": 14.99,
+          "description": "Launch Offer",
+          "showAfterDays": 0,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T19:51:24.441Z"
+    },
+    {
+      "id": "log_90a456acfcf5",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 29.99,
+          "interval": "mo",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "promotion": {
+          "code": "",
+          "monthlyAmount": 0,
+          "yearlyAmount": 0,
+          "planKey": "monthly",
+          "price": 0,
+          "description": "",
+          "showAfterDays": 0,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T19:50:56.056Z"
+    },
+    {
+      "id": "log_1526de5c7b2d",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 30,
+          "interval": "mo",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "promotion": {
+          "code": "",
+          "monthlyAmount": 0,
+          "yearlyAmount": 0,
+          "planKey": "monthly",
+          "price": 0,
+          "description": "",
+          "showAfterDays": 0,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T19:50:41.215Z"
+    },
+    {
+      "id": "log_34b73fe3d900",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 30,
+          "interval": "mo",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted",
+          "familyMemberCount": 3,
+          "active": true
+        },
+        "promotion": {
+          "code": "",
+          "monthlyAmount": 0,
+          "yearlyAmount": 0,
+          "planKey": "monthly",
+          "price": 0,
+          "description": "",
+          "showAfterDays": 0,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T19:50:35.637Z"
+    },
+    {
+      "id": "log_56e0132addb2",
+      "action": "stripe.checkout.create",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "parentEmail": "user4@example.local"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T16:01:13.179Z"
+    },
+    {
+      "id": "log_a974be4525b7",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T16:01:12.729Z"
+    },
+    {
+      "id": "log_38a089396c77",
+      "action": "stripe.checkout.create",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "parentEmail": "user4@example.local"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T16:01:01.641Z"
+    },
+    {
+      "id": "log_f128ed86610d",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T16:01:01.055Z"
+    },
+    {
+      "id": "log_a290a3c14da2",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 30,
+          "interval": "mo",
+          "stripePriceId": "price-redacted"
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted"
+        },
+        "promotion": {
+          "code": "SAVE50",
+          "monthlyAmount": 15,
+          "yearlyAmount": 0,
+          "planKey": "monthly",
+          "discountPercent": 50,
+          "price": 15,
+          "endDate": "",
+          "description": "",
+          "showAfterDays": 3,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T16:00:58.503Z"
+    },
+    {
+      "id": "log_e7a41d463140",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 30,
+          "interval": "mo",
+          "stripePriceId": "price-redacted"
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted"
+        },
+        "promotion": {
+          "code": "SAVE50",
+          "monthlyAmount": 0,
+          "yearlyAmount": 149,
+          "planKey": "yearly",
+          "discountPercent": 50,
+          "price": 149,
+          "endDate": "",
+          "description": "",
+          "showAfterDays": 3,
+          "durationDays": 0
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T16:00:36.983Z"
+    },
+    {
+      "id": "log_b20fbf239efb",
+      "action": "pricing.update",
+      "payload": {
+        "monthly": {
+          "label": "Family Monthly",
+          "amount": 30,
+          "interval": "mo",
+          "stripePriceId": "price-redacted"
+        },
+        "yearly": {
+          "label": "Family Yearly",
+          "amount": 299,
+          "interval": "yr",
+          "stripePriceId": "price-redacted"
+        },
+        "promotion": {
+          "code": "SAVE50",
+          "monthlyAmount": 0,
+          "yearlyAmount": 149,
+          "description": "Limited-time family starter offer",
+          "showAfterDays": 3,
+          "durationDays": 7
+        }
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T14:27:33.815Z"
+    },
+    {
+      "id": "log_0d6bda624df8",
+      "action": "stripe.checkout.create",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "parentEmail": "user4@example.local"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T13:27:36.270Z"
+    },
+    {
+      "id": "log_161d896fe993",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:27:35.737Z"
+    },
+    {
+      "id": "log_4251d2ef4ae3",
+      "action": "stripe.checkout.create",
+      "payload": {
+        "sessionId": "cs-redacted",
+        "familyId": "fam_6390ff1ac33e",
+        "parentEmail": "user4@example.local"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T13:26:15.047Z"
+    },
+    {
+      "id": "log_10622c8133b0",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:26:14.686Z"
+    },
+    {
+      "id": "log_52296f21623e",
+      "action": "stripe.prices.bootstrap",
+      "payload": {
+        "productId": "prod-redacted",
+        "monthlyPriceId": "price-redacted",
+        "yearlyPriceId": "price-redacted"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T13:26:08.909Z"
+    },
+    {
+      "id": "log_2347f3a5c07d",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T13:26:08.069Z"
+    },
+    {
+      "id": "log_0f5d62438205",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:24:04.227Z"
+    },
+    {
+      "id": "log_6d1c7117d4b4",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:23:02.500Z"
+    },
+    {
+      "id": "log_547a8cc4f4cd",
+      "action": "family.update.checkout_draft",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:22:57.630Z"
+    },
+    {
+      "id": "log_b3d7d16e5dab",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_2dc0fe11e92c",
+        "role": "parent",
+        "email": "user4@example.local",
+        "provider": "email_otp"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:10:18.767Z"
+    },
+    {
+      "id": "log_02ca82c9c72f",
+      "action": "auth.signup.otp_verified",
+      "payload": {
+        "userId": "usr_2dc0fe11e92c",
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:10:18.766Z"
+    },
+    {
+      "id": "log_180c8f8a844f",
+      "action": "email.send",
+      "payload": {
+        "to": "user4@example.local",
+        "template": "Verify parent email"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T13:09:57.346Z"
+    },
+    {
+      "id": "log_2f6b2442b2f0",
+      "action": "auth.signup.otp_create",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:09:56.817Z"
+    },
+    {
+      "id": "log_574315df12ce",
+      "action": "family.create.signup",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:09:56.788Z"
+    },
+    {
+      "id": "log_90b628d69203",
+      "action": "account.anonymize",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "deletedEmail": "user3@example.local",
+        "userId": "usr_4115c7a310eb"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T13:09:34.388Z"
+    },
+    {
+      "id": "log_ca2dd683b243",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local",
+        "userId": "usr_4115c7a310eb"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:09:28.984Z"
+    },
+    {
+      "id": "log_ed48143b0129",
+      "action": "account.delete.request",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:09:06.765Z"
+    },
+    {
+      "id": "log_663a5f4a25b8",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "password"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:09:02.284Z"
+    },
+    {
+      "id": "log_e5eb9173f44c",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local",
+        "userId": "usr_4115c7a310eb"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:03:51.576Z"
+    },
+    {
+      "id": "log_d7589796cc71",
+      "action": "account.delete.request",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:56:05.246Z"
+    },
+    {
+      "id": "log_3125684d0cdb",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "password"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:23:26.275Z"
+    },
+    {
+      "id": "log_f7fe2b73e07a",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local",
+        "userId": "usr_4115c7a310eb"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:23:23.873Z"
+    },
+    {
+      "id": "log_f7384dd83c4d",
+      "action": "account.delete.request",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:30.916Z"
+    },
+    {
+      "id": "log_005d220735fe",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "password"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:18.381Z"
+    },
+    {
+      "id": "log_3a3db24b6348",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local",
+        "userId": "usr_4115c7a310eb"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:13.890Z"
+    },
+    {
+      "id": "log_713cbe39a2b4",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "userId": "usr_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:44.132Z"
+    },
+    {
+      "id": "log_3f3f4f335d8e",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "userId": "usr_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:41.044Z"
+    },
+    {
+      "id": "log_45c427291114",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.401Z"
+    },
+    {
+      "id": "log_3a43e7c9e72d",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "userId": "usr_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.373Z"
+    },
+    {
+      "id": "log_b06f40e51ee7",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "userId": "usr_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.316Z"
+    },
+    {
+      "id": "log_250e134dec44",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.303Z"
+    },
+    {
+      "id": "log_0350d07025bb",
+      "action": "account.unlock",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local",
+        "userId": "usr_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.271Z"
+    },
+    {
+      "id": "log_daa113811fce",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T02:16:06.250Z"
+    },
+    {
+      "id": "log_19957e862c6e",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "password"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:13:36.895Z"
+    },
+    {
+      "id": "log_73703f55873e",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "password"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:13:17.071Z"
+    },
+    {
+      "id": "log_f44f0dfab320",
+      "action": "account.lock",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:13:03.174Z"
+    },
+    {
+      "id": "log_bd388d7906f8",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user3@example.local",
+        "provider": "email_change"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:12:41.412Z"
+    },
+    {
+      "id": "log_de38d8e2a0fb",
+      "action": "account.email_change.complete",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "oldEmail": "user5@example.local",
+        "newEmail": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:12:41.410Z"
+    },
+    {
+      "id": "log_90710479e841",
+      "action": "email.send",
+      "payload": {
+        "to": "user3@example.local",
+        "template": "Confirm new parent email"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T02:12:17.874Z"
+    },
+    {
+      "id": "log_5e87e859125f",
+      "action": "account.email_change.request",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "oldEmail": "user5@example.local",
+        "newEmail": "user3@example.local"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:12:17.625Z"
+    },
+    {
+      "id": "log_ddc5ce8e1320",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "role": "parent",
+        "email": "user5@example.local",
+        "provider": "email_otp"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:11:39.181Z"
+    },
+    {
+      "id": "log_186618239e5e",
+      "action": "auth.signup.otp_verified",
+      "payload": {
+        "userId": "usr_4115c7a310eb",
+        "familyId": "fam_eef91cee68f5",
+        "email": "user5@example.local"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:11:39.179Z"
+    },
+    {
+      "id": "log_30a229e41c4c",
+      "action": "email.send",
+      "payload": {
+        "to": "user5@example.local",
+        "template": "Verify parent email"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T02:11:21.292Z"
+    },
+    {
+      "id": "log_a3612a431873",
+      "action": "auth.signup.otp_create",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user5@example.local"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:11:20.899Z"
+    },
+    {
+      "id": "log_3a9b72fd70b1",
+      "action": "family.create.signup",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user5@example.local"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:11:20.870Z"
+    },
+    {
+      "id": "log_ee0d8d5c99d3",
+      "action": "email.send",
+      "payload": {
+        "to": "user2@example.local",
+        "template": "Reset parent password"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T02:10:14.689Z"
+    },
+    {
+      "id": "log_b7a14f30571a",
+      "action": "auth.password_reset.request",
+      "payload": {
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:10:14.310Z"
+    },
+    {
+      "id": "log_2aefbc87826b",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:01:33.278Z"
+    },
+    {
+      "id": "log_f36720c1a9d9",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T02:00:42.474Z"
+    },
+    {
+      "id": "log_d59e65127cf2",
+      "action": "account.password.change",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:00:29.186Z"
+    },
+    {
+      "id": "log_6efc9535a000",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password_reset"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:00:29.137Z"
+    },
+    {
+      "id": "log_c9defc0b89da",
+      "action": "auth.password_reset.complete",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:00:29.137Z"
+    },
+    {
+      "id": "log_dfd1a1c7dc00",
+      "action": "account.password.change",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.170Z"
+    },
+    {
+      "id": "log_fecb99570ff8",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.121Z"
+    },
+    {
+      "id": "log_e8ffab807215",
+      "action": "account.password.change",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.091Z"
+    },
+    {
+      "id": "log_0d96b80fc793",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.026Z"
+    },
+    {
+      "id": "log_0594ecd50d6c",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T01:45:16.245Z"
+    },
+    {
+      "id": "log_9bb0c14a4d3d",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_admin",
+        "role": "admin",
+        "email": "user1@example.local",
+        "provider": "password"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T01:44:02.508Z"
+    },
+    {
+      "id": "log_cd84b94605e4",
+      "action": "auth.login",
+      "payload": {
+        "userId": "usr_demo_parent",
+        "role": "parent",
+        "email": "user2@example.local",
+        "provider": "password"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:44:02.485Z"
+    }
+  ],
+  "emailLogs": [
+    {
+      "id": "eml_216220efd0c3",
+      "mode": "postmark",
+      "to": "user4@example.local",
+      "subject": "KiddieGPT test: Winback offer",
+      "messageId": "1936d97a-49f0-493a-98fd-b4192c385e84",
+      "template": "Winback offer",
+      "createdAt": "2026-07-05T15:36:50.660Z"
+    },
+    {
+      "id": "eml_7a644d8ac90a",
+      "mode": "postmark",
+      "to": "user4@example.local",
+      "subject": "KiddieGPT test: Refund note",
+      "messageId": "85f112d4-ab0a-4df6-8842-77a224740f6a",
+      "template": "Refund note",
+      "createdAt": "2026-07-05T15:06:36.002Z"
+    },
+    {
+      "id": "eml_221cc952c5df",
+      "mode": "postmark",
+      "to": "user4@example.local",
+      "subject": "KiddieGPT test: Refund note",
+      "messageId": "abf30799-2cef-4122-9c9d-220f1fb83b52",
+      "template": "Refund note",
+      "createdAt": "2026-07-05T15:05:49.920Z"
+    },
+    {
+      "id": "eml_b9729e2ece1c",
+      "mode": "postmark",
+      "to": "user4@example.local",
+      "subject": "KiddieGPT test: Verify parent email",
+      "messageId": "b7acbc49-9d12-424b-8ff8-725561949d60",
+      "template": "Verify parent email",
+      "createdAt": "2026-07-04T13:09:57.346Z"
+    },
+    {
+      "id": "eml_3b83c6de03ec",
+      "mode": "postmark",
+      "to": "user3@example.local",
+      "subject": "KiddieGPT test: Confirm new parent email",
+      "messageId": "50c65229-7503-4177-8b3f-f19d3220c248",
+      "template": "Confirm new parent email",
+      "createdAt": "2026-07-04T02:12:17.874Z"
+    },
+    {
+      "id": "eml_0b352ef53eee",
+      "mode": "postmark",
+      "to": "user5@example.local",
+      "subject": "KiddieGPT test: Verify parent email",
+      "messageId": "aa7df5f5-9e6f-4c9d-aaea-eef43bbc2e15",
+      "template": "Verify parent email",
+      "createdAt": "2026-07-04T02:11:21.292Z"
+    },
+    {
+      "id": "eml_2a589b1b08f4",
+      "mode": "postmark",
+      "to": "user2@example.local",
+      "subject": "KiddieGPT test: Reset parent password",
+      "messageId": "bb8b5e6a-111c-4e8d-909b-caf303a3d5fe",
+      "template": "Reset parent password",
+      "createdAt": "2026-07-04T02:10:14.689Z"
+    }
+  ],
+  "emailOtps": [],
+  "payments": [
+    {
+      "id": "pay_ad49df2fe1ab",
+      "stripeEventId": "upgrade_in_1TpaGrRHEQhaiw67oZzi2gRy",
+      "paymentId": "pi-redacted",
+      "type": "invoice.paid",
+      "status": "refunded",
+      "amountCents": 29900,
+      "currency": "usd",
+      "email": "user4@example.local",
+      "familyId": "fam_6390ff1ac33e",
+      "customerId": "cus-redacted",
+      "subscriptionId": "sub-redacted",
+      "createdAt": "2026-07-05T01:42:12.582Z",
+      "refundId": "re-redacted",
+      "refundedAt": "2026-07-05T15:06:35.522Z"
+    },
+    {
+      "id": "pay_6d652fe34822",
+      "stripeEventId": "upgrade_sub_sched_1TpaGrRHEQhaiw67eI7wYcdD",
+      "paymentId": "in-redacted",
+      "type": "invoice.paid",
+      "status": "paid",
+      "amountCents": 0,
+      "currency": "usd",
+      "email": "user4@example.local",
+      "familyId": "fam_6390ff1ac33e",
+      "customerId": "cus-redacted",
+      "subscriptionId": "sub-redacted",
+      "createdAt": "2026-07-04T20:34:41.664Z"
+    },
+    {
+      "id": "pay_1788290cfafc",
+      "stripeEventId": "confirm_cs_test_a1lCbVpJwZSzPofwxuKWPFEMnN5XOBYdeZcxR4y9D0TcBwqZ2S2NSlk6hg",
+      "paymentId": "pi-redacted",
+      "type": "checkout.session.completed",
+      "status": "paid",
+      "amountCents": 1499,
+      "currency": "usd",
+      "email": "user4@example.local",
+      "familyId": "fam_6390ff1ac33e",
+      "customerId": "cus-redacted",
+      "subscriptionId": "sub-redacted",
+      "createdAt": "2026-07-04T19:51:40.000Z"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "ses_80da1bbf2fba",
+      "userId": "usr_demo_parent",
+      "role": "parent",
+      "email": "user2@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T03:54:07.710Z"
+    },
+    {
+      "id": "ses_facbae4a60cb",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T03:53:57.977Z"
+    },
+    {
+      "id": "ses_38a15daff60b",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T03:53:44.575Z"
+    },
+    {
+      "id": "ses_e15c002dccb8",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T03:48:30.534Z"
+    },
+    {
+      "id": "ses_b1a182f9a719",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T03:47:57.762Z"
+    },
+    {
+      "id": "ses_e2782850ca43",
+      "userId": "usr_demo_parent",
+      "role": "parent",
+      "email": "user2@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T01:47:36.215Z"
+    },
+    {
+      "id": "ses_6a2eb21a7cc6",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T01:47:28.574Z"
+    },
+    {
+      "id": "ses_8c9c703b23c1",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T00:16:58.854Z"
+    },
+    {
+      "id": "ses_27b0ebb5ac4a",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-05T00:04:58.415Z"
+    },
+    {
+      "id": "ses_5594bed3be05",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T21:45:50.328Z"
+    },
+    {
+      "id": "ses_5944d94c2d70",
+      "userId": "usr_demo_parent",
+      "role": "parent",
+      "email": "user2@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T21:45:50.298Z"
+    },
+    {
+      "id": "ses_3d744c64704f",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T20:23:33.189Z"
+    },
+    {
+      "id": "ses_bb4f7c582be8",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T20:15:08.268Z"
+    },
+    {
+      "id": "ses_83c92ef21f5b",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T20:13:23.509Z"
+    },
+    {
+      "id": "ses_17c12f1a849c",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T13:26:08.069Z"
+    },
+    {
+      "id": "ses_dd3a9c43ecdc",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T02:16:06.250Z"
+    },
+    {
+      "id": "ses_d231cc32161b",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T02:00:42.474Z"
+    },
+    {
+      "id": "ses_5bbe5a361202",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T01:45:16.244Z"
+    },
+    {
+      "id": "ses_a6903fc224a6",
+      "userId": "usr_demo_admin",
+      "role": "admin",
+      "email": "user1@example.local",
+      "provider": "password",
+      "createdAt": "2026-07-04T01:44:02.508Z"
+    }
+  ],
+  "monitorEvents": [
+    {
+      "id": "mon_9d60838147da",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account locked by admin",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:19:26.351Z"
+    },
+    {
+      "id": "mon_7122e526bcb5",
+      "severity": "warning",
+      "category": "billing",
+      "message": "Subscription ended immediately by admin",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local",
+        "stripeResult": [
+          {
+            "id": "sub-redacted",
+            "status": "canceled"
+          }
+        ]
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-05T15:19:22.802Z"
+    },
+    {
+      "id": "mon_b3646f95599d",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:10:51.349Z"
+    },
+    {
+      "id": "mon_9e14e529cb4f",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account locked by admin",
+      "payload": {
+        "familyId": "fam_6390ff1ac33e",
+        "email": "user4@example.local"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T15:10:47.971Z"
+    },
+    {
+      "id": "mon_6e70f3f9b95e",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user6@example.local"
+      },
+      "actor": "user6@example.local",
+      "createdAt": "2026-07-05T14:46:25.438Z"
+    },
+    {
+      "id": "mon_9ca5dd71386a",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user6@example.local"
+      },
+      "actor": "user6@example.local",
+      "createdAt": "2026-07-05T14:46:25.431Z"
+    },
+    {
+      "id": "mon_bf24a54d688b",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Failed login",
+      "payload": {
+        "email": "user4@example.local",
+        "role": "parent"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-05T01:47:28.549Z"
+    },
+    {
+      "id": "mon_f45e50fab330",
+      "severity": "error",
+      "category": "stripe",
+      "message": "Yearly upgrade failed",
+      "payload": {
+        "email": "user4@example.local",
+        "detail": "The subscription is managed by the subscription schedule `sub-redacted`, and updating any cancelation behavior directly is not allowed. Please update the schedule instead."
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:35:49.245Z"
+    },
+    {
+      "id": "mon_8294c43a7fab",
+      "severity": "error",
+      "category": "stripe",
+      "message": "Yearly upgrade failed",
+      "payload": {
+        "email": "user4@example.local",
+        "detail": "Received unknown parameter: phases[duration]"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:34:12.414Z"
+    },
+    {
+      "id": "mon_108bfddb4bd9",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Extension entitlement check missing auth",
+      "payload": {
+        "path": "/api/entitlements/me"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T20:02:57.225Z"
+    },
+    {
+      "id": "mon_a229b469df1e",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Failed login",
+      "payload": {
+        "email": "user4@example.local",
+        "role": "parent"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T20:02:19.253Z"
+    },
+    {
+      "id": "mon_645fe3c92f0c",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user6@example.local"
+      },
+      "actor": "user6@example.local",
+      "createdAt": "2026-07-04T18:01:21.239Z"
+    },
+    {
+      "id": "mon_790bf9ffec20",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user6@example.local"
+      },
+      "actor": "user6@example.local",
+      "createdAt": "2026-07-04T18:01:21.235Z"
+    },
+    {
+      "id": "mon_f417eb28ab76",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user7@example.local"
+      },
+      "actor": "user7@example.local",
+      "createdAt": "2026-07-04T14:39:47.239Z"
+    },
+    {
+      "id": "mon_d33a6fa3c16e",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user7@example.local"
+      },
+      "actor": "user7@example.local",
+      "createdAt": "2026-07-04T14:39:47.237Z"
+    },
+    {
+      "id": "mon_947465cd300b",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user8@example.local"
+      },
+      "actor": "user8@example.local",
+      "createdAt": "2026-07-04T14:19:54.841Z"
+    },
+    {
+      "id": "mon_c78abacca9b5",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Entitlement check could not find family",
+      "payload": {
+        "email": "user8@example.local"
+      },
+      "actor": "user8@example.local",
+      "createdAt": "2026-07-04T14:19:54.836Z"
+    },
+    {
+      "id": "mon_c989c1e23b98",
+      "severity": "info",
+      "category": "stripe",
+      "message": "Stripe test prices created",
+      "payload": {
+        "productId": "prod-redacted",
+        "monthlyPriceId": "price-redacted",
+        "yearlyPriceId": "price-redacted"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T13:26:08.909Z"
+    },
+    {
+      "id": "mon_0ee7e572d521",
+      "severity": "error",
+      "category": "stripe",
+      "message": "Stripe Checkout creation failed",
+      "payload": {
+        "parentEmail": "user4@example.local",
+        "planName": "Family Monthly",
+        "detail": "No such price: 'price-redacted'"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:24:04.507Z"
+    },
+    {
+      "id": "mon_f269b9b28b2f",
+      "severity": "error",
+      "category": "stripe",
+      "message": "Stripe Checkout creation failed",
+      "payload": {
+        "parentEmail": "user4@example.local",
+        "planName": "Family Monthly",
+        "detail": "No such price: 'price-redacted'"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:23:02.702Z"
+    },
+    {
+      "id": "mon_f38a3e3511db",
+      "severity": "error",
+      "category": "stripe",
+      "message": "Stripe Checkout creation failed",
+      "payload": {
+        "parentEmail": "user4@example.local",
+        "planName": "Family Monthly",
+        "detail": "No such price: 'price-redacted'"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:22:58.373Z"
+    },
+    {
+      "id": "mon_c624609daf3d",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Failed login",
+      "payload": {
+        "email": "user4@example.local",
+        "role": "parent"
+      },
+      "actor": "user4@example.local",
+      "createdAt": "2026-07-04T13:15:01.940Z"
+    },
+    {
+      "id": "mon_84860bcc977e",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account anonymized by admin",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "deletedEmail": "user3@example.local"
+      },
+      "actor": "user1@example.local",
+      "createdAt": "2026-07-04T13:09:34.388Z"
+    },
+    {
+      "id": "mon_242a9085c9a4",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account locked by admin",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:09:28.984Z"
+    },
+    {
+      "id": "mon_aea2fb225992",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent requested account deletion",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:09:06.765Z"
+    },
+    {
+      "id": "mon_17f66da478d6",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:03:51.576Z"
+    },
+    {
+      "id": "mon_a77db2dd69cc",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Locked parent login blocked",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T13:03:46.646Z"
+    },
+    {
+      "id": "mon_ddd9cfe76821",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Failed login",
+      "payload": {
+        "email": "user5@example.local",
+        "role": "parent"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T13:03:29.306Z"
+    },
+    {
+      "id": "mon_c2454d9e26e4",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent requested account deletion",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:56:05.246Z"
+    },
+    {
+      "id": "mon_eab3f2ab705d",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:23:23.873Z"
+    },
+    {
+      "id": "mon_aacda016dc45",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Locked parent login blocked",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:23:16.650Z"
+    },
+    {
+      "id": "mon_c7f9d2364130",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent requested account deletion",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:30.916Z"
+    },
+    {
+      "id": "mon_fa90b54d119b",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_eef91cee68f5",
+        "email": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:13.890Z"
+    },
+    {
+      "id": "mon_3f6985baadad",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Locked parent login blocked",
+      "payload": {
+        "email": "user3@example.local",
+        "familyId": "fam_eef91cee68f5"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:18:00.730Z"
+    },
+    {
+      "id": "mon_406742750a8c",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:44.132Z"
+    },
+    {
+      "id": "mon_bebe4d33903b",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account locked by admin",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:41.044Z"
+    },
+    {
+      "id": "mon_929ae732339e",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.373Z"
+    },
+    {
+      "id": "mon_14f86091799d",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Locked parent session blocked",
+      "payload": {
+        "email": "user2@example.local",
+        "familyId": "fam_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.361Z"
+    },
+    {
+      "id": "mon_89f70d34b689",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Locked parent login blocked",
+      "payload": {
+        "email": "user2@example.local",
+        "familyId": "fam_demo_parent"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.347Z"
+    },
+    {
+      "id": "mon_2a41727578ba",
+      "severity": "warning",
+      "category": "account",
+      "message": "Parent account locked by admin",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.316Z"
+    },
+    {
+      "id": "mon_00140cc9ccdf",
+      "severity": "info",
+      "category": "account",
+      "message": "Parent account unlocked by admin",
+      "payload": {
+        "familyId": "fam_demo_parent",
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:16:06.271Z"
+    },
+    {
+      "id": "mon_db9832f370e6",
+      "severity": "info",
+      "category": "auth",
+      "message": "Parent email changed",
+      "payload": {
+        "oldEmail": "user5@example.local",
+        "newEmail": "user3@example.local"
+      },
+      "actor": "user3@example.local",
+      "createdAt": "2026-07-04T02:12:41.410Z"
+    },
+    {
+      "id": "mon_0459c08021ef",
+      "severity": "warning",
+      "category": "auth",
+      "message": "Password reset requested for unknown parent",
+      "payload": {
+        "email": "user5@example.local"
+      },
+      "actor": "user5@example.local",
+      "createdAt": "2026-07-04T02:10:53.146Z"
+    },
+    {
+      "id": "mon_0c4a00f92a21",
+      "severity": "warning",
+      "category": "entitlement",
+      "message": "Extension entitlement check missing auth",
+      "payload": {
+        "path": "/api/entitlements/me"
+      },
+      "actor": "system",
+      "createdAt": "2026-07-04T02:00:42.433Z"
+    },
+    {
+      "id": "mon_bead4ee70678",
+      "severity": "info",
+      "category": "auth",
+      "message": "Parent password changed",
+      "payload": {
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:00:29.186Z"
+    },
+    {
+      "id": "mon_0d11567ec00c",
+      "severity": "info",
+      "category": "auth",
+      "message": "Parent password reset completed",
+      "payload": {
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T02:00:29.137Z"
+    },
+    {
+      "id": "mon_5b536df49831",
+      "severity": "info",
+      "category": "auth",
+      "message": "Parent password changed",
+      "payload": {
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.170Z"
+    },
+    {
+      "id": "mon_a1b440817bf1",
+      "severity": "info",
+      "category": "auth",
+      "message": "Parent password changed",
+      "payload": {
+        "email": "user2@example.local"
+      },
+      "actor": "user2@example.local",
+      "createdAt": "2026-07-04T01:59:58.091Z"
+    }
+  ],
+  "deletedUserSequence": 1,
+  "aiSettings": {
+    "openaiApiKey": "",
+    "mathProblemsPerUserDaily": 20,
+    "tutorVoiceMinutesPerUserDaily": 10,
+    "tutorVoiceEnabled": true,
+    "updatedAt": "2026-07-05T03:53:57.980Z",
+    "updatedBy": "user1@example.local"
+  }
+}

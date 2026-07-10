@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "deletedUserSequence": 0,
+  "pricing": {
+    "monthly": {
+      "label": "Family Monthly",
+      "amount": 19,
+      "interval": "mo",
+      "stripePriceId": "price_demo_monthly",
+      "familyMemberCount": 3,
+      "active": true
+    },
+    "yearly": {
+      "label": "Family Yearly",
+      "amount": 149,
+      "interval": "yr",
+      "stripePriceId": "price_demo_yearly",
+      "familyMemberCount": 3,
+      "active": true
+    },
+    "promotion": {
+      "code": "SAVE50",
+      "monthlyAmount": 10,
+      "yearlyAmount": 75,
+      "planKey": "monthly",
+      "price": 10,
+      "description": "Limited-time family starter offer",
+      "showAfterDays": 3,
+      "durationDays": 7
+    }
+  },
+  "users": [],
+  "families": [],
+  "auditLogs": [],
+  "monitorEvents": [],
+  "emailLogs": [],
+  "emailOtps": [],
+  "payments": [],
+  "sessions": [],
+  "aiSettings": {
+    "openaiApiKey": "",
+    "mathProblemsPerUserDaily": 20,
+    "tutorVoiceMinutesPerUserDaily": 10,
+    "tutorVoiceEnabled": true,
+    "updatedAt": "",
+    "updatedBy": ""
+  }
+}
