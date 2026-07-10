@@ -1,60 +1,42 @@
 # KiddieGPT
 
-A Chrome (Manifest V3) **side-panel** extension that helps K‑8 students (K‑12
-capable) with homework — built around accuracy, grade-awareness, and parent
-controls.
+Monorepo for the KiddieGPT product — a kid-safe AI learning assistant.
 
-## Tools
-- **Math Tutor** — type/paste a problem, screenshot it, or upload a worksheet. Solves it as a textbook-style, step-by-step derivation with a **second independent verification pass** (a wrong answer is worse than no answer). Real math typesetting via bundled **KaTeX**, app-drawn diagrams, and a parent-PIN gate that hides the final answer until steps are worked.
-- **Study Mission** — turn a page or PDF into a study pack: read the main idea + key terms, then drill with flashcards and a grade-aware quiz.
-- **Tutor Voice** — read a passage aloud or hear a short spoken lesson, with each sentence highlighting as it plays.
-- **Writing Studio** — coach a student's own writing (assignment planning, draft feedback, and inline grammar review that explains *why* — it never writes the assignment for them).
-- **Explain This** — explain the active page, a selection, or a screenshot in kid-simple words.
+## Structure
 
-## Safety & parent features
-- **Grade-safe prompts** plus an **output moderation** pass on generated content.
-- **Parent PIN** to gate math answers, with an OTP-based "Forgot PIN" reset.
-- **Passwordless OTP sign-in** (email code), with a multi-student selector.
-- **Activity + stars tracking** — quiz scores (including which questions were missed), flashcards, and per-tool usage, ready to sync to a parent portal.
-
-## Repo layout
 ```
-sidepanel.html / sidepanel.js / styles.css   The whole side-panel app
-background.js / manifest.json                 MV3 service worker + manifest
-katex/                                        Bundled KaTeX (MIT) for math typesetting
-icons/                                        Extension icons
-local-settings.example.js                     Template for local dev config (copy -> local-settings.js)
-docs/                                         Backend contracts (proxy, progress sync, handoff)
-evals/                                         Prompt-quality eval scripts (curl + jq)
+.
+├── extension/   Chrome MV3 side-panel app for kids (math, tutor, quiz, flashcards)
+└── portal/      Parent + admin web portal and backend (Express, Stripe, JSON-file DB, Docker)
 ```
 
-## Run it locally
-1. **Config:** copy the template and add a dev key
-   ```
-   cp local-settings.example.js local-settings.js
-   # edit local-settings.js -> set openaiApiKey: 'sk-...'
-   ```
-   > `local-settings.js` is **gitignored** — never commit a real key.
-2. **Load the extension:** `chrome://extensions` → enable *Developer mode* → *Load unpacked* → select this folder.
-3. Open the side panel (toolbar icon). Sign in with the **test code `1234`**.
-   In test mode the extension calls OpenAI directly with your local key; in
-   production, all AI goes through a backend proxy that holds the key server-side.
+The two talk to each other over a small HTTP contract: the extension authenticates
+a parent session against the portal, streams AI calls through the portal's proxy
+(so the OpenAI key never lives in the extension), and syncs student progress and
+usage back to the parent portal.
 
-## Architecture note
-The extension is designed to run against a **portal backend** (not in this repo)
-that holds the OpenAI key, authenticates parents, enforces quotas, and stores
-progress. Until that backend exists, test mode (OTP `1234` + a local key) drives
-the AI directly. The backend contracts are specced in [`docs/`](docs/):
-- [`backend-proxy.md`](docs/backend-proxy.md) — auth + AI proxy + abuse controls
-- [`progress-sync.md`](docs/progress-sync.md) — student progress storage
-- [`portal-handoff-progress.md`](docs/portal-handoff-progress.md) — paste-ready brief for the backend
+## Getting started
 
-## Security
-- The OpenAI key lives only in `local-settings.js` (local, gitignored) or the
-  Settings field (`chrome.storage.local`). It is never committed and is stripped
-  from any packaged build.
-- Prompts never include a student's name or email; only schoolwork content and
-  grade band are sent to the model.
+### Portal
+```bash
+cd portal
+cp .env.example .env          # fill in secrets (Stripe, Postmark/SMTP, AUTH_TOKEN_SECRET)
+docker compose up -d --build  # serves on http://localhost:8080
+```
 
-## License
-MIT — see [LICENSE](LICENSE). Bundles KaTeX (MIT).
+### Extension
+```bash
+cd extension
+cp local-settings.example.js local-settings.js   # add your local portal URL (and dev key if needed)
+```
+Load `extension/` as an unpacked extension at `chrome://extensions` (Developer mode).
+
+## Secrets
+
+Never committed (see `.gitignore`):
+
+- `extension/local-settings.js` — local OpenAI key / portal URL override
+- `portal/.env` — Stripe, email provider, `AUTH_TOKEN_SECRET`
+- `portal/data/kiddiegpt-db.json` — live runtime DB (API keys + parent/child PII)
+
+Redacted/example variants are committed to show shape.

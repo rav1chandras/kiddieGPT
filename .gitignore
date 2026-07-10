@@ -1,11 +1,28 @@
-# Secrets — NEVER commit. local-settings.js holds a real OpenAI key locally.
-# Copy local-settings.example.js -> local-settings.js and add your own key.
+# ── Secrets — NEVER commit ─────────────────────────────────────────────
+# Extension: local-settings.js holds a real OpenAI key + local portal URL.
+# Copy extension/local-settings.example.js -> extension/local-settings.js.
 local-settings.js
+**/local-settings.js
 
-# Build artifacts (large, regenerable)
+# Environment files (portal)
+.env
+.env.*
+!.env.example
+!.env.redacted
+
+# Portal live runtime DB — contains API keys + parent/child PII.
+data/kiddiegpt-db.json
+**/data/kiddiegpt-db.json
+**/data/*.local.json
+
+# ── Dependencies ───────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Build artifacts / archives ─────────────────────────────────────────
 *.zip
 
-# Editor / OS / tooling
+# ── OS / editor / tooling ──────────────────────────────────────────────
 .DS_Store
 .claude/
-node_modules/
+*.log

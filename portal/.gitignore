@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+!.env.redacted
+
+# Live runtime database (contains API keys + parent/child PII — never commit)
+data/kiddiegpt-db.json
+data/*.local.json
+
+# Build artifacts / archives
+*.zip
+
+# OS / editor cruft
+.DS_Store
+*.log

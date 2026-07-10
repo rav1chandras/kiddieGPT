@@ -1,0 +1,36 @@
+services:
+  kiddiegpt-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kiddiegpt-web
+    ports:
+      - "8080:80"
+    environment:
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_MONTHLY_PRICE_ID: ${STRIPE_MONTHLY_PRICE_ID:-price_demo_monthly}
+      STRIPE_YEARLY_PRICE_ID: ${STRIPE_YEARLY_PRICE_ID:-price_demo_yearly}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      FROM_EMAIL: ${FROM_EMAIL:-}
+      POSTMARK_SERVER_TOKEN: ${POSTMARK_SERVER_TOKEN:-}
+      POSTMARK_FROM_EMAIL: ${POSTMARK_FROM_EMAIL:-}
+      POSTMARK_MESSAGE_STREAM: ${POSTMARK_MESSAGE_STREAM:-outbound}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kiddiegpt.demo}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      PARENT_TEST_EMAIL: ${PARENT_TEST_EMAIL:-parent.kiddiegpt@gmail.com}
+      PARENT_TEST_PASSWORD: ${PARENT_TEST_PASSWORD:-kiddiegpt123}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-dev_kiddiegpt_change_me}
+      AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-24}
+      EMAIL_OTP_TTL_MINUTES: ${EMAIL_OTP_TTL_MINUTES:-10}
+      ALLOWED_PARENT_EMAIL_DOMAINS: ${ALLOWED_PARENT_EMAIL_DOMAINS:-gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-true}
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

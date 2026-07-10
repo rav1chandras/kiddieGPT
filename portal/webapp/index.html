@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT Parent Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/webapp.css?v=106">
+</head>
+<body data-page="parent" class="parent-locked">
+  <section class="parent-auth-gate" id="parent-auth-gate">
+    <form class="parent-auth-card" id="parent-login-form">
+      <div class="admin-auth-brand">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </div>
+      <h1 id="parent-auth-title">Parent sign in</h1>
+      <p id="parent-auth-copy">Sign in to manage subscription, children, rewards, and extension access.</p>
+      <div class="auth-mode-toggle" id="parent-auth-mode-toggle" aria-label="Authentication mode">
+        <button class="active" type="button" data-parent-auth-mode="login">Sign in</button>
+        <button type="button" data-parent-auth-mode="signup">Create account</button>
+      </div>
+      <label class="signup-only hidden">Parent full name
+        <input type="text" name="parentName" autocomplete="name" placeholder="Your name">
+      </label>
+      <label id="parent-email-row">Email
+        <input type="email" name="email" autocomplete="username" placeholder="you@gmail.com" required>
+      </label>
+      <label id="parent-password-row">Password
+        <input type="password" name="password" autocomplete="current-password" placeholder="Your password" required>
+      </label>
+      <label class="reset-confirm-only hidden">Reset code
+        <input type="text" name="resetOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+      </label>
+      <label class="reset-confirm-only hidden">New password
+        <input type="password" name="resetPassword" autocomplete="new-password" placeholder="At least 8 characters">
+      </label>
+      <label class="otp-only hidden">Verification code
+        <input type="text" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+      </label>
+      <button class="button primary" type="submit" id="parent-auth-submit">Sign in</button>
+      <button class="text-link-button otp-only hidden" type="button" id="resend-otp">Resend code</button>
+      <button class="text-link-button login-only" type="button" id="forgot-password">Forgot password?</button>
+      <button class="google-login-button gate-google" type="button" id="google-login-button">
+        <i data-lucide="mail"></i>
+        Continue with Google
+      </button>
+      <div class="auth-demo-grid" aria-label="Demo accounts">
+        <button class="auth-demo-tile" type="button" data-parent-demo-login>
+          <i data-lucide="user-round"></i>
+          <span>Parent demo</span>
+          <strong>parent.kiddiegpt@gmail.com</strong>
+        </button>
+        <a class="auth-demo-tile" href="/admin.html">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Admin demo</span>
+          <strong>admin@kiddiegpt.demo</strong>
+        </a>
+      </div>
+      <small id="parent-login-error" role="alert"></small>
+      <button class="text-link-button reset-flow-only reset-back-login hidden" type="button" id="back-to-login">Back to login</button>
+    </form>
+  </section>
+  <main class="flat-portal-shell parent-portal-pro">
+    <header class="flat-hero">
+      <a class="flat-brand" href="/index.html">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </a>
+      <div class="parent-account-card">
+        <span>Family account</span>
+        <strong id="parent-account-name">Maya Patel</strong>
+        <small id="parent-account-plan">Family Monthly</small>
+        <button class="text-link-button account-logout" type="button" id="parent-logout">Logout</button>
+      </div>
+      <nav class="flat-tabs" aria-label="Parent portal sections">
+        <button class="active" type="button" data-parent-tab="parent"><i data-lucide="user-round"></i>Parent</button>
+        <button type="button" data-parent-tab="student"><i data-lucide="users-round"></i>Student</button>
+        <button type="button" data-parent-tab="progress"><i data-lucide="sparkles"></i>Progress</button>
+        <button type="button" data-parent-tab="subscription"><i data-lucide="credit-card"></i>Subscription</button>
+        <button type="button" data-parent-tab="support"><i data-lucide="life-buoy"></i>Support</button>
+      </nav>
+      <button class="rail-yearly-promo hidden" type="button" id="rail-yearly-promo">
+        <span class="rail-promo-badge"><i data-lucide="sparkles"></i>Best value</span>
+        <strong>Go yearly, save more</strong>
+        <p id="rail-promo-copy">Switch to yearly and unlock bonus months.</p>
+        <span class="rail-promo-cta">Upgrade to yearly<i data-lucide="arrow-right"></i></span>
+      </button>
+    </header>
+
+    <form id="onboarding-form" class="flat-panel-shell" novalidate>
+      <section class="flat-panel active" data-parent-panel="parent">
+        <div class="flat-panel-head">
+          <div>
+            <p class="eyebrow">Parent</p>
+            <h2>Account Details</h2>
+          </div>
+          <span class="state-chip ok">Signed in</span>
+        </div>
+        <div class="field-grid">
+          <label>Parent full name<input type="text" name="parentName" placeholder="Your name" required></label>
+          <label>Email<input type="email" name="email" readonly required><small id="auth-domain-hint">Email is used for login and extension access.</small></label>
+        </div>
+        <div class="account-lifecycle-card">
+          <div class="account-lifecycle-head">
+            <div>
+              <p class="eyebrow">Security</p>
+              <h3>Account access</h3>
+            </div>
+            <span class="state-chip" id="account-action-status">Ready</span>
+          </div>
+          <div class="account-action-grid">
+            <div class="account-action-box">
+              <span>Change password</span>
+              <label>Current<input type="password" id="current-password" autocomplete="current-password"></label>
+              <label>New<input type="password" id="new-password" autocomplete="new-password"></label>
+              <button class="button ghost" type="button" id="change-password">Update password</button>
+            </div>
+            <div class="account-action-box">
+              <span>Change email</span>
+              <label>New email<input type="email" id="new-parent-email" placeholder="parent@gmail.com"></label>
+              <label>Code<input type="text" id="email-change-code" inputmode="numeric" maxlength="6" placeholder="123456"></label>
+              <div class="inline-actions">
+                <button class="button ghost" type="button" id="request-email-change">Send code</button>
+                <button class="button primary" type="button" id="confirm-email-change">Confirm</button>
+              </div>
+            </div>
+            <div class="account-action-box quiet">
+              <span>Close account</span>
+              <p>Creates an admin review item, locks extension access, and keeps billing records for support.</p>
+              <button class="text-link-button danger-link" type="button" id="request-delete-account">Request deletion</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="flat-panel" data-parent-panel="student">
+        <div class="flat-panel-head">
+          <div>
+            <p class="eyebrow">Student</p>
+            <h2>Child Profiles</h2>
+          </div>
+          <div class="student-panel-actions">
+            <button class="button primary" type="submit" id="finish">Save profile</button>
+            <button class="button ghost icon-button" type="button" id="add-child" aria-label="Add child"><i data-lucide="plus"></i></button>
+          </div>
+        </div>
+        <div id="child-list" class="flat-child-list">
+          <section class="child-profile flat-child-profile" data-child-index="0">
+            <div class="child-profile-head">
+              <span class="avatar">A</span>
+              <div>
+                <h3>Child 1</h3>
+              </div>
+              <button class="ghost-icon remove-child hidden" type="button" aria-label="Remove child"><i data-lucide="x"></i></button>
+            </div>
+            <div class="student-basics">
+              <label>Student<input type="text" name="studentName" placeholder="Child's name" required></label>
+              <label>Grade<select name="grade" required>
+                <option value="">Select grade</option>
+                <option>Grade 1</option>
+                <option>Grade 2</option>
+                <option>Grade 3</option>
+                <option>Grade 4</option>
+                <option selected>Grade 5</option>
+                <option>Grade 6</option>
+                <option>Grade 7</option>
+                <option>Grade 8</option>
+                <option>Grade 9</option>
+                <option>Grade 10</option>
+                <option>Grade 11</option>
+                <option>Grade 12</option>
+              </select></label>
+              <label>Reading level<input type="range" name="readingLevel" min="1" max="3" step="1" value="2"><span class="reading-scale"><b>Emerging</b><b>On track</b><b>Advanced</b></span></label>
+            </div>
+            <div class="goal-reward-block">
+              <div class="goal-reward-head">
+                <span>Learning goals and rewards</span>
+                <div class="goal-reward-actions">
+                  <label class="completed-toggle"><input type="checkbox" class="show-completed"><span>Completed</span></label>
+                  <button class="button ghost add-goal" type="button"><i data-lucide="plus"></i>Add</button>
+                </div>
+              </div>
+              <div class="goal-reward-list">
+                <div class="goal-reward-row">
+                  <label class="complete-check"><input type="checkbox" name="goalComplete"><span>Done</span></label>
+                  <label>Learning goal<input type="text" name="goal" placeholder="Example: Build confidence in math word problems"></label>
+                  <label>Reward<input type="text" name="reward" placeholder="Example: movie, shoes, game time"></label>
+                  <button class="ghost-icon delete-goal hidden" type="button" aria-label="Delete goal"><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <style>
+        .progress-list{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin:18px}
+        .progress-card{border:1px solid #e4ece9;border-radius:16px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:14px}
+        .pc-head h3{margin:0;font-size:16px;color:#004f48;font-weight:800}
+        .pc-head .pc-sub{color:#6a827d;font-size:12px;font-weight:600}
+        .progress-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .progress-tiles .metric{background:#f4f8f6;border-radius:10px;padding:9px 10px}
+        .progress-tiles .metric b{display:block;font-size:20px;color:#004f48;line-height:1.1}
+        .progress-tiles .metric span{font-size:10px;color:#6a827d;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+        .pc-section-label{display:block;font-size:11px;font-weight:800;color:#8a99a4;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+        .pc-week-bars{display:flex;gap:6px;align-items:flex-end}
+        .pc-day{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+        .pc-day-track{width:100%;height:44px;background:#f0f5f2;border-radius:6px;display:flex;align-items:flex-end;overflow:hidden}
+        .pc-day-track span{width:100%;background:linear-gradient(180deg,#2fa877,#0f6e56);border-radius:6px 6px 0 0}
+        .pc-day small{font-size:10px;color:#9aa7a4;font-weight:700}
+        .pc-quizzes{display:grid;gap:6px}
+        .pc-quiz{border:1px solid #eef3f1;border-radius:10px;padding:8px 10px;background:#fbfdfc}
+        .pc-quiz>summary{list-style:none;cursor:pointer;display:block}
+        .pc-quiz>summary::-webkit-details-marker{display:none}
+        .pc-quiz-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+        .pc-quiz-title{font-size:13px;font-weight:700;color:#22403a;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .pc-quiz-score{font-size:12px;font-weight:800;white-space:nowrap}
+        .pc-quiz-score.good{color:#0f8a4f}.pc-quiz-score.ok{color:#b7791f}.pc-quiz-score.low{color:#c0453d}
+        .pc-review-tag{display:inline-block;margin-top:5px;font-size:11px;font-weight:800;color:#b7791f;background:#fff6df;border-radius:999px;padding:2px 8px}
+        .pc-missed{list-style:none;margin:8px 0 0;padding:8px 0 0;border-top:1px dashed #e0e8e4;display:grid;gap:8px}
+        .pc-missed li{display:grid;gap:2px;font-size:12px}
+        .pc-missed .mq-q{color:#22403a;font-weight:700}
+        .pc-missed .mq-a{color:#4a5b56}
+        .pc-missed .mq-a b{color:#0f6e56}
+        .pc-missed .mq-c{color:#9aa7a4}
+        .pc-quiz-empty{font-size:12px;color:#8a99a4;font-weight:600;padding:6px 2px}
+        .progress-empty{color:#6a827d;font-weight:600;padding:18px;text-align:center;border:1px dashed #d4e0dc;border-radius:14px}
+      </style>
+      <section class="flat-panel" data-parent-panel="progress">
+        <div class="flat-panel-head">
+          <div>
+            <p class="eyebrow">Progress</p>
+            <h2>Learning activity</h2>
+          </div>
+          <span class="state-chip" id="progress-plan-chip">—</span>
+        </div>
+        <div class="progress-list" id="progress-list">
+          <div class="progress-empty">Your child's activity from the KiddieGPT extension will show here.</div>
+        </div>
+      </section>
+
+      <section class="flat-panel" data-parent-panel="subscription" id="subscription">
+        <div class="subscription-main" id="subscription-main">
+          <div class="flat-panel-head">
+            <div>
+              <p class="eyebrow">Subscription</p>
+              <h2 id="subscription-title">Choose a family plan</h2>
+            </div>
+            <span class="state-chip warning" id="payment-state">Payment pending</span>
+          </div>
+          <div class="current-package-card hidden" id="current-package-card">
+            <div class="cpk-left">
+              <span class="cpk-eyebrow">Your plan</span>
+              <strong id="current-package-name">Family Monthly</strong>
+              <ul class="cpk-facts" id="current-package-facts"></ul>
+              <p id="current-package-note">Your subscription is active. Child profiles and extension access stay unlocked.</p>
+            </div>
+            <div class="cpk-right" id="current-package-upgrade">
+              <button class="button primary cpk-upgrade-btn" type="button" id="upgrade-yearly">Upgrade to yearly</button>
+              <div class="cpk-upgrade-detail" id="upgrade-offer" hidden></div>
+            </div>
+          </div>
+          <div class="plan-tile-grid" role="radiogroup" aria-label="Subscription plan">
+            <label class="plan-tile is-selected">
+              <input type="radio" name="planChoice" value="monthly" checked>
+              <span class="plan-radio"></span>
+              <strong data-plan-name="monthly">Monthly</strong>
+              <b data-plan-price="monthly">$19<span>/mo</span></b>
+              <small data-plan-note="monthly">Flexible monthly access for up to 3 children.</small>
+            </label>
+            <label class="plan-tile">
+              <input type="radio" name="planChoice" value="yearly">
+              <span class="plan-radio"></span>
+              <strong data-plan-name="yearly">Yearly</strong>
+              <b data-plan-price="yearly">$149<span>/yr</span></b>
+              <small data-plan-note="yearly">Save compared with monthly billing.</small>
+            </label>
+          </div>
+          <div class="subscription-actions">
+            <button class="button primary" type="button" id="mock-stripe">Open Stripe checkout</button>
+          </div>
+          <p class="subscription-fineprint">Need to make a billing change? You can <button class="text-link-button" type="button" id="update-payment-method">update payment method</button> or <button class="text-link-button" type="button" id="cancel-subscription">manage cancellation</button>.</p>
+        </div>
+
+        <div class="cancel-flow hidden" id="cancel-flow">
+          <div class="flat-panel-head">
+            <div>
+              <p class="eyebrow">Cancellation</p>
+              <h2>Before you cancel</h2>
+            </div>
+            <button class="button ghost" type="button" id="back-to-subscription"><i data-lucide="arrow-left"></i>Back</button>
+          </div>
+          <label>What is the main reason?
+            <select id="cancel-reason">
+              <option>Too expensive</option>
+              <option>Not using it enough</option>
+              <option>Child no longer needs it</option>
+              <option>Missing a feature</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <div class="save-offer" id="save-offer">
+            <span id="cancel-flow-label">Save offer</span>
+            <strong id="cancel-flow-title">50% off your next month</strong>
+            <p id="cancel-flow-copy">We will apply the discount automatically to the next invoice. No code is needed, and all child profiles, goals, rewards, and extension access stay active.</p>
+            <div class="subscription-actions">
+              <button class="button primary" type="button" id="accept-discount">Keep plan with 50% off</button>
+              <button class="button ghost danger" type="button" id="confirm-cancel">Continue cancellation</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <style>
+        .support-form { display: grid; gap: 12px; max-width: 620px; margin-inline: 18px; margin-top: 18px; }
+        .support-thread { margin-inline: 18px; margin-bottom: 24px; }
+        .support-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; color: #004f48; font-size: 13px; }
+        .support-form select { min-height: 46px; padding: 0 14px; border: 1px solid #cfe0dc; border-radius: 12px; background: #fff; font: inherit; width: 100%; box-sizing: border-box; }
+        .support-form textarea { min-height: 120px; padding: 12px; border: 1px solid #cfe0dc; border-radius: 12px; font: inherit; resize: vertical; }
+        .support-charcount { align-self: flex-end; font-size: 11px; font-weight: 700; color: #8ba09a; }
+        .support-charcount.at-limit { color: #b23a48; }
+        .support-form .button { justify-self: start; }
+        .support-status { font-size: 13px; font-weight: 600; min-height: 18px; }
+        .support-thread { margin-top: 20px; display: grid; gap: 12px; }
+        .support-msg { border: 1px solid #e4ece9; border-radius: 14px; padding: 14px 16px; background: #fff; }
+        .support-msg-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .support-msg-head b { color: #004f48; font-size: 13px; }
+        .support-msg-head .chip { font-size: 11px; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: #f4f8f6; color: #4f6b67; text-transform: uppercase; }
+        .support-msg p { margin: 4px 0; color: #33474a; font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+        .support-reply { margin-top: 8px; padding: 10px 12px; border-left: 3px solid #dce96a; background: #f9fbf1; border-radius: 0 10px 10px 0; }
+        .support-reply span { font-size: 11px; font-weight: 800; color: #6a827d; text-transform: uppercase; }
+      </style>
+      <section class="flat-panel" data-parent-panel="support">
+        <div class="flat-panel-head">
+          <div>
+            <p class="eyebrow">Support</p>
+            <h2>Contact us</h2>
+          </div>
+          <span class="state-chip" id="support-status-chip">Ready</span>
+        </div>
+        <div class="support-form">
+          <label>Topic
+            <select id="support-category">
+              <option>Billing</option>
+              <option>Login</option>
+              <option>Math tool</option>
+              <option>Extension</option>
+              <option selected>Other</option>
+            </select>
+          </label>
+          <label>Message
+            <textarea id="support-message" maxlength="300" placeholder="Tell us what's going on and we'll get back to you by email."></textarea>
+            <small class="support-charcount" id="support-charcount">0 / 300</small>
+          </label>
+          <button class="button primary" type="button" id="support-send">Send message</button>
+          <p class="support-status" id="support-status"></p>
+        </div>
+        <div class="support-thread" id="support-thread"></div>
+      </section>
+
+      <footer class="flat-status-bar" id="completion-panel">
+        <div>
+          <p class="eyebrow">Status</p>
+          <h2 id="completion-title">Waiting for payment</h2>
+          <p id="completion-text">Pay, add a child profile, then save the family profile. Subscription access updates automatically.</p>
+        </div>
+        <div class="flat-status-meta">
+          <span>Children <strong id="preview-children">1 profile</strong></span>
+          <span>Access <strong id="preview-access">Locked</strong></span>
+          <span>Plan <strong id="preview-subscription">Pending</strong></span>
+        </div>
+        <div class="launch-actions">
+          <a class="get-ext-cta" href="https://chromewebstore.google.com/" target="_blank" rel="noopener">
+            <i data-lucide="chrome"></i>
+            <span><b>Get the extension</b><small>Add KiddieGPT to Chrome</small></span>
+            <i data-lucide="arrow-right" class="cta-arrow"></i>
+          </a>
+        </div>
+      </footer>
+    </form>
+  </main>
+
+  <template id="child-template">
+    <section class="child-profile flat-child-profile">
+      <div class="child-profile-head">
+        <span class="avatar">N</span>
+        <div>
+          <h3>Child</h3>
+        </div>
+        <button class="ghost-icon remove-child" type="button" aria-label="Remove child"><i data-lucide="x"></i></button>
+      </div>
+      <div class="student-basics">
+        <label>Student<input type="text" name="studentName" required></label>
+        <label>Grade<select name="grade" required>
+          <option value="">Select grade</option>
+          <option>Grade 1</option>
+          <option>Grade 2</option>
+          <option>Grade 3</option>
+          <option>Grade 4</option>
+          <option>Grade 5</option>
+          <option>Grade 6</option>
+          <option>Grade 7</option>
+          <option>Grade 8</option>
+          <option>Grade 9</option>
+          <option>Grade 10</option>
+          <option>Grade 11</option>
+          <option>Grade 12</option>
+        </select></label>
+        <label>Reading level<input type="range" name="readingLevel" min="1" max="3" step="1" value="2"><span class="reading-scale"><b>Emerging</b><b>On track</b><b>Advanced</b></span></label>
+      </div>
+      <div class="goal-reward-block">
+        <div class="goal-reward-head">
+          <span>Learning goals and rewards</span>
+          <div class="goal-reward-actions">
+            <label class="completed-toggle"><input type="checkbox" class="show-completed"><span>Completed</span></label>
+            <button class="button ghost add-goal" type="button"><i data-lucide="plus"></i>Add</button>
+          </div>
+        </div>
+        <div class="goal-reward-list">
+          <div class="goal-reward-row">
+            <label class="complete-check"><input type="checkbox" name="goalComplete"><span>Done</span></label>
+            <label>Learning goal<input type="text" name="goal" placeholder="Example: Reading confidence"></label>
+            <label>Reward<input type="text" name="reward" placeholder="Example: Movie night"></label>
+            <button class="ghost-icon delete-goal hidden" type="button" aria-label="Delete goal"><i data-lucide="trash-2"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <style>
+    .get-ext-cta {
+      display: inline-flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border-radius: 16px; text-decoration: none;
+      background: linear-gradient(135deg, #004f48, #0a6b60); color: #fff;
+      box-shadow: 0 10px 24px rgba(0, 79, 72, .22);
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .get-ext-cta:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(0, 79, 72, .3); }
+    .get-ext-cta > i:first-child { width: 26px; height: 26px; color: #dce96a; flex: 0 0 auto; }
+    .get-ext-cta span { display: flex; flex-direction: column; line-height: 1.25; }
+    .get-ext-cta b { font-size: 14px; font-weight: 800; }
+    .get-ext-cta small { font-size: 11px; opacity: .82; font-weight: 500; }
+    .get-ext-cta .cta-arrow { width: 18px; height: 18px; margin-left: 2px; opacity: .9; transition: transform .15s ease; }
+    .get-ext-cta:hover .cta-arrow { transform: translateX(3px); }
+    .upgrade-offer { margin-top: 8px; font-size: 12px; color: #4f6b67; font-weight: 600; text-align: right; line-height: 1.5; }
+    .upgrade-offer b { color: #004f48; }
+    .upgrade-offer .strike { color: #9aa7a4; text-decoration: line-through; font-weight: 500; margin-right: 4px; }
+    .upgrade-modal-backdrop {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      background: rgba(2, 34, 30, .5); backdrop-filter: blur(4px);
+    }
+    .upgrade-modal-backdrop[hidden] { display: none; }
+    .upgrade-modal {
+      width: 100%; max-width: 400px; background: #fff; border-radius: 22px;
+      padding: 26px 24px 22px; box-shadow: 0 30px 70px rgba(0,0,0,.28);
+      position: relative; text-align: center;
+      animation: upgradePop .22s cubic-bezier(.2,.9,.3,1.2);
+    }
+    @keyframes upgradePop { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+    .upgrade-modal-close {
+      position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
+      border: none; background: #f2f6f4; border-radius: 50%; color: #6a827d;
+      font-size: 18px; cursor: pointer; line-height: 1;
+    }
+    .upgrade-modal-close:hover { background: #e6ede9; }
+    .upgrade-modal-icon {
+      width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 16px;
+      background: linear-gradient(135deg, #004f48, #0a6b60);
+      display: flex; align-items: center; justify-content: center; color: #dce96a;
+    }
+    .upgrade-modal-icon i { width: 26px; height: 26px; }
+    .upgrade-modal h2 { margin: 0 0 4px; font-size: 20px; color: #063a34; font-weight: 800; }
+    .upgrade-modal-sub { margin: 0 0 16px; font-size: 13px; color: #6a827d; }
+    .upgrade-perks { list-style: none; margin: 0 0 16px; padding: 0; text-align: left; display: grid; gap: 10px; }
+    .upgrade-perks li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: #23413b; line-height: 1.4; }
+    .upgrade-perks li i { color: #0f6e56; flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; }
+    .upgrade-price-row {
+      display: flex; align-items: baseline; justify-content: center; gap: 8px;
+      padding: 14px; margin-bottom: 12px; border-radius: 14px; background: #f4f8f6;
+    }
+    .upgrade-price-row .now { font-size: 26px; font-weight: 800; color: #004f48; }
+    .upgrade-price-row .now span { font-size: 14px; font-weight: 700; }
+    .upgrade-price-row .was { font-size: 15px; color: #9aa7a4; text-decoration: line-through; }
+    .upgrade-price-row .save { font-size: 11px; font-weight: 800; color: #0f6e56; background: #e4f3ec; padding: 3px 8px; border-radius: 999px; }
+    .upgrade-note {
+      margin: 0 0 16px; font-size: 12px; color: #8a5a00; background: #fdf6e3;
+      border-radius: 10px; padding: 8px 12px; font-weight: 600;
+    }
+    .upgrade-note[hidden] { display: none; }
+    .upgrade-modal-actions { display: flex; gap: 10px; }
+    .upgrade-modal-actions .button { flex: 1; justify-content: center; }
+  </style>
+  <div class="upgrade-modal-backdrop" id="upgrade-modal" hidden>
+    <div class="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+      <button class="upgrade-modal-close" id="upgrade-modal-close" aria-label="Close">&times;</button>
+      <div class="upgrade-modal-icon"><i data-lucide="sparkles"></i></div>
+      <h2 id="upgrade-modal-title">Upgrade to Yearly</h2>
+      <p class="upgrade-modal-sub">Here's exactly what you'll get.</p>
+      <ul class="upgrade-perks" id="upgrade-perks"></ul>
+      <div class="upgrade-price-row" id="upgrade-price-row"></div>
+      <p class="upgrade-note" id="upgrade-modal-note" hidden></p>
+      <div class="upgrade-modal-actions">
+        <button class="button ghost" type="button" id="upgrade-cancel">Not now</button>
+        <button class="button primary" type="button" id="upgrade-confirm">Confirm upgrade</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/webapp/webapp.js?v=106"></script>
+</body>
+</html>

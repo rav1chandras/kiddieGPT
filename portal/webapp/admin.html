@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/webapp.css?v=106">
+  <style>
+    tr.family-row { cursor: pointer; }
+    tr.family-row .expand-cell { width: 26px; color: #6a827d; }
+    tr.family-row .expand-cell i { transition: transform .15s ease; }
+    tr.family-row.expanded .expand-cell i { transform: rotate(90deg); }
+    tr.family-detail-row > td { background: #f6faf8; padding: 14px 18px; }
+    .family-detail-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .family-detail-kid { border: 1px solid #e4ece9; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; background: #fff; }
+    .family-detail-kid strong { color: #004f48; font-size: 14px; }
+    .family-detail-kid span { color: #5f7772; font-size: 12px; font-weight: 600; }
+    .family-detail-empty { color: #6a827d; font-weight: 600; }
+  </style>
+</head>
+<body data-page="admin">
+  <section class="admin-auth-gate" id="admin-auth-gate" hidden>
+    <form class="admin-auth-card" id="admin-login-form">
+      <div class="admin-auth-brand">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </div>
+      <h1>Admin sign in</h1>
+      <p>Use your operator account to manage families, billing, AI access, and lifecycle emails.</p>
+      <label>Email
+        <input type="email" name="email" autocomplete="username" placeholder="admin@yourdomain.com" required>
+      </label>
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password" placeholder="Your password" required>
+      </label>
+      <button class="button primary" type="submit">Sign in</button>
+      <div class="auth-demo-grid" aria-label="Demo accounts">
+        <button class="auth-demo-tile" type="button" data-admin-demo-login>
+          <i data-lucide="layout-dashboard"></i>
+          <span>Admin demo</span>
+          <strong>admin@kiddiegpt.demo</strong>
+        </button>
+        <a class="auth-demo-tile" href="/index.html">
+          <i data-lucide="user-round"></i>
+          <span>Parent demo</span>
+          <strong>parent.kiddiegpt@gmail.com</strong>
+        </a>
+      </div>
+      <small id="admin-login-error" role="alert"></small>
+    </form>
+  </section>
+  <main class="admin-console-shell founder-console alloce-admin">
+    <aside class="admin-left-nav">
+      <a class="admin-brand" href="/admin.html">
+        <img src="/icons/logo-mascot.png" alt="">
+        <span>KiddieGPT</span>
+      </a>
+      <span class="admin-nav-section">Main</span>
+      <nav aria-label="Admin screens">
+        <button class="active" type="button" data-admin-view="overview"><i data-lucide="layout-dashboard"></i>Command</button>
+        <button type="button" data-admin-view="families"><i data-lucide="users-round"></i>Families</button>
+        <button type="button" data-admin-view="billing"><i data-lucide="credit-card"></i>Billing</button>
+        <button type="button" data-admin-view="plans"><i data-lucide="badge-dollar-sign"></i>Plans</button>
+        <button type="button" data-admin-view="ai-usage"><i data-lucide="brain"></i>AI &amp; Usage</button>
+        <button type="button" data-admin-view="emails"><i data-lucide="mail"></i>Lifecycle</button>
+        <button type="button" data-admin-view="support"><i data-lucide="messages-square"></i>Support<span class="nav-badge" id="support-nav-badge" hidden>0</span></button>
+        <button type="button" data-admin-view="logs"><i data-lucide="list-checks"></i>Logs</button>
+      </nav>
+      <div class="admin-side-card">
+        <span>Stripe test mode</span>
+        <strong id="side-billing-mode">Connected</strong>
+      </div>
+      <a class="admin-nav-link" href="/index.html"><i data-lucide="user-plus"></i>Parent portal</a>
+    </aside>
+
+    <section class="admin-workspace">
+      <header class="admin-topbar founder-topbar">
+        <div>
+          <p class="eyebrow">KiddieGPT Admin</p>
+          <h1 id="admin-title">Command</h1>
+        </div>
+        <div class="admin-actions">
+          <span class="admin-live-status" id="admin-live-status">Ready</span>
+          <button class="button ghost" type="button" id="seed-data"><i data-lucide="database"></i>Demo data</button>
+          <a class="button primary" href="/index.html"><i data-lucide="plus"></i>New family</a>
+        </div>
+      </header>
+
+      <section class="admin-view active" data-admin-panel="overview">
+        <div class="admin-stat-grid founder-kpis">
+          <article><span>Monthly revenue</span><strong id="monthly-revenue">$0</strong><small id="revenue-note">Across active families</small></article>
+          <article><span>Active families</span><strong id="active-subs">0</strong><small id="active-note">Subscribed and unlocked</small></article>
+          <article><span>Students</span><strong id="student-count">0</strong><small id="student-note">Profiles using tools</small></article>
+          <article><span>Needs action</span><strong id="action-count">0</strong><small id="action-note">Operator queue</small></article>
+        </div>
+
+        <div class="founder-overview-grid">
+          <article class="admin-table-card founder-daily-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Today</p><h2>Operator action queue</h2></div>
+              <button class="table-action" type="button" data-admin-view-shortcut="families">Review all</button>
+            </div>
+            <div class="action-list" id="daily-action-list"></div>
+          </article>
+
+          <article class="admin-table-card health-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Health</p><h2>Business pulse</h2></div>
+              <span class="state-chip active" id="business-health-chip">Healthy</span>
+            </div>
+            <div class="pulse-grid">
+              <div><span>Activation</span><strong id="activation-rate">0%</strong><small>Paid families with students</small></div>
+              <div><span>Engagement</span><strong id="engagement-rate">0%</strong><small>Students active this week</small></div>
+              <div><span>Churn risk</span><strong id="churn-risk">0</strong><small>Families needing touch</small></div>
+              <div><span>Failed payments</span><strong id="failed-payment-count">0</strong><small>Billing follow-up</small></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Autopilot</p><h2>Automation rules</h2></div>
+            <div class="admin-filters">
+              <span class="state-chip" id="autopilot-status">Ready</span>
+              <button class="table-action" type="button" id="run-sweep-now"><i data-lucide="wand-sparkles"></i>Run sweep now</button>
+            </div>
+          </div>
+          <div class="pricing-section-grid">
+            <label>Suspend access after (days)<input type="number" id="rule-suspend-days" min="1" step="1"><small>Unpaid dunning before auto-suspend.</small></label>
+            <label>Win-back after (days)<input type="number" id="rule-winback-days" min="1" step="1"><small>Days post-cancel to email a win-back.</small></label>
+            <label>Convert nudge days<input type="text" id="rule-nudge-days" placeholder="1,3,7"><small>When to nudge unconverted signups.</small></label>
+            <label class="ai-toggle-field"><input type="checkbox" id="rule-weekly-summary"><span>Weekly summary emails</span><small>Send opted-in parents a weekly recap.</small></label>
+            <div class="ai-settings-actions"><button class="button primary" type="button" id="save-autopilot-rules">Save rules</button></div>
+          </div>
+        </article>
+
+        <div class="founder-two-col">
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Pipeline</p><h2>Parent onboarding funnel</h2></div>
+            </div>
+            <div class="funnel-list" id="funnel-list"></div>
+          </article>
+
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Recent</p><h2>Latest families</h2></div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Status</th><th>Next step</th></tr></thead>
+                <tbody id="overview-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="admin-view" data-admin-panel="families">
+        <div class="admin-stat-grid privacy-kpis">
+          <article><span>Pending deletions</span><strong id="delete-request-count">0</strong><small>Parent-initiated deletions</small></article>
+          <article><span>Anonymized</span><strong id="anonymized-count">0</strong><small>Local PII removed</small></article>
+          <article><span>Locked by request</span><strong id="delete-locked-count">0</strong><small>Access blocked while pending</small></article>
+          <article><span>Next deleted email</span><strong id="next-deleted-email">deleted_user_00001</strong><small>@deleted.local</small></article>
+        </div>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Privacy</p><h2>Account deletion requests</h2></div>
+            <span class="state-chip ready" id="privacy-action-state">Ready</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Request date</th><th>Status</th><th>Billing references</th></tr></thead>
+              <tbody id="deletion-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div>
+              <p class="eyebrow">Accounts</p>
+              <h2>Families</h2>
+            </div>
+            <div class="admin-filters">
+              <input id="family-search" type="search" placeholder="Search parent, email, student">
+              <select id="status-filter" aria-label="Filter by status">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="paused">Paused</option>
+                <option value="cancel_scheduled">Cancel scheduled</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <label class="locked-filter"><input id="locked-filter" type="checkbox">Locked</label>
+              <label class="locked-filter"><input id="hide-deleted-filter" type="checkbox" checked>Hide deleted</label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+              <tbody id="family-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Policy</p><h2>Deletion handling checklist</h2></div>
+          </div>
+          <div class="rules-list" id="privacy-rules"></div>
+        </article>
+      </section>
+
+      <section class="admin-view" data-admin-panel="billing">
+        <div class="admin-stat-grid payment-kpis">
+          <article><span>Collected</span><strong id="payment-collected">$0</strong><small>Successful mock charges</small></article>
+          <article><span>Failed</span><strong id="payment-failed">$0</strong><small>Needs retry email</small></article>
+          <article><span>Refunded</span><strong id="payment-refunded">$0</strong><small>Customer saves lost</small></article>
+          <article><span>Stripe mode</span><strong id="payment-stripe-mode">Mock</strong><small>Developer status</small></article>
+        </div>
+
+        <div class="payment-table-toggle" role="tablist" aria-label="Payment tables">
+          <button class="active" type="button" data-payment-table="payments">Payments <span id="payment-toggle-payments">0</span></button>
+          <button type="button" data-payment-table="cancellations">Cancellation requests <span id="payment-toggle-cancellations">0</span></button>
+          <button type="button" data-payment-table="upgrades">Yearly upgrades <span id="payment-toggle-upgrades">0</span></button>
+          <button type="button" data-payment-table="cancelled">Cancelled <span id="payment-toggle-cancelled">0</span></button>
+        </div>
+        <article class="admin-table-card" data-payment-table-panel="payments">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Revenue ops</p><h2>Payments and refunds</h2></div>
+            <div class="admin-filters">
+              <input id="payment-search" type="search" placeholder="Search parent, email, payment ID">
+              <input id="payment-from" type="date" aria-label="Payment from date">
+              <input id="payment-to" type="date" aria-label="Payment to date">
+              <select id="payment-status-filter" aria-label="Filter payments by status">
+                <option value="all">All</option>
+                <option value="paid">Paid</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+                <option value="refunded">Refunded</option>
+                <option value="cancel_scheduled">Cancel scheduled</option>
+              </select>
+              <select id="payment-plan-filter" aria-label="Filter payments by plan">
+                <option value="all">All plans</option>
+                <option value="Family Monthly">Family Monthly</option>
+                <option value="Family Yearly">Family Yearly</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Parent</th><th>Plan</th><th>Amount</th><th>Status</th><th>Payment ID</th><th>Actions</th></tr></thead>
+              <tbody id="payment-table"></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="admin-table-card cancellation-request-card" data-payment-table-panel="cancellations" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Scheduled cancellation</p><h2>Cancellation requests</h2></div>
+            <div class="admin-filters date-filter-row">
+              <input id="cancellation-from" type="date" aria-label="Cancellation request from date">
+              <input id="cancellation-to" type="date" aria-label="Cancellation request to date">
+              <span class="state-chip warning" id="cancellation-request-count">0 open</span>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Access until</th><th>Stripe sub</th><th>Status</th></tr></thead>
+              <tbody id="cancellation-request-table"></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="admin-table-card yearly-upgrade-card" data-payment-table-panel="upgrades" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Scheduled billing</p><h2>Yearly upgrades</h2></div>
+            <div class="admin-filters date-filter-row">
+              <input id="upgrade-from" type="date" aria-label="Yearly upgrade from date">
+              <input id="upgrade-to" type="date" aria-label="Yearly upgrade to date">
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Current monthly</th><th>Yearly subscription</th><th>Monthly ends</th><th>Next yearly renewal</th><th>Access</th></tr></thead>
+              <tbody id="yearly-upgrade-table"></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="admin-table-card cancelled-subscriptions-card" data-payment-table-panel="cancelled" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Closed subscriptions</p><h2>Cancelled subscriptions</h2></div>
+            <div class="admin-filters date-filter-row">
+              <input id="cancelled-from" type="date" aria-label="Cancelled from date">
+              <input id="cancelled-to" type="date" aria-label="Cancelled to date">
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Cancelled</th><th>Access ended</th><th>Stripe sub</th></tr></thead>
+              <tbody id="cancelled-subscription-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Exceptions</p><h2>Complaint save — next-renewal discount</h2></div>
+            <span class="state-chip" id="exception-status">Ready</span>
+          </div>
+          <div class="exception-form-row">
+            <label class="ex-family">Family<select id="exception-family"></select></label>
+            <label class="ex-amount">Discount ($)<input type="number" id="exception-amount" min="1" step="0.5" value="10"></label>
+            <label class="ex-reason">Reason<input type="text" id="exception-reason" placeholder="Example: complaint make-good"></label>
+            <button class="button primary" type="button" id="apply-exception">Apply discount</button>
+          </div>
+          <small class="ex-hint">Applied automatically to the next Stripe invoice.</small>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Family</th><th>Type</th><th>Amount</th><th>Reason</th><th>Date</th></tr></thead>
+              <tbody id="exception-log"></tbody>
+            </table>
+          </div>
+        </article>
+
+      </section>
+
+      <section class="admin-view" data-admin-panel="plans">
+        <form class="plan-config-stack pricing-form" id="pricing-form">
+          <article class="admin-table-card pricing-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Stripe</p><h2>Plan setup</h2></div>
+            </div>
+            <div class="pricing-section-grid">
+              <label class="plan-toggle-field">Plan type
+                <span class="segmented-plan-toggle" role="radiogroup" aria-label="Plan type">
+                  <input type="radio" name="planSetupKey" value="monthly" id="plan-setup-monthly" checked>
+                  <label for="plan-setup-monthly">Monthly</label>
+                  <input type="radio" name="planSetupKey" value="yearly" id="plan-setup-yearly">
+                  <label for="plan-setup-yearly">Yearly</label>
+                </span>
+              </label>
+              <label>Price ($)<input type="number" name="planAmount" min="1" step="0.01" required></label>
+              <label>Stripe ID<input type="text" name="planStripePriceId" placeholder="price_..."></label>
+              <label>Family member count<input type="number" name="planFamilyMemberCount" min="1" step="1" required></label>
+            </div>
+          </article>
+
+          <article class="admin-table-card pricing-card promotion-override-section">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Promotion</p><h2>Promotion override</h2></div>
+            </div>
+            <div class="pricing-section-grid">
+              <label class="promo-plan-label">Active plan
+                <select name="promoPlanKey" class="promo-plan-select" aria-label="Select active plan for promotion">
+                  <option value="monthly">Monthly plan</option>
+                  <option value="yearly">Yearly plan</option>
+                </select>
+              </label>
+              <label>Discount price ($)<input type="number" name="promoPrice" min="0" step="0.01" placeholder="14.99"></label>
+              <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
+              <label>Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
+            </div>
+          </article>
+
+          <article class="admin-table-card pricing-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Yearly upgrade</p><h2>Monthly → yearly offer</h2></div>
+            </div>
+            <div class="pricing-section-grid">
+              <label>Bonus months<input type="number" name="upgradeBonusMonths" min="0" step="1" placeholder="3"><small>Extra months on top of 12 (plus prorated remaining days).</small></label>
+              <label>Upgrade discount (%)<input type="number" name="upgradeDiscountPercent" min="0" max="90" step="1" placeholder="0"><small>Discount off the yearly price for upgraders.</small></label>
+              <label>Offer note<input type="text" name="upgradeNote" placeholder="Example: July 4th sale — limited time"><small>Shown to monthly parents on the upgrade offer.</small></label>
+              <button class="button primary" type="submit">Save plan, promotion &amp; upgrade offer</button>
+            </div>
+          </article>
+        </form>
+
+        <article class="admin-table-card pricing-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Entitlements</p><h2>Access rules</h2></div>
+          </div>
+          <div class="rules-list" id="entitlement-rules"></div>
+        </article>
+      </section>
+
+      <section class="admin-view" data-admin-panel="ai-usage">
+        <div class="admin-stat-grid ai-control-kpis">
+          <article><span>OpenAI key</span><strong id="ai-key-status">Not set</strong><small id="ai-key-mask">Add server key</small></article>
+          <article><span>Math limit</span><strong id="ai-math-limit">20/day</strong><small>Math Step Tutor per student</small></article>
+          <article><span>Voice limit</span><strong id="ai-voice-limit">10 min/day</strong><small>Tutor voice per student</small></article>
+          <article><span>Voice tools</span><strong id="ai-voice-status">Enabled</strong><small id="ai-updated-at">Not saved</small></article>
+        </div>
+
+        <form class="admin-table-card ai-settings-card" id="ai-settings-form">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">AI controls</p><h2>Model access and usage limits</h2></div>
+            <span class="state-chip ready" id="ai-settings-state">Ready</span>
+          </div>
+          <div class="pricing-section-grid ai-settings-grid">
+            <label>OpenAI API key
+              <input type="password" name="openaiApiKey" placeholder="sk-..." autocomplete="off">
+              <small>Stored server-side and used by the extension proxy. Leave blank to keep the current key.</small>
+            </label>
+            <label>OpenAI model
+              <input type="text" name="openaiModel" placeholder="gpt-4.1" autocomplete="off">
+              <small>Model the tutor proxy uses for responses.</small>
+            </label>
+            <label>Math problems per user/day
+              <input type="number" name="mathProblemsPerUserDaily" min="0" step="1" required>
+              <small>Use 0 only if you want to block Math Step Tutor.</small>
+            </label>
+            <label>Tutor voice minutes per user/day
+              <input type="number" name="tutorVoiceMinutesPerUserDaily" min="0" step="1" required>
+              <small>Daily cap for spoken explanations.</small>
+            </label>
+            <label class="ai-toggle-field">
+              <input type="checkbox" name="tutorVoiceEnabled" checked>
+              <span>Tutor voice enabled</span>
+              <small>Turn off voice while keeping text tutoring active.</small>
+            </label>
+            <div class="ai-settings-actions">
+              <button class="button primary" type="submit">Save AI controls</button>
+              <button class="table-action danger" type="button" id="clear-openai-key">Clear key</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="founder-two-col">
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Learning</p><h2>Tool adoption</h2></div>
+            </div>
+            <div class="tool-usage-grid" id="tool-usage-grid"></div>
+          </article>
+
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Intervention</p><h2>Students needing attention</h2></div>
+            </div>
+            <div class="action-list" id="student-risk-list"></div>
+          </article>
+        </div>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Usage</p><h2>Student activity</h2></div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Student</th><th>Grade</th><th>Math today</th><th>Voice today</th><th>Favorite tool</th><th>Last activity</th></tr></thead>
+              <tbody id="usage-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">AI usage</p><h2>Tokens &amp; abuse</h2></div>
+            <span class="state-chip" id="ai-usage-flags">0 flagged</span>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Student</th><th>Last used</th><th>Avg daily tokens</th><th>Flag</th></tr></thead>
+              <tbody id="ai-usage-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="admin-view" data-admin-panel="emails">
+        <div class="admin-split">
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Messaging</p><h2>Email templates</h2></div>
+              <button class="table-action" type="button" data-broadcast-template="Weekly progress">Send weekly summary</button>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead><tr><th>Template</th><th>Audience</th><th>Trigger</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="email-table"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Lifecycle</p><h2>Automated journeys</h2></div>
+            </div>
+            <div class="rules-list" id="journey-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="admin-view" data-admin-panel="support">
+        <div class="support-shell">
+          <aside class="support-sidebar">
+            <div class="support-filters">
+              <div class="support-pills">
+                <button type="button" class="support-pill active" data-support-filter="unread">Unread</button>
+                <button type="button" class="support-pill" data-support-filter="all">All</button>
+              </div>
+              <input type="search" id="support-search" placeholder="Search parent name or email">
+              <select id="support-topic-filter" aria-label="Filter by topic">
+                <option value="all">All topics</option>
+                <option value="Billing">Billing</option>
+                <option value="Login">Login</option>
+                <option value="Math tool">Math tool</option>
+                <option value="Extension">Extension</option>
+                <option value="Other">Other</option>
+              </select>
+              <div class="support-date-range">
+                <input type="date" id="support-from" aria-label="From date">
+                <input type="date" id="support-to" aria-label="To date">
+              </div>
+            </div>
+            <div class="support-list" id="support-list">
+              <div class="support-list-empty">No messages yet.</div>
+            </div>
+          </aside>
+          <div class="support-conversation" id="support-conversation">
+            <div class="support-empty-conv"><i data-lucide="messages-square"></i><p>Select a conversation to view and reply.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-view" data-admin-panel="logs">
+        <div class="admin-stat-grid log-kpis">
+          <article><span>Audit events</span><strong id="log-count">0</strong><small>Latest retained actions</small></article>
+          <article><span>Billing actions</span><strong id="log-billing-count">0</strong><small>Refunds, credits, discounts</small></article>
+          <article><span>Email logs</span><strong id="log-email-count">0</strong><small>Sent or simulated emails</small></article>
+          <article><span>Monitor alerts</span><strong id="monitor-count">0</strong><small id="monitor-error-count">0 errors</small></article>
+        </div>
+
+        <article class="admin-table-card digest-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Weekly digest</p><h2>Issues grouped by type</h2></div>
+            <div class="admin-filters">
+              <span class="state-chip" id="digest-status">Ready</span>
+              <select id="digest-range" aria-label="Digest time window">
+                <option value="7" selected>Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+              <button class="table-action" type="button" id="digest-refresh"><i data-lucide="sparkles"></i>Refresh</button>
+            </div>
+          </div>
+          <div class="digest-stat-row" id="digest-stats"></div>
+          <div class="digest-ai" id="digest-ai" hidden></div>
+          <div class="digest-groups" id="digest-groups">
+            <div class="digest-empty">Loading digest…</div>
+          </div>
+        </article>
+
+        <details class="raw-feed">
+          <summary><i data-lucide="list"></i>Raw event feed <span class="raw-feed-note">Issues, monitoring, and audit trail — the full unfiltered stream</span></summary>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Issues</p><h2>Reported problems</h2></div>
+            <div class="admin-filters">
+              <span class="state-chip warning" id="issue-open-count">0 open</span>
+              <select id="issue-type-filter" aria-label="Filter issues by type">
+                <option value="all">All types</option>
+                <option value="login_failed">Login failed</option>
+                <option value="api_key">API / AI not working</option>
+                <option value="math_feedback">Math "didn't work"</option>
+                <option value="extension_error">Extension error</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th>Who</th><th>Detail</th><th>Status</th><th></th></tr></thead>
+              <tbody id="issues-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Monitoring</p><h2>Auth, billing, and email alerts</h2></div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Date</th><th>Severity</th><th>Area</th><th>Message</th><th>Actor</th></tr></thead>
+              <tbody id="monitor-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Audit trail</p><h2>Logs by date and user</h2></div>
+            <div class="admin-filters">
+              <input id="log-search" type="search" placeholder="Search user, action, email">
+              <select id="log-type-filter" aria-label="Filter logs">
+                <option value="all">All logs</option>
+                <option value="billing">Billing</option>
+                <option value="email">Email</option>
+                <option value="stripe">Stripe</option>
+                <option value="account">Account</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>User</th><th>Action</th><th>Parent / email</th><th>Details</th></tr></thead>
+              <tbody id="logs-table"></tbody>
+            </table>
+          </div>
+        </article>
+        </details>
+
+      </section>
+    </section>
+  </main>
+
+  <script src="/webapp/webapp.js?v=106"></script>
+</body>
+</html>
