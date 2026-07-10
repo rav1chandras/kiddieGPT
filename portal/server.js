@@ -343,9 +343,79 @@ function ensureDb() {
   }
 }
 
-function readDb() {
+// --- Persistence driver ------------------------------------------------------
+// DB_DRIVER=file (default): the atomic JSON-file DB used by local Docker — this
+//   path is unchanged.
+// DB_DRIVER=postgres: store the whole DB as a single JSONB row, for serverless
+//   hosts (Vercel) where the filesystem is ephemeral. readDb/writeDb stay
+//   synchronous by serving from an in-memory cache that initPersistence()
+//   preloads; writes are mirrored to Postgres and can be awaited via
+//   flushPending() before a serverless response finishes.
+const DB_DRIVER = (process.env.DB_DRIVER || "file").toLowerCase();
+let pgPool = null;
+let stateCache = null;
+let pgWriteChain = Promise.resolve();
+
+function pgSslFor(connectionString) {
+  if (/sslmode=disable/.test(connectionString)) return false;
+  if (/@(localhost|127\.0\.0\.1)[:/]/.test(connectionString)) return false;
+  return { rejectUnauthorized: false };
+}
+
+async function initPersistence() {
+  if (DB_DRIVER !== "postgres") { ensureDb(); return; }
+  const { Pool } = require("pg"); // lazy require: only the postgres path needs it
+  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DB_DRIVER=postgres but POSTGRES_URL (or DATABASE_URL) is not set");
+  pgPool = new Pool({ connectionString, ssl: pgSslFor(connectionString), max: Number(process.env.PG_POOL_MAX || 3) });
+  await pgPool.query(
+    "CREATE TABLE IF NOT EXISTS app_state (id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK (id = 1))"
+  );
+  const { rows } = await pgPool.query("SELECT data FROM app_state WHERE id = 1");
+  if (rows.length) {
+    stateCache = rows[0].data;
+  } else {
+    stateCache = defaultDb();
+    await pgPool.query("INSERT INTO app_state (id, data) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING", [JSON.stringify(stateCache)]);
+  }
+}
+
+function persistReadRaw() {
+  if (DB_DRIVER === "postgres") {
+    if (!stateCache) throw new Error("Persistence not initialised — call initPersistence() first");
+    return JSON.parse(JSON.stringify(stateCache)); // fresh clone each read, mirroring the file driver
+  }
   ensureDb();
-  const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+  return JSON.parse(fs.readFileSync(dbPath, "utf8"));
+}
+
+function persistWriteRaw(db) {
+  if (DB_DRIVER === "postgres") {
+    stateCache = db;
+    const snapshot = JSON.stringify(db);
+    pgWriteChain = pgWriteChain
+      .then(() => pgPool.query(
+        "INSERT INTO app_state (id, data, updated_at) VALUES (1, $1::jsonb, now()) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()",
+        [snapshot]
+      ))
+      .catch((error) => console.error("Postgres write failed:", error.message));
+    return;
+  }
+  fs.mkdirSync(dataDir, { recursive: true });
+  // Write to a temp file then atomically rename so a crash mid-write can never
+  // leave a truncated/corrupt database on disk.
+  const tmpPath = `${dbPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
+  fs.renameSync(tmpPath, dbPath);
+}
+
+// Await any queued Postgres write (no-op for the file driver).
+async function flushPending() {
+  await pgWriteChain;
+}
+
+function readDb() {
+  const db = persistReadRaw();
   let changed = false;
   db.pricing = normalisePricing(db.pricing);
   db.aiSettings = normaliseAiSettings(db.aiSettings);
@@ -411,12 +481,7 @@ function readDb() {
 }
 
 function writeDb(db) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  // Write to a temp file then atomically rename so a crash mid-write can never
-  // leave a truncated/corrupt database on disk.
-  const tmpPath = `${dbPath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
-  fs.renameSync(tmpPath, dbPath);
+  persistWriteRaw(db);
 }
 
 function mutateDb(updater) {
@@ -4555,14 +4620,48 @@ app.post("/api/admin/run-sweep", requireAdmin, async (req, res) => {
   res.json({ ok: true, ...summary });
 });
 
-app.listen(port, () => {
-  console.log(`KiddieGPT portal listening on ${port}`);
-  console.log(`KiddieGPT persistent data: ${dbPath}`);
-  if (AUTOPILOT_ENABLED) {
-    runLifecycleSweep("startup").catch((error) => console.error("Sweep failed:", error.message));
-    setInterval(() => {
-      runLifecycleSweep("cron").catch((error) => console.error("Sweep failed:", error.message));
-    }, Math.max(5, SWEEP_INTERVAL_MINUTES) * 60000);
-    console.log(`Autopilot on — lifecycle sweep every ${SWEEP_INTERVAL_MINUTES} min`);
+// Serverless hosts (Vercel) have no long-lived process, so the lifecycle sweep
+// runs via a scheduled Cron hit to this endpoint instead of setInterval. Guard
+// it with CRON_SECRET (sent by Vercel Cron as an Authorization: Bearer header).
+app.all("/api/cron/sweep", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const provided = (req.get("authorization") || "").replace(/^Bearer\s+/i, "") ||
+      req.get("x-cron-secret") || req.query.secret || "";
+    if (provided !== secret) return res.status(401).json({ error: "unauthorized" });
+  }
+  try {
+    const summary = await runLifecycleSweep("cron");
+    await flushPending();
+    res.json({ ok: true, ...summary });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
+
+// Start a long-lived server only when run directly (local/Docker). When the file
+// is imported by the serverless entry (api/index.js), we export the app instead
+// and let the platform invoke it per request.
+async function startServer() {
+  await initPersistence();
+  app.listen(port, () => {
+    console.log(`KiddieGPT portal listening on ${port}`);
+    console.log(`KiddieGPT persistence: ${DB_DRIVER === "postgres" ? "postgres" : dbPath}`);
+    if (AUTOPILOT_ENABLED) {
+      runLifecycleSweep("startup").catch((error) => console.error("Sweep failed:", error.message));
+      setInterval(() => {
+        runLifecycleSweep("cron").catch((error) => console.error("Sweep failed:", error.message));
+      }, Math.max(5, SWEEP_INTERVAL_MINUTES) * 60000);
+      console.log(`Autopilot on — lifecycle sweep every ${SWEEP_INTERVAL_MINUTES} min`);
+    }
+  });
+}
+
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error("Startup failed:", error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { app, initPersistence, flushPending, runLifecycleSweep };
