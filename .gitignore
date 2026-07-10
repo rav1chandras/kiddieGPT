@@ -1,0 +1,11 @@
+# Secrets — NEVER commit. local-settings.js holds a real OpenAI key locally.
+# Copy local-settings.example.js -> local-settings.js and add your own key.
+local-settings.js
+
+# Build artifacts (large, regenerable)
+*.zip
+
+# Editor / OS / tooling
+.DS_Store
+.claude/
+node_modules/
