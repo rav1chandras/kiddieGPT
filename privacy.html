@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy — KiddieGPT</title>
+<meta name="description" content="KiddieGPT Privacy Policy — what we collect, what we don't, and how we protect children's data." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23ECFE01'/><circle cx='50' cy='52' r='28' fill='%23005248'/><circle cx='40' cy='48' r='7' fill='white'/><circle cx='60' cy='48' r='7' fill='white'/><circle cx='40' cy='48' r='3' fill='%230A1F1A'/><circle cx='60' cy='48' r='3' fill='%230A1F1A'/></svg>" />
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="owl" viewBox="0 0 120 130">
+    <ellipse cx="60" cy="32" rx="22" ry="7" fill="#0A1F1A"/>
+    <path d="M60 18 L94 30 L60 42 L26 30 Z" fill="#0A1F1A"/>
+    <circle cx="60" cy="30" r="2.5" fill="#ECFE01"/>
+    <path d="M82 32 Q90 38 92 52" stroke="#ECFE01" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="92" cy="53" r="3.5" fill="#ECFE01"/>
+    <path d="M60 50 C 30 50, 18 70, 22 95 C 25 115, 40 122, 60 122 C 80 122, 95 115, 98 95 C 102 70, 90 50, 60 50 Z" fill="#005248"/>
+    <path d="M60 64 C 42 64, 36 80, 38 96 C 40 110, 50 116, 60 116 C 70 116, 80 110, 82 96 C 84 80, 78 64, 60 64 Z" fill="#F4F3CC"/>
+    <circle cx="47" cy="76" r="9.5" fill="#FFFFFF"/>
+    <circle cx="73" cy="76" r="9.5" fill="#FFFFFF"/>
+    <circle cx="47" cy="77" r="4.5" fill="#0A1F1A"/>
+    <circle cx="73" cy="77" r="4.5" fill="#0A1F1A"/>
+    <path d="M55 86 L65 86 L60 93 Z" fill="#ECFE01" stroke="#005248" stroke-width="1.1" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<header class="site-header">
+  <div class="container">
+    <nav class="nav">
+      <a href="index.html" class="brand">
+        <span class="brand-mark"><img src="assets/logo.png" alt="KiddieGPT owl logo" /></span>
+        <span class="brand-text">KiddieGPT</span>
+      </a>
+      <button class="nav-toggle" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="terms.html">Terms</a>
+        <a href="privacy.html" class="current">Privacy</a>
+        <a href="index.html#waitlist" class="btn btn-primary btn-small nav-cta">Join Waitlist</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+<article class="legal">
+  <span class="eyebrow">Legal</span>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Version 1.0 · Effective May 20, 2026 · Last updated May 20, 2026</p>
+
+  <div class="placeholder-banner">
+    <strong>⚠ Working draft — not yet legally reviewed.</strong> This policy was written by the KiddieGPT founder to honestly describe how the product handles data. It has <em>not</em> been reviewed by counsel. Before public launch, we will engage an attorney experienced in COPPA, GDPR-K, and applicable children's-privacy law to finalize it. The substance reflects the current, intentionally privacy-preserving design of the extension. Questions: <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a>.
+  </div>
+
+  <p>KiddieGPT was built around one privacy principle: <strong>keep data on the child's device whenever possible, and collect as little as we can.</strong> This policy explains, in plain language, what we collect, what we deliberately don't, how the limited data we do handle is used, and the choices you have.</p>
+
+  <h2>1. A quick summary</h2>
+  <ul>
+    <li>The large majority of data — your child's questions, history, vocabulary, settings — never leaves your device.</li>
+    <li>We do not show ads and do not use advertising or profiling trackers.</li>
+    <li>We do not sell or rent personal information to anyone.</li>
+    <li>We do not use your child's questions or AI responses to train AI models.</li>
+    <li>On paid plans, AI requests pass through our relay to verify your subscription, then go to the AI provider — they are not stored by us afterward.</li>
+  </ul>
+
+  <h2>2. Information stored only on your device</h2>
+  <p>Most of what KiddieGPT records lives in your browser's local storage, on your own computer. It is not transmitted to us. This includes:</p>
+  <ul>
+    <li>Your child's questions, prompts, and AI conversation history</li>
+    <li>The activity log — which tools were used, when, and on which topics</li>
+    <li>Saved vocabulary words</li>
+    <li>The parent PIN, stored only as a salted <strong>SHA-256 hash</strong> — the actual PIN digits are never written to disk</li>
+    <li>Parent-control settings: time limits, safe-mode level, content categories, custom blocked words</li>
+    <li>The child profile you create: display name and grade level</li>
+    <li>Usage statistics such as time spent per day and AI-call counts</li>
+  </ul>
+  <p>If you uninstall the extension, this on-device data is removed with it. You can also clear it any time from Parent Controls → Account → Reset All Data.</p>
+
+  <h2>3. Information that reaches our servers</h2>
+  <h3>3.1 Paid-plan AI requests (transient)</h3>
+  <p>On Premium and Family plans, your child's prompts are routed through the KiddieGPT relay so we can verify your subscription before forwarding the request to the underlying AI provider. We do not persistently store these prompts or the responses; they pass through and are discarded.</p>
+  <h3>3.2 Subscription &amp; license data</h3>
+  <p>We keep the records needed to operate paid plans: your license code, subscription status, and an aggregate monthly count of AI calls per license used to enforce fair-use quotas.</p>
+  <h3>3.3 Website &amp; waitlist data</h3>
+  <p>When you visit kiddiegpt.com or submit the waitlist form, we collect the email address you choose to provide and standard server logs (IP address, browser type, pages visited, timestamps), retained briefly for security and debugging.</p>
+  <h3>3.4 Payment data</h3>
+  <p>Subscriptions are handled by <strong>Stripe</strong>. We never see or store your full card number; Stripe processes payment data under its own <a href="https://stripe.com/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
+
+  <h2>4. What we deliberately do NOT collect</h2>
+  <ul>
+    <li>We do not collect a child's real name, age, home address, phone number, photo, or precise location. The only child detail we touch is the optional display name a parent types (for example, "Alex"), which stays on the device.</li>
+    <li>We do not use third-party advertising trackers, retargeting pixels, or behavioural-profiling analytics.</li>
+    <li>We do not sell, rent, or trade personal information — ever.</li>
+    <li>We do not build advertising profiles of children or parents.</li>
+    <li>We do not train our own or third parties' AI models on your child's questions or the AI's answers.</li>
+  </ul>
+
+  <h2>5. Children's privacy (COPPA &amp; similar laws)</h2>
+  <p>KiddieGPT is offered as a <em>Family &amp; Education</em> product, designed to be installed and supervised by a parent or guardian on a child's behalf. Account setup, subscription, and the parent dashboard all require an adult.</p>
+  <p>Consistent with the U.S. Children's Online Privacy Protection Act (COPPA) and comparable laws elsewhere:</p>
+  <ul>
+    <li>We do not knowingly collect personal information directly from children under 13.</li>
+    <li>The child profile (display name, grade) is entered by the parent and is optional.</li>
+    <li>All settings are controlled by the parent through a PIN-protected dashboard.</li>
+    <li>Children cannot publicly post, share, or broadcast personal information through the Service.</li>
+    <li>Parents can review, edit, and delete all on-device data at any time.</li>
+  </ul>
+  <p>If you believe a child has provided us personal information without parental consent, contact <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a> and we will delete it promptly.</p>
+
+  <h2>6. How we use information</h2>
+  <p>We use the limited information we collect only to:</p>
+  <ul>
+    <li>operate the Service — verify subscriptions, route AI requests, enforce fair-use quotas;</li>
+    <li>process payments through Stripe;</li>
+    <li>send essential account messages — receipts, security notices, material changes to these policies;</li>
+    <li>send one launch notification if you joined the waitlist (we will not add you to ongoing marketing without your explicit consent);</li>
+    <li>diagnose technical problems and keep the Service secure and reliable.</li>
+  </ul>
+
+  <h2>7. Service providers we rely on</h2>
+  <p>We use a small set of processors, each bound by data-protection terms:</p>
+  <ul>
+    <li><strong>OpenAI / Anthropic</strong> — the AI models behind the learning tools. Paid-plan requests are forwarded to them via our relay; each has its own privacy and retention policy. We do not permit use of this data for model training where that setting is available to us.</li>
+    <li><strong>Stripe</strong> — payment processing.</li>
+    <li><strong>Hosting provider (currently Cloudflare)</strong> — for the website and relay.</li>
+    <li><strong>Email provider</strong> — to send transactional email and the one-time launch notification.</li>
+  </ul>
+
+  <h2>8. Data retention</h2>
+  <ul>
+    <li><strong>On-device data</strong> — kept until you delete it or uninstall the extension.</li>
+    <li><strong>Subscription records</strong> — kept while your subscription is active, plus a period afterward for tax and accounting compliance.</li>
+    <li><strong>Server logs</strong> — kept briefly (about 30 days), then deleted.</li>
+    <li><strong>Waitlist email</strong> — kept until you unsubscribe or until a reasonable period after launch.</li>
+  </ul>
+
+  <h2>9. Security</h2>
+  <p>We use industry-standard safeguards: TLS encryption for data in transit, salted-hash storage of the parent PIN, narrowly scoped extension permissions (the extension reads page content only on the active tab and only when invoked), and minimal server-side retention. No system is perfectly secure; if a breach affecting personal data occurs, we will notify affected users as required by applicable law.</p>
+
+  <h2>10. Your rights &amp; choices</h2>
+  <h3>10.1 Access &amp; deletion</h3>
+  <p>You can view, edit, or delete on-device data anytime from Parent Controls → Account. For server-side data (license records, waitlist email), email <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a> and we will respond within 30 days.</p>
+  <h3>10.2 EU / UK residents (GDPR)</h3>
+  <p>You have the right to access, correct, port, restrict, or delete your personal data, and to object to certain processing. Contact <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a> to exercise these rights; you may also lodge a complaint with your local data-protection authority.</p>
+  <h3>10.3 California residents (CCPA/CPRA)</h3>
+  <p>You have the right to know what personal information we collect, to request its deletion, and to opt out of any "sale" or "sharing" of personal information. We do not sell or share personal information. Contact <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a>.</p>
+
+  <h2>11. International transfers</h2>
+  <p>KiddieGPT is operated from the United States. If you use the Service from elsewhere, your information may be processed in the U.S. or wherever our processors operate. By using the Service you consent to this transfer, carried out with appropriate safeguards where required.</p>
+
+  <h2>12. Changes to this Policy</h2>
+  <p>We may update this Policy from time to time. For material changes we will give at least <strong>14 days' notice</strong> by email (if we have one on file) and/or via a notice in the extension. We will not retroactively reduce your privacy protections without your explicit consent.</p>
+
+  <h2>13. Contact us</h2>
+  <p>
+    Privacy questions &amp; data requests — <a href="mailto:privacy@kiddiegpt.com">privacy@kiddiegpt.com</a><br />
+    General support — <a href="mailto:support@kiddiegpt.com">support@kiddiegpt.com</a><br />
+    See also our <a href="terms.html">Terms of Service</a>.
+  </p>
+
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="index.html" class="brand">
+          <span class="brand-mark"><img src="assets/logo.png" alt="KiddieGPT owl logo" /></span>
+          <span class="brand-text">KiddieGPT</span>
+        </a>
+        <p class="footer-tagline">Learn. Understand. Grow. A safer AI for kids 5–12, built around parents who care.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="index.html">Home</a>
+        <a href="index.html#faq">FAQ</a>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <a href="mailto:hello@kiddiegpt.com">Contact</a>
+        <a href="mailto:support@kiddiegpt.com">Support</a>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <a href="terms.html">Terms of Service</a>
+        <a href="privacy.html">Privacy Policy</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 KiddieGPT. Built for curious kids.</span>
+      <span>Made with care · Not affiliated with OpenAI, Anthropic, or Google.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
