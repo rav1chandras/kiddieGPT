@@ -523,13 +523,16 @@ function logLesson(title) {
   const bucket = todaysActivityBucket();
   bucket.lessons = (bucket.lessons || 0) + 1;
   bucket.lastLesson = title || "Study mission";
+  awardStars(5); // built a mission
   persistActivity();
   renderActivityDashboard();
 }
 
 function logCardsReviewed(count = 1) {
   const bucket = todaysActivityBucket();
-  bucket.cardsReviewed = (bucket.cardsReviewed || 0) + count;
+  const before = bucket.cardsReviewed || 0;
+  bucket.cardsReviewed = before + count;
+  awardStars(Math.floor(bucket.cardsReviewed / 5) - Math.floor(before / 5)); // 1 per 5 cards
   persistActivity();
 }
 
@@ -557,6 +560,7 @@ function logQuizAttempt(title, score, total, missed = []) {
       chosen: String(item.chosen || "(blank)").slice(0, 60)
     }))
   });
+  awardStars(3 + (total && score / total >= 0.8 ? 2 : 0)); // took a quiz (+bonus for a strong score)
   persistActivity();
   renderActivityDashboard();
 }
@@ -1813,6 +1817,7 @@ async function generateTutorVoice() {
     tutorAudioUrl = URL.createObjectURL(blob);
     setupTutorPlayback(transcript, title);
     bumpActivity("tutorLessons", 1);
+    awardStars(3);
     setTutorStatus(tutorMode === "read" ? "Press play and follow along." : "Press play to hear the lesson.", "blue");
   } catch (error) {
     console.warn("Tutor voice failed", error);
@@ -3317,6 +3322,7 @@ async function solveMathWithAI() {
     await solveMathProblemInPlace({ settings, gradeBand, index: 0, token });
     if (token !== mathSolveToken) return;
     bumpActivity("mathSolved", 1);
+    awardStars(1);
     stopMathThinking();
     resetButton();
     return;
@@ -3383,6 +3389,7 @@ async function solveMathWithAI() {
   await solveMathProblemInPlace({ settings, gradeBand, index: 0, token });
   if (token !== mathSolveToken) return;
   bumpActivity("mathSolved", total);
+  awardStars(total);
   stopMathThinking();
   resetButton();
 
@@ -3664,6 +3671,7 @@ async function explainCurrentSource() {
     }
     setScreenshotStatus("AI ready");
     bumpActivity("explains", 1);
+    awardStars(2);
   } catch (error) {
     console.warn("Explain AI failed", error);
     setScreenshotStatus("Sample", "warn");
@@ -4101,6 +4109,7 @@ async function runWritingCoach() {
       renderWritingResult(normalizeWritingResult(result));
     }
     bumpActivity("writingChecks", 1);
+    awardStars(2);
   } catch (error) {
     console.warn("Writing AI failed", error);
     if (status) status.textContent = "Try again";
@@ -4202,27 +4211,30 @@ async function handleSignOut() {
 }
 
 // ---- Stars: motivational reward derived from the week's real activity ----
-function computeWeeklyStars() {
-  let stars = 0;
-  last7DayKeys().forEach(key => {
-    const bucket = activityCache[key] || {};
-    stars += (bucket.lessons || 0) * 5;          // mission built
-    stars += (bucket.mathSolved || 0) * 1;       // per math problem
-    stars += (bucket.tutorLessons || 0) * 3;     // tutor lesson
-    stars += (bucket.explains || 0) * 2;         // explain run
-    stars += (bucket.writingChecks || 0) * 2;    // writing check
-    stars += Math.floor((bucket.cardsReviewed || 0) / 5); // 1 per 5 flashcards
-    (bucket.quizzes || []).forEach(quiz => {
-      stars += 3;                                            // took a quiz
-      if (quiz.total && quiz.score / quiz.total >= 0.8) stars += 2; // strong score bonus
-    });
-  });
-  return stars;
+// All-time stars: a cumulative counter that only grows (kids want a number that
+// climbs), persisted separately so it survives the 7-day activity prune.
+let starsTotal = 0;
+const starsStorageKey = "kiddiegptStars";
+
+async function loadStars() {
+  try {
+    const data = await storageGet([starsStorageKey]);
+    starsTotal = Number(data[starsStorageKey]) || 0;
+  } catch { starsTotal = 0; }
+  renderStars();
+}
+
+function awardStars(count) {
+  const n = Math.round(Number(count) || 0);
+  if (n <= 0) return;
+  starsTotal += n;
+  storageSet({ [starsStorageKey]: starsTotal });
+  renderStars();
 }
 
 function renderStars() {
   const el = document.getElementById("starsCount");
-  if (el) el.textContent = String(computeWeeklyStars());
+  if (el) el.textContent = String(starsTotal);
 }
 
 function initSettingsTool() {
@@ -4741,6 +4753,7 @@ loadActivity().then(activity => {
   activityCache = activity;
   renderActivityDashboard();
 });
+loadStars();
 
 initPdfTool();
 initCardsTool();
