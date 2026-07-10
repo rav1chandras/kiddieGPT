@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KiddieGPT</title>
+  <link rel="stylesheet" href="katex/katex.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="enterprise-shell">
+    <main class="workspace-main">
+      <header class="enterprise-topbar">
+        <div class="app-mark">
+          <img src="icons/icon48.png" alt="">
+          <div class="brand-copy">
+            <b>KiddieGPT</b>
+            <small>Your copilot for homework and practice</small>
+          </div>
+        </div>
+        <div class="header-status"><span>Grade safe</span></div>
+      </header>
+      <section class="view-panel active" id="dashboardPanel">
+        <div class="dashboard-compact">
+          <section class="panel panel-pad motivation-hero">
+            <div class="dashboard-status">
+              <div>
+                <div class="mockup-kicker">Today’s mission</div>
+                <h2>Welcome back.</h2>
+                <p>Read first, then turn the mission into cards and quiz practice.</p>
+                <button class="small-button primary-action dash-start-button" data-view="pdf" type="button">Start Mission</button>
+              </div>
+              <div class="stars-card"><span>★</span><strong id="starsCount">0</strong><small>stars this week</small></div>
+            </div>
+          </section>
+          <section class="dash-learning-panel" aria-label="Learning tools">
+            <div class="section-title"><h3>Learning Tools</h3><a>Choose a tool</a></div>
+            <div class="dash-study-layout">
+              <div class="dash-tool-grid">
+                <button class="kg-tool-tile studio active" data-tool="pdf">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 12h6"></path><path d="M10 15h6"></path><path d="M10 18h4"></path></svg></span><span class="status">Study</span></div>
+                  <div class="kg-tool-body"><h3>Study Mission</h3><p>Build the pack</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Source</span><span class="kg-bubble">Review</span><span class="kg-bubble">Practice</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="math">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">∑</span><span class="status warn">Hint</span></div>
+                  <div class="kg-tool-body"><h3>Math Tutor</h3><p>Solve steps</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Capture</span><span class="kg-bubble">Check</span></div>
+                </button>
+                <button class="kg-tool-tile lime" data-tool="write">
+                  <div class="kg-tool-top"><span class="kg-tool-icon">✎</span><span class="status blue">Draft</span></div>
+                  <div class="kg-tool-body"><h3>Writing Studio</h3><p>Assignment, draft, grammar</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Plan</span><span class="kg-bubble">Revise</span></div>
+                </button>
+                <button class="kg-tool-tile" data-tool="screenshot">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H5a1 1 0 0 0-1 1v3"></path><path d="M16 4h3a1 1 0 0 1 1 1v3"></path><path d="M20 16v3a1 1 0 0 1-1 1h-3"></path><path d="M8 20H5a1 1 0 0 1-1-1v-3"></path><rect x="8" y="8" width="8" height="8" rx="1.5"></rect><path d="M12 6v12"></path><path d="M6 12h12"></path></svg></span><span class="status">Image</span></div>
+                  <div class="kg-tool-body"><h3>Explain This</h3><p>Page or image</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Page</span><span class="kg-bubble">Screenshot</span></div>
+                </button>
+                <button class="kg-tool-tile dark" data-tool="read">
+                  <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11v3a2 2 0 0 0 2 2h2l6 4V5L8 9H6a2 2 0 0 0-2 2Z"></path><path d="M17 9c1 .8 1.5 1.8 1.5 3s-.5 2.2-1.5 3"></path><path d="M19.5 6.5A8 8 0 0 1 22 12a8 8 0 0 1-2.5 5.5"></path></svg></span><span class="status blue">Audio</span></div>
+                  <div class="kg-tool-body"><h3>Tutor Mode</h3><p>Teacher voice</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Listen</span></div>
+                </button>
+              </div>
+              <section class="dash-tool-detail" id="dashboardToolDetail">
+                <div class="dash-detail-head">
+                  <span class="mission-eyebrow">Study Pack</span>
+                  <h3>Study Mission flow</h3>
+                  <p>Start with a source, review the must-know ideas, then practice in the right order.</p>
+                </div>
+                <div class="dash-study-flow dash-branch-flow">
+                  <button class="dash-flow-start" data-open-mission-step="study" type="button">
+                    <span>1</span>
+                    <div><b>Build Mission</b><small>Use a file or active tab</small></div>
+                  </button>
+                  <div class="flow-connectors" aria-hidden="true"><i></i><i></i></div>
+                  <div class="dash-branch-stack">
+                    <button class="kg-tool-tile dash-mini-tile" data-open-mission-step="cards" type="button">
+                      <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="7" width="13" height="10" rx="2"></rect><path d="M8 7V5.8c0-1 .8-1.8 1.8-1.8H17c1 0 1.8.8 1.8 1.8V13"></path><path d="M8 11h7"></path><path d="M8 14h4"></path></svg></span><span class="status">Step 2</span></div>
+                      <div class="kg-tool-body"><h3>Flashcards</h3><p>Review terms first</p></div>
+                      <div class="kg-tile-art"><span class="kg-bubble">Term</span><span class="kg-bubble">Meaning</span></div>
+                    </button>
+                    <button class="kg-tool-tile lime dash-mini-tile" data-open-mission-step="quiz" type="button">
+                      <div class="kg-tool-top"><span class="kg-tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M8 14c-1.2-1.1-2-2.7-2-4.4A6 6 0 0 1 18 9.6c0 1.7-.8 3.3-2 4.4-.7.6-1 1.3-1 2H9c0-.7-.3-1.4-1-2Z"></path><path d="M12 7.5a1.7 1.7 0 0 1 1.8 1.7c0 1.4-1.8 1.5-1.8 2.8"></path><path d="M12 15h.01"></path></svg></span><span class="status blue">Step 3</span></div>
+                      <div class="kg-tool-body"><h3>Quiz Me</h3><p>Check confidence</p></div>
+                      <div class="kg-tile-art kg-text-row"><span>15 Qs</span><span>Test</span></div>
+                    </button>
+                  </div>
+                </div>
+                <button class="small-button primary-action dash-detail-launch" data-open-mission-step="study" type="button">Start Study Mission</button>
+              </section>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="pdfPanel">
+        <div class="tool-flow">
+          <section class="mission-ribbon-panel" aria-label="Study mission steps">
+            <div class="mission-step-ribbon">
+              <button class="mission-ribbon-step active" data-mission-step="study" type="button"><span>1</span><b>Study Mission</b></button>
+              <button class="mission-ribbon-step" data-mission-step="cards" type="button"><span>2</span><b>Build Flashcards</b></button>
+              <button class="mission-ribbon-step" data-mission-step="quiz" type="button"><span>3</span><b>Generate Quiz</b></button>
+            </div>
+          </section>
+          <section class="panel panel-pad upload-panel mission-builder-panel" id="pdfUploadPanel">
+            <div class="mission-builder-head">
+              <div>
+                <div class="mission-builder-actions hdr-pill">
+                  <div class="source-pills mission-source-pills" data-source-group="pdf"><button data-source-option="browser">Active tab</button><button class="active" data-source-option="file">Local file</button></div>
+                </div>
+                <span class="mission-eyebrow">Source</span>
+                <h3 id="pdfBuilderTitle">Build from a local file</h3>
+                <p id="pdfBuilderCopy">Drop in a worksheet, notes page, or image and KiddieGPT turns it into one focused study pack.</p>
+              </div>
+            </div>
+            <div class="mission-source-body">
+              <div class="mission-source-mode" id="pdfFileSourceBody">
+                <div class="upload-zone" id="pdfUploadZone">
+                  <input id="pdfFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
+                  <div class="drop-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg>
+                  </div>
+                  <b id="pdfFileName">Choose a file or drag & drop it here</b>
+                  <small id="pdfFileMeta">PDF up to 20 pages (5 if scanned), TXT, JPG, or PNG · up to 5 MB</small>
+                  <button class="browse-button" id="pdfChooseButton" type="button">Browse file</button>
+                </div>
+              </div>
+              <div class="mission-source-mode" id="pdfBrowserSourceBody" hidden></div>
+            </div>
+            <div class="mission-builder-footer">
+              <div class="challenge-control">
+                <div class="challenge-head"><b>Challenge</b><span id="missionChallengeLabel">Balanced</span></div>
+                <input id="missionChallengeSlider" type="range" min="1" max="3" step="1" value="2" aria-label="Challenge level" />
+                <div class="challenge-scale"><span>Less</span><span>More</span></div>
+              </div>
+              <small class="pdf-status" id="pdfBuildStatus" hidden></small>
+              <div class="pdf-progress" id="pdfProgress" hidden><span></span><b>Preparing study pack</b></div>
+              <button class="small-button primary-action" id="pdfBuildButton" type="button">Generate Study Aids</button>
+            </div>
+            <div class="mission-followup-block" id="missionFollowupBlock" hidden>
+              <div class="mission-followup-head">
+                <div>
+                  <button class="explain-follow-toggle mission-follow-toggle hdr-pill" id="missionFollowToggle" type="button"><span>?</span>Ask follow-up</button>
+                  <span class="mission-eyebrow">Mission help</span>
+                  <h3>Ask about this study pack</h3>
+                  <p>Get a simpler explanation before you build cards or take the quiz.</p>
+                </div>
+              </div>
+              <div class="explain-followup mission-followup" id="missionFollowupPanel" hidden>
+                <label for="missionFollowupInput">What should KiddieGPT explain?</label>
+                <div class="explain-chip-row">
+                  <button type="button" data-mission-followup-prompt="Make this easier">Make this easier</button>
+                  <button type="button" data-mission-followup-prompt="Explain the main idea">Explain the main idea</button>
+                  <button type="button" data-mission-followup-prompt="Give me an example">Give me an example</button>
+                </div>
+                <div class="explain-question-row">
+                  <input id="missionFollowupInput" type="text" maxlength="200" placeholder="Ask about this mission" />
+                  <button id="missionFollowupSend" class="primary-action" type="button">Send</button>
+                </div>
+                <div class="explain-follow-answer" id="missionFollowupAnswer" hidden></div>
+              </div>
+            </div>
+          </section>
+          <section class="panel panel-pad" id="missionIntro">
+            <div class="math-intro-head">
+              <span class="mission-eyebrow">Study Mission</span>
+              <h3>From source to confident quiz</h3>
+              <p>One build turns your page or PDF into a full mission: read it, drill it, prove it.</p>
+            </div>
+            <div class="tv-pipe" aria-hidden="true">
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><path d="M7 3.5h7.2L19 8.3V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7.5 3.5Z"/><path d="M14 3.5V8h4.6"/><path d="M9 12h6"/><path d="M9 15.5h4"/></svg></span>
+                <b>Add a source</b>
+                <small>Active tab or a PDF</small>
+              </div>
+              <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><path d="M12 6c-2.2-1.6-4.8-1.6-8-.6V19c3.2-1 5.8-1 8 .6 2.2-1.6 4.8-1.6 8-.6V5.4c-3.2-1-5.8-1-8 .6Z"/><path d="M12 6v13.6"/></svg></span>
+                <b>Read the mission</b>
+                <small>Main idea and key terms</small>
+              </div>
+              <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="13" height="13" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4H19a1.5 1.5 0 0 1 1.5 1.5V15a1.5 1.5 0 0 1-1.5 1.5"/><path d="m7.6 13.6 2 2 3.4-3.8"/></svg></span>
+                <b>Practice &amp; quiz</b>
+                <small>Flashcards, then a quiz</small>
+              </div>
+            </div>
+            <div class="tv-demo" aria-hidden="true">
+              <span class="tv-demo-play"><svg viewBox="0 0 24 24"><path d="M5 19V12"/><path d="M10 19V7"/><path d="M15 19v-8"/><path d="M20 19V9.5"/></svg></span>
+              <p>Quiz scores save to the <mark>parent activity view</mark> for the last 7 days.</p>
+            </div>
+          </section>
+          <section class="panel panel-pad mission-reading-panel" id="missionReadingPanel" hidden>
+            <div class="section-title"><h3>Read first</h3><span class="status" id="missionReadStatus">Not started</span></div>
+            <div class="mission-read-card">
+              <div class="mission-read-copy">
+                <span class="mission-eyebrow">Step 1</span>
+                <h3>Read the mission before practice</h3>
+                <p id="missionReadMainIdea">Generate a Study Mission, then spend a few focused minutes reading the main idea and key terms before making cards or taking the quiz.</p>
+              </div>
+              <div class="mission-read-timer">
+                <strong id="missionReadTimer">00:00</strong>
+                <small>Focus time</small>
+              </div>
+            </div>
+            <div class="mission-overview" id="missionOverview" hidden>
+              <div class="mission-overview-remember"><span>Remember</span><p id="missionReadRemember"></p></div>
+              <div class="mission-overview-terms" id="missionReadTerms"></div>
+              <div class="mission-overview-counts" id="missionReadCounts"></div>
+            </div>
+            <div class="mission-read-actions">
+              <button class="small-button primary-action" id="missionReadToggleButton" type="button">Start Reading</button>
+              <button class="small-button" id="missionReadDoneButton" type="button">I read this</button>
+              <button class="small-button" data-view="read" type="button">Need a teacher voice?</button>
+            </div>
+            <div class="mission-read-next" id="missionReadNext" hidden>
+              <span>Nice. Now practice what you read.</span>
+              <button class="small-button" data-mission-step="cards" type="button">Make Flashcards</button>
+              <button class="small-button primary-action" data-mission-step="quiz" type="button">Take Quiz</button>
+            </div>
+          </section>
+          <section class="panel panel-pad mission-embedded-panel" id="missionCardsPanel" hidden>
+            <div class="section-title mission-cards-title">
+              <h3>Flashcards</h3>
+              <div class="mission-card-header-tools">
+                <span class="status" id="missionCardsStatus">Study Mission</span>
+                <div class="mission-card-mode-toggle" id="missionCardsModeToggle" role="group" aria-label="Flashcard practice mode"></div>
+              </div>
+            </div>
+            <div class="flashcard-preview mission-card-preview" id="missionFlashcardPreview">
+              <button class="card-nav-button" id="missionCardPrev" type="button" aria-label="Previous card">‹</button>
+              <div><b>Chlorophyll</b><p>The green pigment in plants that captures sunlight for photosynthesis.</p></div>
+              <button class="card-nav-button" id="missionCardNext" type="button" aria-label="Next card">›</button>
+            </div>
+          </section>
+          <section class="panel panel-pad mission-embedded-panel" id="missionQuizPanel" hidden>
+            <div class="mission-quiz-hero">
+              <div>
+                <span class="status blue hdr-pill" id="missionQuizStatus">15 questions</span>
+                <span class="mission-eyebrow">Confidence Check</span>
+                <h3>Quiz Me</h3>
+                <p>Answer a short set, then review only the misses.</p>
+              </div>
+            </div>
+            <div class="quiz-progress"><div class="progress"><span id="missionQuizAnsweredBar" style="width:0%"></span></div><small id="missionQuizAnsweredMeta">0 answered</small></div>
+            <div class="quiz-list mission-quiz-list" id="missionQuizList"></div>
+            <div class="quiz-submit-row"><button id="missionQuizSubmitButton" class="primary-action" type="button">Submit Quiz</button></div>
+            <div class="quiz-feedback" id="missionQuizFeedback" hidden></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="readPanel">
+        <div class="tool-flow">
+          <section class="panel panel-pad tutor-source-panel">
+            <div class="tutor-source-head">
+              <span class="mission-eyebrow">Tutor source</span>
+              <div class="source-pills" data-source-group="read"><button data-source-option="browser">Active tab</button><button class="active" data-source-option="file">Local file</button></div>
+            </div>
+            <h3 id="tutorSourceTitle">Read from the active tab</h3>
+            <p class="tutor-source-copy" id="tutorSourceCopy">Great for articles, stories, and reading passages.</p>
+            <div class="tutor-source-card" id="tutorSourceSummary"></div>
+            <div class="tutor-mode-row" aria-label="What should the tutor do?">
+              <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read aloud</b><small>Reads the text word for word.</small></button>
+              <button class="tutor-mode-card" data-tutor-mode="explain" type="button"><b>Explain it</b><small>A short lesson in kid words.</small></button>
+            </div>
+            <div class="tutor-actions">
+              <button class="small-button primary-action" id="tutorGenerateButton" type="button">Read it aloud</button>
+              <small id="tutorStatus"></small>
+            </div>
+          </section>
+
+          <section class="panel panel-pad tutor-intro" id="tutorIntro">
+            <div class="math-intro-head">
+              <span class="mission-eyebrow">Tutor voice</span>
+              <h3>Listen and learn</h3>
+              <p>Hear a passage read aloud, or a short lesson, with each line highlighting as it plays.</p>
+            </div>
+            <div class="tv-pipe" aria-hidden="true">
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><path d="M7 3.5h7.2L19 8.3V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7.5 3.5Z"/><path d="M14 3.5V8h4.6"/><path d="M9 12h6"/><path d="M9 15.5h4"/></svg></span>
+                <b>Pick a source</b>
+                <small>Active tab or a local file</small>
+              </div>
+              <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><path d="M4 10.5v3"/><path d="M8 7.5v9"/><path d="M12 5v14"/><path d="M16 8v8"/><path d="M20 10v4"/></svg></span>
+                <b>Tutor voice</b>
+                <small>Reads it, or teaches it</small>
+              </div>
+              <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+              <div class="tv-stage">
+                <span class="tv-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.6v6.8l5.4-3.4Z"/></svg></span>
+                <b>Follow along</b>
+                <small>Lines light up as it plays</small>
+              </div>
+            </div>
+            <div class="tv-demo" aria-hidden="true">
+              <span class="tv-demo-play">▶</span>
+              <p>Volcanoes are openings in the Earth. <mark>Hot melted rock rises through them.</mark> When it reaches the top, it erupts.</p>
+            </div>
+          </section>
+
+          <section class="panel panel-pad tutor-player-panel" id="tutorPlayerPanel" hidden>
+            <div class="section-title"><h3>Listen along</h3><span class="status blue" id="tutorChapter"></span></div>
+            <div class="tutor-player">
+              <button class="tutor-play" id="tutorPlayButton" type="button" aria-label="Play">▶</button>
+              <div class="tutor-progress-track" id="tutorProgressTrack"><span class="tutor-progress-fill" id="tutorProgressFill"></span></div>
+              <span class="tutor-time" id="tutorTime">0:00 / 0:00</span>
+            </div>
+            <div class="tutor-player-tools">
+              <button class="tutor-chip" id="tutorSpeed" type="button">Speed 1×</button>
+              <a class="tutor-chip" id="tutorDownloadLink" href="#" download="kiddiegpt-tutor-lesson.mp3">Download</a>
+            </div>
+            <div class="tutor-transcript" id="tutorTranscript"></div>
+            <audio id="tutorAudioPlayer" hidden></audio>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="mathPanel">
+        <div class="math-solver-flow">
+          <section class="panel panel-pad math-source-panel">
+            <div class="math-source-head">
+              <div>
+                <div class="source-pills math-source-pills hdr-pill" data-source-group="math"><button class="active" data-source-option="paste">Paste</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button></div>
+                <span class="mission-eyebrow">Math Tutor</span>
+                <h3>Add your math problem</h3>
+                <p>Type it, screenshot it, or upload a worksheet.</p>
+              </div>
+            </div>
+            <div class="math-input-card">
+              <div class="math-source-mode active" data-math-source-mode="paste">
+                <div class="math-paste-box">
+                  <label class="math-paste-label" for="mathPasteInput">Type or paste your problem…</label>
+                  <textarea id="mathPasteInput" maxlength="900" placeholder="e.g. 3x^2 + sqrt(53) - 7/3 + 4*pi = (x + 1)^3"></textarea>
+                  <small class="math-paste-hint">Type math like this: <code>^</code> power · <code>sqrt( )</code> root · <code>/</code> fraction · <code>*</code> times · <code>pi</code> for π</small>
+                </div>
+              </div>
+              <div class="math-source-mode" data-math-source-mode="screenshot" hidden>
+                <div class="math-capture-box" data-action="math-capture-region" role="button" tabindex="0">
+                  <span class="math-capture-icon">▧</span>
+                  <div class="math-capture-text">
+                    <b>Capture the problem on this page</b>
+                    <small>Click, then drag around the problem on the page.</small>
+                  </div>
+                </div>
+              </div>
+              <div class="math-source-mode" data-math-source-mode="file" hidden>
+                <div class="upload-zone math-upload-zone">
+                  <input id="mathFileInput" type="file" accept="application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
+                  <div class="math-upload-copy">
+                    <b>Choose a math file</b>
+                    <small>One page · PDF, JPG, or PNG · up to 5 MB</small>
+                  </div>
+                  <button class="browse-button" id="mathBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
+                </div>
+              </div>
+              <button class="small-button primary-action" id="mathSolveButton" type="button">Solve &amp; Explain</button>
+            </div>
+          </section>
+
+          <section class="panel panel-pad math-solution-panel">
+            <div class="math-notice" id="mathNotice" hidden></div>
+            <div class="math-intro" id="mathIntro" hidden></div>
+            <div class="math-solution-top">
+              <div>
+                <span class="mission-eyebrow">Learn the steps</span>
+                <div class="math-title-row"><h3 id="mathProblemTitle">Problem 1 of 3</h3><span class="status" id="mathVerifiedPill" hidden>Double-checked</span></div>
+                <div class="math-skill-tags" id="mathSkillTags"><span>Equation</span><span>Undo steps</span><span>Check answer</span></div>
+              </div>
+              <div class="math-problem-nav">
+                <button id="mathPrevProblem" type="button" aria-label="Previous problem">‹</button>
+                <span id="mathProblemCount">1 / 3</span>
+                <button id="mathNextProblem" type="button" aria-label="Next problem">›</button>
+              </div>
+            </div>
+            <div class="math-thinking" id="mathThinking" hidden>
+              <div class="math-thinking-orb" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="math-thinking-copy">
+                <b id="mathThinkingStage">Reading your problem…</b>
+                <small id="mathThinkingTip">Tip: Start by figuring out what the problem is asking for.</small>
+              </div>
+            </div>
+            <div class="math-solution-layout">
+              <div class="math-guide-card">
+                <div class="math-problem-header">
+                  <span>Problem</span>
+                  <div class="math-equation-large" id="mathEquationDisplay">3x + 7 = 22</div>
+                  <p id="mathProblemMeta">Linear equation · solve for x</p>
+                </div>
+                <div class="math-figure" id="mathFigure" hidden></div>
+                <div class="math-correct" id="mathCorrect">
+                  <button class="math-correct-toggle" id="mathCorrectToggle" type="button"><span>!</span>Didn't capture it right? Fix it</button>
+                  <div class="math-correct-panel" id="mathCorrectPanel" hidden>
+                    <p>If the screenshot was blurry or KiddieGPT read it wrong, try copy pasting the problem here.</p>
+                    <div class="math-correct-row">
+                      <input id="mathCorrectInput" type="text" maxlength="200" placeholder="Type or paste the problem here" />
+                      <button id="mathCorrectSend" class="primary-action" type="button">Re-solve</button>
+                    </div>
+                    <small class="pdf-status" id="mathCorrectStatus" hidden></small>
+                  </div>
+                </div>
+                <div class="math-step-list" id="mathStepList"></div>
+                <button class="math-continue-button" id="mathContinueSteps" type="button" hidden>Continue steps</button>
+                <div class="math-answer-card" id="mathAnswerCard"><span>Answer</span><b id="mathAnswerValue">x = 5</b></div>
+                <div class="math-warning-card"><span>Watch out</span><p id="mathWarningText">Do the same operation to both sides so the equation stays balanced.</p></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="writePanel">
+        <div class="writing-flow">
+          <section class="panel panel-pad writing-work-panel">
+            <div class="writing-work-head">
+              <div>
+                <span class="status blue hdr-pill" id="writingModeStatus">Your ideas stay yours</span>
+                <span class="mission-eyebrow" id="writingModeEyebrow">Assignment</span>
+                <h3 id="writingModeTitle">Understand the assignment</h3>
+                <p id="writingModeCopy">Paste the assignment question and KiddieGPT helps you plan before you write.</p>
+              </div>
+            </div>
+            <div class="writing-input-card">
+              <textarea id="writingInput" maxlength="900" placeholder="Paste the assignment or your writing here…"></textarea>
+              <div class="writing-input-footer">
+                <span id="writingInputHint">Start with the assignment directions or question.</span>
+                <button class="primary-action" id="writingRunButton" type="button">Help me plan</button>
+              </div>
+            </div>
+            <div class="writing-action-row" aria-label="Writing help type">
+              <button class="active" data-writing-action="assignment" type="button">Assignment</button>
+              <button data-writing-action="draft" type="button">Draft</button>
+              <button data-writing-action="grammar" type="button">Grammar</button>
+            </div>
+          </section>
+          <section class="panel panel-pad writing-output-panel">
+            <div class="section-title"><h3 id="writingOutputTitle">Try this plan</h3><span class="status" id="writingOutputStatus">Ready</span></div>
+            <div class="writing-coach-result" id="writingOutputGrid"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="screenshotPanel">
+        <div class="explain-flow">
+          <section class="panel panel-pad explain-source-panel">
+            <div class="math-source-head">
+              <div>
+                <div class="source-pills math-source-pills hdr-pill" data-source-group="explain"><button class="active" data-source-option="page">Active page</button><button data-source-option="screenshot">Screenshot</button></div>
+                <span class="mission-eyebrow">Explain This</span>
+                <h3>Pick what to explain</h3>
+                <p>Use the page you are viewing, selected text, or a screenshot of a diagram, worksheet, or chart.</p>
+              </div>
+            </div>
+            <div class="math-input-card explain-input-card">
+              <div class="explain-source-mode active" data-explain-source-mode="page">
+                <div class="math-capture-box explain-input-box">
+                  <i>⌕</i>
+                  <div>
+                    <b>Use the active page</b>
+                    <small>Explain the page you are viewing, or selected text if you highlighted something.</small>
+                  </div>
+                </div>
+              </div>
+              <div class="explain-source-mode" data-explain-source-mode="screenshot" hidden>
+                <div class="math-capture-box explain-input-box" id="screenshotPreview" data-action="capture-screenshot" role="button" tabindex="0">
+                  <i>▧</i>
+                  <div>
+                    <b>Capture a screenshot</b>
+                    <small>Use this for diagrams, charts, worksheets, or anything visual on the page.</small>
+                  </div>
+                </div>
+              </div>
+              <button class="small-button primary-action" id="explainButton" type="button">Explain</button>
+            </div>
+          </section>
+          <section class="panel panel-pad explain-result-panel">
+            <div class="section-title"><h3>Understand it</h3><span class="status blue" id="screenshotStatus">Ready</span></div>
+            <div id="explainIntro">
+              <div class="tv-pipe" aria-hidden="true">
+                <div class="tv-stage">
+                  <span class="tv-ico"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="13" rx="2"/><path d="M3.5 9h17"/><path d="M7 7h.01"/></svg></span>
+                  <b>Pick the source</b>
+                  <small>Page, selection, or screenshot</small>
+                </div>
+                <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+                <div class="tv-stage">
+                  <span class="tv-ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
+                  <b>KiddieGPT reads it</b>
+                  <small>Labels, clues, vocabulary</small>
+                </div>
+                <span class="tv-arrow"><svg viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>
+                <div class="tv-stage">
+                  <span class="tv-ico"><svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-11 6.6L4 19.5l1.5-4.4A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 10.5h7"/><path d="M8.5 13.5h4.5"/></svg></span>
+                  <b>Kid-simple words</b>
+                  <small>Plus follow-up questions</small>
+                </div>
+              </div>
+              <div class="tv-demo" aria-hidden="true">
+                <span class="tv-demo-play">?</span>
+                <p>Photosynthesis just means <mark>plants make their own food from sunlight</mark>.</p>
+              </div>
+            </div>
+            <div class="explain-answer-sheet" hidden>
+              <div class="explain-teacher-note">
+                <span>Simple explanation</span>
+                <p id="screenshotObservation">KiddieGPT will explain the main idea in student-friendly language, then point out the important labels, clues, or vocabulary.</p>
+              </div>
+              <button class="explain-follow-toggle" id="explainFollowToggle" type="button"><span>?</span>Ask follow-up</button>
+              <div class="explain-followup" id="explainFollowupPanel" hidden>
+                <label for="explainFollowupInput">What still feels confusing?</label>
+                <div class="explain-chip-row">
+                  <button type="button" data-followup-prompt="Explain the diagram">Explain the diagram</button>
+                  <button type="button" data-followup-prompt="What does this word mean?">What does this word mean?</button>
+                  <button type="button" data-followup-prompt="Give me an example">Give me an example</button>
+                </div>
+                <div class="explain-question-row">
+                  <input id="explainFollowupInput" type="text" maxlength="200" placeholder="Ask about this page or screenshot" />
+                  <button id="explainFollowupSend" class="primary-action" type="button">Send</button>
+                </div>
+                <div class="explain-follow-answer" id="explainFollowupAnswer" hidden></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" id="settingsPanel">
+        <div class="settings-page">
+          <div class="settings-topbar">
+            <label class="settings-child">
+              <span>Student</span>
+              <select id="childSelect" aria-label="Select student"></select>
+            </label>
+            <div class="settings-topbar-actions">
+              <button class="small-button" id="signOutButton" type="button">Sign out</button>
+              <button class="small-button primary-action" id="saveSettingsButton" type="button">Save</button>
+            </div>
+          </div>
+          <div class="settings-note settings-status-line" id="settingsStatus" hidden></div>
+          <section class="panel panel-pad" id="settings-student">
+            <div class="settings-section-head"><h3>Student</h3><span class="status" id="settingsStudentBadge">Student</span></div>
+            <div class="settings-form">
+              <div class="settings-row">
+                <div class="settings-row-label"><b>Grade band</b><small>Tunes difficulty and vocabulary.</small></div>
+                <div class="grade-tabs"><button type="button">K-2</button><button type="button">3-5</button><button class="active" type="button">6-8</button><button type="button">9-12</button></div>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-label"><b>Explanation style</b><small>How detailed KiddieGPT should sound.</small></div>
+                <div class="style-tabs" data-preference-group="explanationStyle"><button type="button" data-preference-value="Simple">Simple</button><button class="active" type="button" data-preference-value="Balanced">Balanced</button><button type="button" data-preference-value="Challenge">Challenge</button></div>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-label"><b>Math answers</b><small>Show worked steps first; reveal the answer after.</small></div>
+                <label class="settings-toggle"><input type="checkbox" id="mathAnswerGateToggle" checked /><span>Hide answer until revealed</span></label>
+              </div>
+              <div class="settings-row">
+                <div class="settings-row-label"><b>Parent lock</b><small id="parentPinNote">Set a PIN so only a parent can reveal answers.</small></div>
+                <div class="parent-pin" id="parentPinArea"></div>
+              </div>
+            </div>
+          </section>
+          <section class="panel panel-pad" id="settings-privacy">
+            <div class="settings-section-head"><h3>Privacy &amp; Storage</h3><span class="status">Device</span></div>
+            <div class="settings-storage-grid">
+              <div class="settings-note">Generated audio, study packs, and activity stay on this device unless synced to the parent portal. Nothing here contains your student's name or email.</div>
+              <div class="step-actions"><button id="clearGeneratedAudioButton" type="button">Clear Audio</button><button id="clearStudyCacheButton" type="button">Clear Study Cache</button><button id="clearAllDataButton" type="button">Clear All Data</button></div>
+              <small class="settings-note" id="privacyStatus" hidden></small>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <aside class="side-nav">
+      <div class="side-brand"><img src="icons/icon48.png" alt=""><span>KiddieGPT</span></div>
+      <div class="school-pill"><b>Lincoln Middle School</b><span>Approved for grades K-8</span></div>
+      <nav class="nav-group">
+        <div class="nav-label">Platform</div>
+        <button class="side-link active" data-view="dashboard" title="Home"><span>⌂</span><b>Home</b></button>
+        <button class="side-link" data-view="pdf" title="Study Mission"><span>▣</span><b>Mission</b></button>
+        <button class="side-link" data-view="read" title="Tutor Mode"><span>▶</span><b>Tutor</b></button>
+        <button class="side-link" data-view="math" title="Math Step Tutor"><span>∑</span><b>Math</b></button>
+        <button class="side-link" data-view="write" title="Writing Studio"><span>✎</span><b>Write</b></button>
+        <button class="side-link" data-view="screenshot" title="Explain This"><span>⌕</span><b>Explain</b></button>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Controls</div>
+        <button class="side-link" data-view="settings" title="Settings"><span>⚙</span><b>Settings</b></button>
+      </nav>
+    </aside>
+  </div>
+  <script src="katex/katex.min.js"></script>
+  <script src="local-settings.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
