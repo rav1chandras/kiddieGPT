@@ -3400,7 +3400,7 @@
         aiSettingsForm.elements.openaiApiKey.placeholder = settings.hasOpenAIKey
           ? "Stored: " + settings.maskedOpenAIKey + " — leave blank to keep"
           : "sk-...";
-        if (aiSettingsForm.elements.openaiModel) aiSettingsForm.elements.openaiModel.value = settings.openaiModel || "gpt-4.1";
+        if (aiSettingsForm.elements.openaiModel) aiSettingsForm.elements.openaiModel.value = settings.openaiModel || "gpt-5.6-luna";
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
