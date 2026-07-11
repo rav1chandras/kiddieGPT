@@ -28,6 +28,29 @@ but credentials are not used so `*` is acceptable).
 ### GET /api/entitlements/me  (exists)
 The gate. Returns `{ active, status, locked, plan, familyId, ... }`.
 Extension unlocks paid tools only when `active === true`.
+Also carries the **tutor voice policy** the extension uses to build the student
+voice picker:
+```
+{ ..., ttsAllowedVoices: string[], ttsDefaultVoice: string, ttsModel: "gpt-4o-mini-tts" }
+```
+
+### Tutor voice (TTS) — admin-controlled, student-chosen
+Text-model routing (`openaiModel`, e.g. `gpt-5.6-luna`) is **separate** from the
+tutor voice. The TTS model is pinned to `gpt-4o-mini-tts`.
+
+- **Admin** (portal → AI & Usage → Tutor voice) controls `ttsAllowedVoices`
+  (shortlist from the 13 supported voices) and `ttsDefaultVoice`. Server
+  validation: only supported voices, never empty (falls back to
+  `["marin","cedar","sage"]`), and the default must be in the shortlist
+  (auto-fixed to marin → cedar → sage otherwise).
+- **Student** (extension → Settings → Tutor voice) picks from the admin shortlist
+  only. If their saved voice is no longer allowed, it resets to the admin default.
+- **Voice resolution** (both client and `POST /api/ai/speech` server-side):
+  student pick if allowed → admin default → marin → cedar → sage → first allowed.
+- Recommended middle-school defaults: `marin`, `cedar`, `sage`.
+- Exposed on both `/api/entitlements/me` (session; what the extension consumes)
+  and `/api/ai/usage-limits` (`voice: { allowed, default, model }`); the admin
+  read/write surface is `GET`/`PUT /api/admin/ai-settings`.
 
 ### GET /api/ai/usage-limits  (exists — to be extended)
 Currently: `{ mathProblemsPerUserDaily, tutorVoiceMinutesPerUserDaily,
