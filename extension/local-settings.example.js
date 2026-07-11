@@ -10,5 +10,5 @@ globalThis.KIDDIEGPT_LOCAL_SETTINGS = {
   // OpenAI). These are kept only for offline experiments.
   openaiDemoEnabled: false,
   openaiApiKey: '',
-  openaiModel: 'gpt-4.1'
+  openaiModel: 'gpt-5.6-luna'
 };
