@@ -131,6 +131,56 @@ function modelForText(mode = "default") {
   return MODELS.defaultText;
 }
 
+// ---- Tutor voice (TTS) --------------------------------------------------------
+// Students pick from the admin-approved voice list only. The extension never
+// shows the full OpenAI voice set. Voice is separate from the text model routing.
+const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
+const DEFAULT_ALLOWED_VOICES = ["marin", "cedar", "sage"]; // offline/dev shortlist
+const DEFAULT_VOICE = "marin";
+const VOICE_LABELS = {
+  marin: "Marin - calm tutor",
+  cedar: "Cedar - steady tutor",
+  sage: "Sage - gentle guide"
+};
+const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
+
+function voiceLabel(voice) {
+  const v = String(voice || "").trim().toLowerCase();
+  return VOICE_LABELS[v] || (v ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+}
+
+// Admin-approved, client-sanitized allowed voices. Source order: portal session
+// -> local-settings (dev) -> default shortlist. Removes unsupported voices,
+// de-dupes, and never returns empty.
+function allowedVoices() {
+  const local = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
+  const raw = (Array.isArray(portalSession?.ttsAllowedVoices) && portalSession.ttsAllowedVoices.length)
+    ? portalSession.ttsAllowedVoices
+    : (Array.isArray(local.ttsAllowedVoices) && local.ttsAllowedVoices.length)
+      ? local.ttsAllowedVoices
+      : DEFAULT_ALLOWED_VOICES;
+  const list = [...new Set(raw.map(v => String(v || "").trim().toLowerCase()))].filter(v => SUPPORTED_TTS_VOICES.includes(v));
+  return list.length ? list : DEFAULT_ALLOWED_VOICES.slice();
+}
+
+// The default voice: admin default if allowed, else marin -> cedar -> sage if
+// allowed, else the first allowed voice. Always returns an allowed voice.
+function defaultVoice() {
+  const list = allowedVoices();
+  const local = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
+  const adminDefault = String(portalSession?.ttsDefaultVoice || local.ttsDefaultVoice || "").trim().toLowerCase();
+  if (adminDefault && list.includes(adminDefault)) return adminDefault;
+  for (const v of [DEFAULT_VOICE, "cedar", "sage"]) if (list.includes(v)) return v;
+  return list[0];
+}
+
+// Single voice-resolution helper for every TTS call: the student's choice if it
+// is still allowed, otherwise the (admin) default voice.
+function resolveVoice(studentVoice) {
+  const chosen = String(studentVoice || "").trim().toLowerCase();
+  return allowedVoices().includes(chosen) ? chosen : defaultVoice();
+}
+
 async function requestOtp(email) {
   const clean = String(email || "").trim();
   const response = await fetch(`${portalBaseUrl()}/api/auth/otp/request`, {
@@ -209,6 +259,10 @@ async function refreshEntitlement() {
       familyId: ent.familyId || "",
       children,
       childId: pickChildId(stored[PORTAL_CHILD_KEY], children),
+      // Admin-approved tutor voices (sanitized at use-time by allowedVoices()).
+      ttsAllowedVoices: ent.ttsAllowedVoices,
+      ttsDefaultVoice: ent.ttsDefaultVoice,
+      ttsModel: ent.ttsModel,
       locked: Boolean(ent.locked)
     };
     return portalSession;
@@ -413,7 +467,7 @@ function escapeHtml(value) {
 function getSettings() {
   return new Promise(resolve => {
     const localDefaults = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
-    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, ...localDefaults };
+    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, studentVoice: "", ...localDefaults };
     if (extensionApi?.storage?.local) {
       extensionApi.storage.local.get(defaults, data => {
         resolve({
@@ -653,7 +707,7 @@ function showPanel(name) {
   if (toolDetails[panelName]) {
     selectTool(panelName);
   }
-  if (panelName === "settings") { renderChildSelect(); renderParentPinArea(); }
+  if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); }
   if (panelName === "dashboard") renderStars();
 
   currentView = panelName;
@@ -1284,18 +1338,19 @@ async function getOpenAISettings() {
   return { ...settings, portal: true };
 }
 
-async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6-8" }) {
+async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
   // All AI goes through the portal proxy so usage/tokens are recorded and the
   // OpenAI key stays server-side.
   // Screen what will be spoken aloud before generating audio.
   if (await moderateFlagged(settings, text)) throw new PortalError("content_blocked", 200);
+  // Single voice-resolution point: student's choice if still admin-approved, else default.
+  const useVoice = resolveVoice(voice);
   // Test mode: call OpenAI TTS directly with the local dev key (no portal backend).
   if (portalToken === OTP_TEST_TOKEN && settings?.openaiApiKey) {
-    const pace = gradeBand === "K-2" ? "Speak slowly and gently." : gradeBand === "3-5" ? "Speak at a calm, steady pace." : "Speak clearly at a natural pace.";
     const direct = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-      body: JSON.stringify({ model: MODELS.tts, voice, input: text, instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`, response_format: "mp3" })
+      body: JSON.stringify({ model: MODELS.tts, voice: useVoice, input: text, instructions: TTS_INSTRUCTION, response_format: "mp3" })
     });
     if (!direct.ok) {
       const detail = await direct.json().catch(() => ({}));
@@ -1311,7 +1366,9 @@ async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6
     },
     body: JSON.stringify({
       text,
-      voice,
+      voice: useVoice,
+      model: MODELS.tts,
+      instructions: TTS_INSTRUCTION,
       gradeBand,
       childId: portalSession?.childId || undefined,
       estSeconds: Math.ceil(String(text || "").length / 14)
@@ -1833,7 +1890,7 @@ async function generateTutorVoice() {
     const blob = await synthesizeTutorSpeech({
       settings,
       text: transcript,
-      voice: settings.tutorVoice || "sage",
+      voice: resolveVoice(settings.studentVoice),
       gradeBand,
       onProgress: (index, total) => setTutorStatus(total > 1 ? `Making audio… (part ${index} of ${total})` : "Generating the tutor voice…", "blue")
     });
@@ -4237,6 +4294,29 @@ async function handleSignOut() {
   renderPortalGate("login", "");
 }
 
+// ---- Tutor voice selector (admin-approved list only) ----
+async function renderVoiceSelect() {
+  const select = document.getElementById("studentVoiceSelect");
+  if (!select) return;
+  const list = allowedVoices();
+  const settings = await getSettings();
+  let current = String(settings.studentVoice || "").trim().toLowerCase();
+  // Saved voice no longer approved -> reset to the (admin) default and persist.
+  if (!list.includes(current)) {
+    current = defaultVoice();
+    await saveSettings({ studentVoice: current });
+  }
+  select.innerHTML = list.map(voice => (
+    `<option value="${escapeHtml(voice)}"${voice === current ? " selected" : ""}>${escapeHtml(voiceLabel(voice))}</option>`
+  )).join("");
+}
+
+async function onVoiceSelectChange(event) {
+  const voice = resolveVoice(event.target.value);
+  await saveSettings({ studentVoice: voice });
+  event.target.value = voice;
+}
+
 // ---- Stars: motivational reward derived from the week's real activity ----
 // All-time stars: a cumulative counter that only grows (kids want a number that
 // climbs), persisted separately so it survives the 7-day activity prune.
@@ -4269,6 +4349,7 @@ function initSettingsTool() {
   document.getElementById("clearOpenAIButton")?.addEventListener("click", clearOpenAISettings);
   document.getElementById("testOpenAIButton")?.addEventListener("click", testOpenAIKey);
   document.getElementById("childSelect")?.addEventListener("change", onChildSelectChange);
+  document.getElementById("studentVoiceSelect")?.addEventListener("change", onVoiceSelectChange);
   document.getElementById("signOutButton")?.addEventListener("click", handleSignOut);
   document.getElementById("mathAnswerGateToggle")?.addEventListener("change", event => {
     mathAnswerGate = event.target.checked;
