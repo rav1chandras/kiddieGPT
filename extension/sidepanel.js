@@ -224,7 +224,8 @@ function normalizeChildren(list) {
   return (Array.isArray(list) ? list : [])
     .map((child, index) => ({
       id: String(child.id || child.childId || `child_${index + 1}`),
-      name: String(child.name || child.firstName || `Student ${index + 1}`),
+      // Portal stores the name as `studentName`; also accept name/firstName.
+      name: String(child.name || child.studentName || child.firstName || `Student ${index + 1}`),
       grade: String(child.grade || child.gradeBand || "")
     }))
     .filter(child => child.id);
@@ -242,8 +243,7 @@ async function refreshEntitlement() {
   if (portalToken === OTP_TEST_TOKEN) {
     const configured = normalizeChildren(globalThis.KIDDIEGPT_LOCAL_SETTINGS?.children);
     const children = configured.length ? configured : [
-      { id: "child_1", name: "Alex", grade: "6-8" },
-      { id: "child_2", name: "Sam", grade: "3-5" }
+      { id: "child_1", name: "Test Student", grade: "6-8" }
     ];
     portalSession = { email: stored[PORTAL_EMAIL_KEY] || "", entitled: true, status: "test", plan: "test", familyId: "", childId: pickChildId(stored[PORTAL_CHILD_KEY], children), children, locked: false };
     return portalSession;
@@ -709,6 +709,7 @@ function showPanel(name) {
   }
   if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); }
   if (panelName === "dashboard") renderStars();
+  if (panelName !== "math") stopPhoneCapture(); // don't keep polling off-screen
 
   currentView = panelName;
   saveSettings({ activeView: panelName });
@@ -3562,12 +3563,131 @@ async function correctMathProblem() {
   }
 }
 
+// ---- Phone capture (QR) ------------------------------------------------------
+// Mint a paired capture session on the portal, show a QR the student scans with
+// their phone, poll for the portal's transcription, then solve it through the
+// normal pipeline. The phone only uploads; the image never reaches the laptop.
+// Needs a real parent portal session — the dummy test sign-in can't mint tokens.
+let captureToken = "";
+let capturePollTimer = 0;
+
+function setCaptureState(title, hint, showRefresh = false) {
+  const t = document.getElementById("mathQrTitle");
+  const h = document.getElementById("mathQrHint");
+  const r = document.getElementById("mathQrRefresh");
+  if (t) t.textContent = title;
+  if (h) h.textContent = hint;
+  if (r) r.hidden = !showRefresh;
+}
+
+function stopPhoneCapture() {
+  clearInterval(capturePollTimer);
+  capturePollTimer = 0;
+  captureToken = "";
+}
+
+function renderCaptureQr(url) {
+  const box = document.getElementById("mathQrCode");
+  if (!box) return;
+  if (typeof qrcode === "undefined") { box.innerHTML = ""; return; }
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  box.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+}
+
+async function startPhoneCapture() {
+  stopPhoneCapture();
+  const box = document.getElementById("mathQrCode");
+  if (box) box.innerHTML = "";
+  if (!portalToken || portalToken === OTP_TEST_TOKEN) {
+    setCaptureState("Phone capture needs the parent portal", "Sign in with your parent account to use it. In test mode, use Paste, Screenshot, or Local file.", false);
+    return;
+  }
+  setCaptureState("Getting your code…", "");
+  const settings = await getOpenAISettings();
+  const gradeBand = settings?.gradeBand || "6-8";
+  try {
+    const res = await portalFetch("/api/capture/session", { method: "POST", body: { childId: portalSession?.childId || undefined, gradeBand } });
+    if (!res?.captureUrl || !res?.token) throw new Error("no_session");
+    captureToken = res.token;
+    renderCaptureQr(res.captureUrl);
+    setCaptureState("Scan with your phone", "Open your phone camera, point it at this code, and snap the problem from your book.");
+    pollCaptureResult(res.token);
+  } catch (error) {
+    setCaptureState("Couldn't start phone capture", friendlyError(error) || "Try again in a moment.", true);
+  }
+}
+
+function pollCaptureResult(token) {
+  clearInterval(capturePollTimer);
+  capturePollTimer = setInterval(async () => {
+    if (token !== captureToken) return;
+    let data;
+    try { data = await portalFetch(`/api/capture/${encodeURIComponent(token)}/result`); }
+    catch { return; } // transient network hiccup — keep polling
+    if (token !== captureToken || !data) return;
+    if (data.status === "solving") { setCaptureState("Got your photo — reading it…", "Hang tight."); return; }
+    if (data.status === "ready") {
+      stopPhoneCapture();
+      setCaptureState("Photo received!", "Solving it below…");
+      solveCapturedProblems(Array.isArray(data.problems) ? data.problems : []);
+      return;
+    }
+    if (data.status === "error" || data.status === "expired") {
+      stopPhoneCapture();
+      setCaptureState(
+        data.status === "expired" ? "This code expired" : "Couldn't use that photo",
+        data.reason || (data.status === "expired" ? "Tap New code and try again." : "Try a clearer photo."),
+        true
+      );
+    }
+  }, 2000);
+}
+
+// Solve the portal's transcription through the same pipeline the image path uses.
+async function solveCapturedProblems(problems) {
+  const transcript = (Array.isArray(problems) ? problems : [])
+    .map(item => ({ statement: String(item.statement || ""), diagram: String(item.diagram || ""), meta: String(item.meta || ""), figure: item.figure }))
+    .filter(item => item.statement);
+  if (!transcript.length) { setCaptureState("No problem found", "I couldn't read a math problem. Try another photo.", true); return; }
+  const settings = await getOpenAISettings();
+  if (!settings) { showMathNotice("Turn on OpenAI first", "Sign in to solve the problem from your photo."); return; }
+  const gradeBand = settings.gradeBand || "6-8";
+  const token = ++mathSolveToken;
+  mathAnswersRevealed = false;
+  mathPinPromptOpen = false;
+  startMathThinking("Reading your problem, every number and label…", { gradeBand });
+  lastMathSolve = { transcript, gradeBand };
+  const total = transcript.length;
+  const list = transcript.map((item, index) => mathPlaceholderFromTranscript(item, index, total));
+  mathSolveState.index = 0;
+  mathSolveState.problems = list;
+  renderMathSolution();
+  refreshMathThinkingTips({ gradeBand, hint: mathTopicHint(list) });
+  await solveMathProblemInPlace({ settings, gradeBand, index: 0, token });
+  if (token !== mathSolveToken) return;
+  bumpActivity("mathSolved", total);
+  awardStars(total);
+  stopMathThinking();
+  for (let index = 1; index < list.length; index += 1) {
+    if (token !== mathSolveToken) return;
+    await solveMathProblemInPlace({ settings, gradeBand, index, token });
+  }
+}
+
 function updateMathSourceMode() {
   const mode = sourceState.math || "screenshot";
   document.querySelectorAll("[data-math-source-mode]").forEach(panel => {
     panel.hidden = panel.dataset.mathSourceMode !== mode;
     panel.classList.toggle("active", panel.dataset.mathSourceMode === mode);
   });
+  // Phone capture auto-solves when the photo arrives, so the manual Solve button
+  // doesn't apply. Start/stop the QR session as the student enters/leaves the tab.
+  const solveBtn = document.getElementById("mathSolveButton");
+  if (solveBtn) solveBtn.hidden = mode === "qr";
+  if (mode === "qr") startPhoneCapture();
+  else stopPhoneCapture();
 }
 
 function updateExplainSourceMode() {
@@ -3589,6 +3709,7 @@ function initMathTool() {
     captureMathProblemRegion();
   });
   document.getElementById("mathSolveButton")?.addEventListener("click", solveMathWithAI);
+  document.getElementById("mathQrRefresh")?.addEventListener("click", startPhoneCapture);
   // Enter solves from the paste box; Shift+Enter makes a new line.
   document.getElementById("mathPasteInput")?.addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -4258,7 +4379,6 @@ async function handleParentPinAction(event) {
 function renderChildSelect() {
   const select = document.getElementById("childSelect");
   const badge = document.getElementById("settingsStudentBadge");
-  const nameFromEmail = () => (portalSession?.email ? portalSession.email.split("@")[0] : "Student");
   if (!select) return;
   // Session children come from the portal; fall back to the local-settings list
   // so a configured dev/test list always shows even if the session path missed it.
@@ -4272,12 +4392,13 @@ function renderChildSelect() {
     )).join("");
     select.disabled = false;
   } else {
-    // No portal child list yet (test mode / backend TODO) -> single placeholder.
-    select.innerHTML = `<option value="${escapeHtml(active)}">${escapeHtml(nameFromEmail())}</option>`;
+    // No student list available yet (portal hasn't returned children). Use a
+    // neutral placeholder — never the parent's email, which isn't the student.
+    select.innerHTML = `<option value="${escapeHtml(active)}">Student</option>`;
     select.disabled = true;
   }
   const current = children.find(child => child.id === active);
-  if (badge) badge.textContent = current?.name || nameFromEmail();
+  if (badge) badge.textContent = current?.name || "Student";
 }
 
 async function onChildSelectChange(event) {

@@ -326,7 +326,7 @@
           <section class="panel panel-pad math-source-panel">
             <div class="math-source-head">
               <div>
-                <div class="source-pills math-source-pills hdr-pill" data-source-group="math"><button class="active" data-source-option="paste">Paste</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button></div>
+                <div class="source-pills math-source-pills hdr-pill" data-source-group="math"><button class="active" data-source-option="paste">Paste</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button><button data-source-option="qr">Scan phone</button></div>
                 <span class="mission-eyebrow">Math Tutor</span>
                 <h3>Add your math problem</h3>
                 <p>Type it, screenshot it, or upload a worksheet.</p>
@@ -357,6 +357,16 @@
                     <small>One page · PDF, JPG, or PNG · up to 5 MB</small>
                   </div>
                   <button class="browse-button" id="mathBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
+                </div>
+              </div>
+              <div class="math-source-mode" data-math-source-mode="qr" hidden>
+                <div class="math-qr-box">
+                  <div class="math-qr-code" id="mathQrCode" aria-hidden="true"></div>
+                  <div class="math-qr-copy">
+                    <b id="mathQrTitle">Scan with your phone</b>
+                    <small id="mathQrHint">Open your phone camera, scan this code, and snap the problem from your book.</small>
+                    <button class="browse-button" id="mathQrRefresh" type="button" hidden>New code</button>
+                  </div>
                 </div>
               </div>
               <button class="small-button primary-action" id="mathSolveButton" type="button">Solve &amp; Explain</button>
@@ -597,6 +607,7 @@
     </aside>
   </div>
   <script src="katex/katex.min.js"></script>
+  <script src="vendor/qrcode.js"></script>
   <script src="local-settings.js"></script>
   <script src="sidepanel.js"></script>
 </body>

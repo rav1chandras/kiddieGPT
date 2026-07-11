@@ -524,6 +524,7 @@ function readDb() {
   db.processedWebhookEvents = db.processedWebhookEvents || [];
   db.issues = db.issues || [];
   db.supportMessages = db.supportMessages || [];
+  db.captureSessions = db.captureSessions || [];
   if (changed) writeDb(db);
   return db;
 }
@@ -1471,7 +1472,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   }
 });
 
-app.use(express.json());
+// 6mb accommodates base64 image payloads (AI vision calls + phone capture uploads);
+// the capture page downscales photos client-side so real uploads stay well under this.
+app.use(express.json({ limit: "6mb" }));
 
 async function sendEmail({ to, template, message }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
@@ -2885,6 +2888,241 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     mutateDb((store) => monitor(store, "error", "ai", "OpenAI speech proxy failed", { detail: String(error.message || error) }, req.auth.email));
     res.status(502).json({ error: "openai_unreachable" });
   }
+});
+
+// ---- QR phone-capture --------------------------------------------------------
+// A student photographs a physical-book math problem with their phone; the portal
+// transcribes the image -> text (vision only, no solving) and hands the text to
+// the extension's existing solve pipeline. The raw image is transient — never
+// persisted; only the short transcription is stored, briefly, against a token.
+const CAPTURE_TTL_MS = 5 * 60 * 1000;                 // token lifetime (~5 min)
+const CAPTURE_MAX_IMAGE_BYTES = 5 * 1024 * 1024;      // ~5 MB decoded
+const CAPTURE_RATE_WINDOW_MS = 60 * 1000;
+const CAPTURE_RATE_MAX = 5;                           // sessions per family per window
+const CAPTURE_TRANSCRIBE_INSTRUCTION = "You are KiddieGPT's math reader. Your only job is to read the image exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.";
+
+function captureOrigin(req) {
+  // Phones can't reach localhost; prod sets PUBLIC_ORIGIN, dev can set it to a
+  // LAN IP or tunnel. Falls back to the request host.
+  return process.env.PUBLIC_ORIGIN || process.env.CAPTURE_PUBLIC_ORIGIN || `${req.protocol}://${req.get("host")}`;
+}
+function pruneCaptureSessions(db) {
+  const cutoff = Date.now() - 30 * 60 * 1000; // keep 30 min for late polls, then drop
+  db.captureSessions = (db.captureSessions || []).filter((s) => new Date(s.createdAt || 0).getTime() >= cutoff).slice(0, 500);
+}
+function findCaptureSession(db, token) {
+  return (db.captureSessions || []).find((s) => s.token === token) || null;
+}
+function captureExpired(session) {
+  return !session || Date.now() > Number(session.expiresAt || 0);
+}
+function safeParseJson(raw) {
+  if (!raw) return null;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  try { return JSON.parse(text); } catch { return null; }
+}
+async function moderationFlagged(apiKey, text) {
+  if (!apiKey || !text) return false;
+  try {
+    const r = await fetch("https://api.openai.com/v1/moderations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: "omni-moderation-latest", input: String(text).slice(0, 4000) })
+    });
+    const d = await r.json().catch(() => ({}));
+    return Boolean(d.results && d.results[0] && d.results[0].flagged);
+  } catch { return false; } // fail-open: don't block a kid's math on a moderation outage
+}
+
+function renderCapturePage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>KiddieGPT — Scan your problem</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Inter,Arial,sans-serif;background:#eef5f1;color:#173c36;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{width:100%;max-width:400px;background:#fff;border-radius:22px;padding:26px;text-align:center;
+    box-shadow:0 20px 50px rgba(0,60,50,.14);display:flex;flex-direction:column;gap:14px}
+  h1{margin:0;font-size:22px;color:#004f48} p{margin:0;font-size:15px;color:#4f6b67;line-height:1.45}
+  .cam{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-radius:16px;
+    background:#004f48;color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+  #preview{width:100%;border-radius:14px;border:1px solid #d6e6e1}
+  #send{padding:14px;border:none;border-radius:999px;background:#0f8a63;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+  #send:disabled{opacity:.6} .done{font-size:44px} #status{min-height:18px;font-weight:600}
+</style></head>
+<body><div class="card">
+  <h1>Snap your math problem</h1>
+  <p id="hint">Take a clear photo of one problem from your book.</p>
+  <label class="cam"><input id="file" type="file" accept="image/*" capture="environment" hidden><span>📷 Take photo</span></label>
+  <img id="preview" alt="" hidden>
+  <button id="send" hidden>Send to KiddieGPT</button>
+  <p id="status"></p>
+</div>
+<script>
+(function(){
+  var parts = location.pathname.split("/").filter(Boolean);
+  var uploadUrl = "/api/capture/" + parts[parts.length-1] + "/image";
+  var file=document.getElementById("file"),preview=document.getElementById("preview"),
+      sendBtn=document.getElementById("send"),statusEl=document.getElementById("status"),dataUrl="";
+  function setStatus(m,err){statusEl.textContent=m||"";statusEl.style.color=err?"#b23a48":"#4f6b67";}
+  file.addEventListener("change",function(){
+    var f=file.files&&file.files[0]; if(!f)return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var max=1600,scale=Math.min(1,max/Math.max(img.width,img.height));
+        var w=Math.round(img.width*scale),h=Math.round(img.height*scale);
+        var c=document.createElement("canvas");c.width=w;c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        dataUrl=c.toDataURL("image/jpeg",0.82);
+        preview.src=dataUrl;preview.hidden=false;sendBtn.hidden=false;setStatus("Looks good? Send it.");
+      };
+      img.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
+      img.src=reader.result;
+    };
+    reader.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
+    reader.readAsDataURL(f);
+  });
+  sendBtn.addEventListener("click",function(){
+    if(!dataUrl)return; sendBtn.disabled=true; setStatus("Sending…");
+    fetch(uploadUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:dataUrl})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){
+        if(res.ok){document.querySelector(".card").innerHTML="<div class='done'>✅</div><h1>Sent!</h1><p>Check your KiddieGPT extension on your laptop.</p>";}
+        else{sendBtn.disabled=false;setStatus((res.d&&res.d.error==="already_used")?"Already sent. Make a new QR in KiddieGPT.":"Couldn't send. Try again.",true);}
+      })
+      .catch(function(){sendBtn.disabled=false;setStatus("No connection. Try again.",true);});
+  });
+})();
+</script></body></html>`;
+}
+
+function renderCaptureExpiredPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>KiddieGPT</title>
+<style>body{margin:0;font-family:-apple-system,Inter,Arial,sans-serif;background:#eef5f1;color:#173c36;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{max-width:360px;background:#fff;border-radius:22px;padding:28px;text-align:center;box-shadow:0 20px 50px rgba(0,60,50,.14)}
+  h1{margin:0 0 8px;color:#004f48;font-size:22px}p{margin:0;color:#4f6b67;line-height:1.45}</style></head>
+<body><div class="card"><div style="font-size:40px">⏳</div><h1>This link expired</h1>
+<p>Generate a new QR code in your KiddieGPT extension and scan again.</p></div></body></html>`;
+}
+
+// 1) Mint a short-lived, single-use capture token bound to {family, child}.
+app.post("/api/capture/session", requireParent, (req, res) => {
+  const body = req.body || {};
+  const result = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return { error: "family_not_found" };
+    const child = ownedChild(family, body.childId);
+    if (!child) return { error: "not_your_child" };
+    pruneCaptureSessions(db);
+    const recent = (db.captureSessions || []).filter((s) => s.familyId === family.id && Date.now() - new Date(s.createdAt || 0).getTime() < CAPTURE_RATE_WINDOW_MS);
+    if (recent.length >= CAPTURE_RATE_MAX) return { error: "rate_limited" };
+    const session = {
+      token: "cap_" + crypto.randomBytes(24).toString("hex"),
+      familyId: family.id,
+      childId: child.id,
+      gradeBand: String(body.gradeBand || child.grade || "6-8").slice(0, 12),
+      status: "waiting",
+      problems: null,
+      reason: "",
+      createdAt: nowIso(),
+      expiresAt: Date.now() + CAPTURE_TTL_MS,
+      used: false
+    };
+    db.captureSessions.unshift(session);
+    return { ok: true, token: session.token, expiresAt: session.expiresAt };
+  });
+  if (result.error === "family_not_found") return res.status(404).json({ error: "family_not_found" });
+  if (result.error === "not_your_child") return res.status(403).json({ error: "not_your_child" });
+  if (result.error === "rate_limited") return res.status(429).json({ error: "rate_limited" });
+  res.json({ token: result.token, captureUrl: `${captureOrigin(req)}/capture/${result.token}`, expiresAt: result.expiresAt });
+});
+
+// 2) Mobile capture page (no auth — the token IS the scoped credential).
+app.get("/capture/:token", (req, res) => {
+  const session = findCaptureSession(readDb(), req.params.token);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(!session || session.used || captureExpired(session) ? renderCaptureExpiredPage() : renderCapturePage());
+});
+
+// 3) Phone uploads the photo -> transcribe -> moderate -> store text (image is transient).
+app.post("/api/capture/:token/image", async (req, res) => {
+  const token = req.params.token;
+  // Claim the token single-use and flip to "solving" atomically.
+  const claim = mutateDb((db) => {
+    const session = findCaptureSession(db, token);
+    if (!session) return { error: "not_found" };
+    if (captureExpired(session)) { session.status = "expired"; return { error: "expired" }; }
+    if (session.used) return { error: "used" };
+    session.used = true;
+    session.status = "solving";
+    return { ok: true, gradeBand: session.gradeBand };
+  });
+  if (claim.error === "not_found" || claim.error === "expired") return res.status(410).json({ error: claim.error });
+  if (claim.error === "used") return res.status(409).json({ error: "already_used" });
+
+  const setSession = (patch) => mutateDb((db) => { const s = findCaptureSession(db, token); if (s) Object.assign(s, patch); });
+  const dataUrl = String((req.body && req.body.image) || "");
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl);
+  if (!match) { setSession({ status: "error", reason: "That didn't look like a photo. Try again." }); return res.status(400).json({ error: "bad_image" }); }
+  if (Buffer.byteLength(match[2], "base64") > CAPTURE_MAX_IMAGE_BYTES) { setSession({ status: "error", reason: "That photo is too large. Try again." }); return res.status(413).json({ error: "too_large" }); }
+
+  const settings = normaliseAiSettings(readDb().aiSettings);
+  if (!settings.openaiApiKey) { setSession({ status: "error", reason: "The tutor isn't set up yet. Ask a parent." }); return res.json({ ok: true }); }
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
+      body: JSON.stringify({
+        model: settings.openaiModel,
+        instructions: CAPTURE_TRANSCRIBE_INSTRUCTION,
+        input: [{ role: "user", content: [
+          { type: "input_text", text: `Read this photo and list every math problem in reading order, up to 15. Grade band: ${claim.gradeBand}. Return JSON with a problems array. Each item: statement (full question in plain words), meta (short topic like "Geometry · right triangle"), diagram (complete text description of any figure so it can be solved without the image, or "" if none).` },
+          { type: "input_image", image_url: dataUrl }
+        ] }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setSession({ status: "error", reason: "Couldn't read that photo. Try a clearer picture." });
+      mutateDb((store) => monitor(store, "error", "ai", "Capture transcription failed", { detail: String(data?.error?.message || "") }));
+      return res.json({ ok: true });
+    }
+    const parsed = safeParseJson(extractOutputText(data));
+    if (!parsed || parsed.noMath) { setSession({ status: "error", reason: (parsed && parsed.reason) || "I couldn't find a math problem in that photo." }); return res.json({ ok: true }); }
+    const problems = (Array.isArray(parsed.problems) ? parsed.problems : []).slice(0, 15).map((p) => Object.assign({
+      statement: String(p.statement || p.equation || "").slice(0, 1000),
+      diagram: String(p.diagram || "").slice(0, 1500),
+      meta: String(p.meta || "").slice(0, 120)
+    }, p.figure ? { figure: p.figure } : {})).filter((p) => p.statement);
+    if (!problems.length) { setSession({ status: "error", reason: "I couldn't find a math problem in that photo." }); return res.json({ ok: true }); }
+    if (await moderationFlagged(settings.openaiApiKey, problems.map((p) => p.statement + " " + p.diagram).join("\n"))) {
+      setSession({ status: "error", reason: "That doesn't look like schoolwork." });
+      return res.json({ ok: true });
+    }
+    setSession({ status: "ready", problems, reason: "" });
+    res.json({ ok: true });
+  } catch (error) {
+    setSession({ status: "error", reason: "Something went wrong. Try again." });
+    mutateDb((store) => monitor(store, "error", "ai", "Capture transcription error", { detail: String(error.message || error) }));
+    res.json({ ok: true });
+  }
+});
+
+// 4) Extension polls for the transcription (must own the session).
+app.get("/api/capture/:token/result", requireParent, (req, res) => {
+  const db = readDb();
+  const family = parentFamilyForIdentity(db, req.auth);
+  const session = findCaptureSession(db, req.params.token);
+  if (!session) return res.json({ status: "expired" });
+  if (!family || session.familyId !== family.id) return res.status(403).json({ error: "not_your_session" });
+  if (session.status === "ready") return res.json({ status: "ready", problems: session.problems || [] });
+  if (session.status === "error") return res.json({ status: "error", reason: session.reason || "Couldn't read that photo." });
+  if (captureExpired(session) && session.status !== "solving") return res.json({ status: "expired" });
+  return res.json({ status: session.status === "solving" ? "solving" : "waiting" });
 });
 
 app.post("/api/families", (req, res) => {

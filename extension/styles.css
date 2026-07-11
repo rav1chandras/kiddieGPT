@@ -332,7 +332,14 @@ body{background:#f6f8f5}
     .math-upload-zone.upload-error{border-style:solid;border-color:#e3b34e;background:#fdf6e3}
     .math-upload-zone.upload-error small{color:#8a5a00;font-weight:700}
     /* Pin all three input modes to one height so the card and Solve button never jump */
-    .math-capture-box,.math-paste-box,.math-upload-zone{height:118px;min-height:118px;box-sizing:border-box}
+    .math-capture-box,.math-paste-box,.math-upload-zone,.math-qr-box{height:118px;min-height:118px;box-sizing:border-box}
+    .math-qr-box{display:grid;grid-template-columns:100px minmax(0,1fr);gap:14px;align-items:center;border:1.5px dashed #cfe0b6;border-radius:14px;background:#f8fbf5;padding:12px}
+    .math-qr-code{width:100px;height:100px;background:#fff;border-radius:10px;display:grid;place-items:center;overflow:hidden}
+    .math-qr-code svg{width:96px;height:96px;display:block}
+    .math-qr-copy{display:grid;gap:5px;min-width:0}
+    .math-qr-copy b{font-size:14px;color:#0b2d43;font-weight:800}
+    .math-qr-copy small{font-size:11px;line-height:1.4;color:#60747d}
+    #mathQrRefresh{justify-self:start;margin-top:2px}
     .math-paste-box{grid-template-rows:auto 1fr auto}
     .math-paste-box textarea{min-height:0;height:100%;resize:none}
     .math-source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
