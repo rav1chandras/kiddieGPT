@@ -22,6 +22,9 @@ node_modules/
 # ── Build artifacts / archives ─────────────────────────────────────────
 *.zip
 
+# Benchmark output (regenerable, large). Keep the eval scripts, not their runs.
+**/evals/results/
+
 # ── OS / editor / tooling ──────────────────────────────────────────────
 .DS_Store
 .claude/
