@@ -3367,6 +3367,10 @@
       }
     }
 
+    var SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
+    var VOICE_LABELS = { marin: "Marin — calm tutor", cedar: "Cedar — steady tutor", sage: "Sage — gentle guide" };
+    function voiceLabel(v) { return VOICE_LABELS[v] || (String(v).charAt(0).toUpperCase() + String(v).slice(1)); }
+
     function defaultAiSettings() {
       return {
         hasOpenAIKey: false,
@@ -3374,9 +3378,44 @@
         mathProblemsPerUserDaily: 20,
         tutorVoiceMinutesPerUserDaily: 10,
         tutorVoiceEnabled: true,
+        ttsModel: "gpt-4o-mini-tts",
+        ttsDefaultVoice: "marin",
+        ttsAllowedVoices: ["marin", "cedar", "sage"],
+        supportedTtsVoices: SUPPORTED_TTS_VOICES,
         updatedAt: "",
         updatedBy: ""
       };
+    }
+
+    function checkedShortlistVoices() {
+      return Array.from(document.querySelectorAll('#tts-voice-list input[data-tts-voice]:checked')).map(function (i) { return i.value; });
+    }
+
+    // Rebuild the default-voice dropdown from the currently-checked shortlist,
+    // keeping `preferred` selected if it's still allowed (else marin/cedar/sage).
+    function rebuildDefaultVoiceOptions(preferred) {
+      var defaultEl = document.getElementById("tts-default-voice");
+      if (!defaultEl) return;
+      var allowed = checkedShortlistVoices();
+      if (!allowed.length) allowed = ["marin", "cedar", "sage"];
+      var current = preferred && allowed.indexOf(preferred) >= 0
+        ? preferred
+        : (["marin", "cedar", "sage"].filter(function (v) { return allowed.indexOf(v) >= 0; })[0] || allowed[0]);
+      defaultEl.innerHTML = allowed.map(function (v) {
+        return '<option value="' + v + '"' + (v === current ? " selected" : "") + ">" + text(voiceLabel(v)) + "</option>";
+      }).join("");
+    }
+
+    function renderVoiceShortlist(settings) {
+      var listEl = document.getElementById("tts-voice-list");
+      if (!listEl) return;
+      var supported = (settings.supportedTtsVoices && settings.supportedTtsVoices.length) ? settings.supportedTtsVoices : SUPPORTED_TTS_VOICES;
+      var allowed = (settings.ttsAllowedVoices && settings.ttsAllowedVoices.length) ? settings.ttsAllowedVoices : ["marin", "cedar", "sage"];
+      listEl.innerHTML = supported.map(function (v) {
+        var checked = allowed.indexOf(v) >= 0;
+        return '<label class="' + (checked ? "is-checked" : "") + '"><input type="checkbox" value="' + v + '" data-tts-voice' + (checked ? " checked" : "") + "><span>" + text(voiceLabel(v)) + "</span></label>";
+      }).join("");
+      rebuildDefaultVoiceOptions(settings.ttsDefaultVoice || allowed[0]);
     }
 
     function setAiSettingsState(label, state) {
@@ -3404,6 +3443,7 @@
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
+        renderVoiceShortlist(settings);
       }
       renderMarkup("ai-runtime-rules", [
         ruleMarkup("Math Step Tutor problem cap", "Extension should call the usage limits endpoint before solving another screenshot or typed math problem.", "active", "calculator"),
@@ -3437,7 +3477,9 @@
             openaiModel: aiSettingsForm.elements.openaiModel ? aiSettingsForm.elements.openaiModel.value.trim() : undefined,
             mathProblemsPerUserDaily: Number(aiSettingsForm.elements.mathProblemsPerUserDaily.value || 0),
             tutorVoiceMinutesPerUserDaily: Number(aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value || 0),
-            tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked
+            tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
+            ttsAllowedVoices: checkedShortlistVoices(),
+            ttsDefaultVoice: (document.getElementById("tts-default-voice") || {}).value || undefined
           })
         });
         setAiSettingsState(clearKey ? "Key cleared" : "Saved", "active");
@@ -4346,6 +4388,19 @@
       aiSettingsForm.addEventListener("submit", async function (event) {
         event.preventDefault();
         await saveAiSettings(false);
+      });
+    }
+
+    // Tutor voice shortlist: toggling a voice updates its chip + the default menu.
+    var ttsVoiceListEl = document.getElementById("tts-voice-list");
+    if (ttsVoiceListEl) {
+      ttsVoiceListEl.addEventListener("change", function (event) {
+        var box = event.target.closest('input[data-tts-voice]');
+        if (!box) return;
+        var label = box.closest("label");
+        if (label) label.classList.toggle("is-checked", box.checked);
+        var keepDefault = (document.getElementById("tts-default-voice") || {}).value;
+        rebuildDefaultVoiceOptions(keepDefault);
       });
     }
 

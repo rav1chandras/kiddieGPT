@@ -121,6 +121,41 @@ function normalisePricing(pricing = {}) {
   };
 }
 
+// ---- Tutor voice (TTS) --------------------------------------------------
+// Text-model routing (openaiModel) is SEPARATE from the tutor voice below.
+// The TTS model is pinned to gpt-4o-mini-tts for now; admins control which
+// voices are available and which is the default. Students pick from the
+// admin-approved shortlist in the extension.
+const TTS_MODEL = "gpt-4o-mini-tts";
+const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
+// Preferred order for middle school; also the non-empty fallback shortlist.
+const PREFERRED_TTS_VOICES = ["marin", "cedar", "sage"];
+const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
+
+// Keep only supported, de-duped voices; never allow an empty list.
+function normaliseAllowedVoices(list) {
+  const filtered = (Array.isArray(list) ? list : []).filter((v) => SUPPORTED_TTS_VOICES.includes(v));
+  const unique = [...new Set(filtered)];
+  return unique.length ? unique : [...PREFERRED_TTS_VOICES];
+}
+
+// If the default isn't in the allowed list, fall back to the first preferred
+// voice that is allowed (marin -> cedar -> sage), else the first allowed voice.
+function normaliseDefaultVoice(requested, allowed) {
+  if (requested && allowed.includes(requested)) return requested;
+  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0];
+}
+
+// Resolve the voice for a TTS call: student pick if allowed, else admin
+// default, else fallback order (marin -> cedar -> sage), else first allowed.
+function resolveTtsVoice(requested, settings) {
+  const allowed = normaliseAllowedVoices(settings.ttsAllowedVoices);
+  if (requested && allowed.includes(requested)) return requested;
+  const def = normaliseDefaultVoice(settings.ttsDefaultVoice, allowed);
+  if (def) return def;
+  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0] || "marin";
+}
+
 function defaultAiSettings() {
   return {
     openaiApiKey: process.env.OPENAI_API_KEY || "",
@@ -128,6 +163,9 @@ function defaultAiSettings() {
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
     tutorVoiceEnabled: true,
+    ttsModel: TTS_MODEL,
+    ttsDefaultVoice: "marin",
+    ttsAllowedVoices: [...PREFERRED_TTS_VOICES],
     updatedAt: "",
     updatedBy: ""
   };
@@ -135,6 +173,8 @@ function defaultAiSettings() {
 
 function normaliseAiSettings(settings = {}) {
   const defaults = defaultAiSettings();
+  const ttsAllowedVoices = normaliseAllowedVoices(settings.ttsAllowedVoices ?? defaults.ttsAllowedVoices);
+  const ttsDefaultVoice = normaliseDefaultVoice(String(settings.ttsDefaultVoice || defaults.ttsDefaultVoice || ""), ttsAllowedVoices);
   return {
     ...defaults,
     ...settings,
@@ -143,6 +183,10 @@ function normaliseAiSettings(settings = {}) {
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
+    // TTS model is pinned for now regardless of stored value.
+    ttsModel: TTS_MODEL,
+    ttsAllowedVoices,
+    ttsDefaultVoice,
     updatedAt: settings.updatedAt || "",
     updatedBy: settings.updatedBy || ""
   };
@@ -164,6 +208,10 @@ function safeAiSettings(settings = {}) {
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
+    ttsModel: normalised.ttsModel,
+    ttsDefaultVoice: normalised.ttsDefaultVoice,
+    ttsAllowedVoices: normalised.ttsAllowedVoices,
+    supportedTtsVoices: SUPPORTED_TTS_VOICES,
     updatedAt: normalised.updatedAt,
     updatedBy: normalised.updatedBy
   };
@@ -2178,6 +2226,18 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
     }
+    // Tutor voice shortlist + default. TTS model stays pinned. normaliseAiSettings
+    // re-validates: only supported voices, never empty, default must be allowed
+    // (auto-fixed to marin -> cedar -> sage otherwise).
+    if (Object.prototype.hasOwnProperty.call(body, "ttsModel")) {
+      next.ttsModel = TTS_MODEL;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "ttsAllowedVoices")) {
+      next.ttsAllowedVoices = normaliseAllowedVoices(body.ttsAllowedVoices);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "ttsDefaultVoice")) {
+      next.ttsDefaultVoice = String(body.ttsDefaultVoice || "");
+    }
     next.updatedAt = nowIso();
     next.updatedBy = req.auth?.email || "admin";
     db.aiSettings = normaliseAiSettings(next);
@@ -2185,7 +2245,9 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
       hasOpenAIKey: Boolean(db.aiSettings.openaiApiKey),
       mathProblemsPerUserDaily: db.aiSettings.mathProblemsPerUserDaily,
       tutorVoiceMinutesPerUserDaily: db.aiSettings.tutorVoiceMinutesPerUserDaily,
-      tutorVoiceEnabled: db.aiSettings.tutorVoiceEnabled
+      tutorVoiceEnabled: db.aiSettings.tutorVoiceEnabled,
+      ttsDefaultVoice: db.aiSettings.ttsDefaultVoice,
+      ttsAllowedVoices: db.aiSettings.ttsAllowedVoices
     }, req.auth?.email || "admin");
     return safeAiSettings(db.aiSettings);
   });
@@ -2206,6 +2268,12 @@ app.get("/api/ai/usage-limits", requireParent, (req, res) => {
     requireSteps: limits.requireSteps,
     controls: limits.controls,
     aiConfigured: Boolean(settings.openaiApiKey),
+    // Admin-controlled tutor voice policy — the student picks from `allowed`.
+    voice: {
+      allowed: settings.ttsAllowedVoices,
+      default: settings.ttsDefaultVoice,
+      model: settings.ttsModel
+    },
     remaining: family
       ? usageRemaining(family, settings, childId)
       : { mathProblems: limits.mathProblemsPerUserDaily, voiceMinutes: limits.tutorVoiceMinutesPerUserDaily }
@@ -2786,21 +2854,18 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   }
   const text = String(body.text || "").trim();
   if (!text) return res.status(400).json({ error: "empty_text" });
-  const gradeBand = body.gradeBand || "6-8";
-  const pace = gradeBand === "K-2"
-    ? "Speak slowly and gently for a young child."
-    : gradeBand === "3-5"
-      ? "Speak at a calm, clear pace."
-      : "Speak at a natural, encouraging pace.";
+  // Resolve the voice server-side: student pick if allowed, else admin default,
+  // else fallback order (marin -> cedar -> sage). Never trust a raw client voice.
+  const voice = resolveTtsVoice(body.voice, settings);
   try {
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: body.voice || "sage",
+        model: settings.ttsModel,
+        voice,
         input: text,
-        instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`,
+        instructions: TTS_INSTRUCTION,
         response_format: "mp3"
       })
     });
@@ -3030,12 +3095,18 @@ app.get("/api/entitlements/me", (req, res) => {
   }
   const overrideActive = hasActiveOverride(family);
   const active = (family.subscriptionStatus === "active" || cancellationStillActive(family) || overrideActive) && !family.accountLocked;
+  // Admin-controlled tutor voice policy — the extension builds its student voice
+  // picker (shortlist + default) from these fields on the session.
+  const voiceSettings = normaliseAiSettings(readDb().aiSettings);
   res.json({
     active,
     status: family.subscriptionStatus,
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
     familyId: family.id,
+    ttsAllowedVoices: voiceSettings.ttsAllowedVoices,
+    ttsDefaultVoice: voiceSettings.ttsDefaultVoice,
+    ttsModel: voiceSettings.ttsModel,
     createdAt: family.createdAt || "",
     paymentStatus: family.paymentStatus || "",
     overrideUntil: family.entitlementOverrideUntil || "",
