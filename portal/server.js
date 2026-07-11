@@ -124,7 +124,7 @@ function normalisePricing(pricing = {}) {
 function defaultAiSettings() {
   return {
     openaiApiKey: process.env.OPENAI_API_KEY || "",
-    openaiModel: process.env.OPENAI_MODEL || "gpt-4.1",
+    openaiModel: process.env.OPENAI_MODEL || "gpt-5.6-luna",
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
     tutorVoiceEnabled: true,
@@ -139,7 +139,7 @@ function normaliseAiSettings(settings = {}) {
     ...defaults,
     ...settings,
     openaiApiKey: typeof settings.openaiApiKey === "string" ? settings.openaiApiKey : defaults.openaiApiKey,
-    openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-4.1"),
+    openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-5.6-luna"),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
@@ -2711,7 +2711,7 @@ app.get("/api/admin/logs/digest", requireAdmin, async (req, res) => {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
         body: JSON.stringify({
-          model: settings.openaiModel || "gpt-4.1-mini",
+          model: settings.openaiModel || "gpt-5.6-luna",
           instructions: `You are an operations assistant for KiddieGPT, a kids' learning Chrome extension. You are given grouped error/issue data from the last ${days} days. Write a short brief (max 120 words) for a solo founder. Lead with extension-facing problems (crashes, login failures, AI failures) because those directly break the product for kids. Name the single most urgent group, the likely root cause, and one concrete next action. Plain text, no markdown headings, no fluff.`,
           input: JSON.stringify(compact)
         })
@@ -2753,7 +2753,7 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({
-        model: body.model || settings.openaiModel || "gpt-4.1",
+        model: body.model || settings.openaiModel || "gpt-5.6-luna",
         instructions,
         input: body.input
       })
