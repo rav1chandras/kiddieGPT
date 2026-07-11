@@ -11,6 +11,29 @@ controls.
 - **Writing Studio** — coach a student's own writing (assignment planning, draft feedback, and inline grammar review that explains *why* — it never writes the assignment for them).
 - **Explain This** — explain the active page, a selection, or a screenshot in kid-simple words.
 
+## Model routing
+Text models are chosen per task from benchmark results (`evals/`), defined once in the
+`MODELS` constant at the top of `sidepanel.js`:
+
+| Use | Model | Notes |
+|---|---|---|
+| Default text — tutor explain, Study Mission, flashcards, quizzes, Explain, Writing | **gpt-5.6-luna** | Best all-round default |
+| Math — solve / check / transcribe | **gpt-5.6-luna** | Same default, accuracy-tuned lane |
+| Harder-math / faster fallback | **gpt-5.6-terra** | Opt-in per call |
+| Premium "deep" mode | **gpt-5.6-sol** | Opt-in only, never the default |
+| Tutor **voice** (TTS) | **gpt-4o-mini-tts** | Separate audio model |
+| Content **moderation** | **omni-moderation-latest** | Free safety screen |
+
+- **Luna** is the default for all text. **Terra** is the faster / harder-math fallback —
+  route to it per call for tricky problems or a snappier response. **Sol** is reserved for
+  a premium/deep mode and is never used by default (it's the most expensive). **`gpt-4.1`
+  is no longer a default** anywhere.
+- **Voice always uses `gpt-4o-mini-tts`**, independent of the text routing above; moderation
+  always uses `omni-moderation-latest`.
+- Override per call with `model:` on `callOpenAIJson` (or `solveMathOnce` / `checkMathOnce` /
+  `transcribeMathProblems`, e.g. `model: MODELS.hardMath`). A `local-settings.js` `openaiModel`
+  still overrides the default for non-math text calls.
+
 ## Safety & parent features
 - **Grade-safe prompts** plus an **output moderation** pass on generated content.
 - **Parent PIN** to gate math answers, with an OTP-based "Forgot PIN" reset.
