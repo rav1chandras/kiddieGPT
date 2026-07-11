@@ -935,7 +935,7 @@ body{background:#f6f8f5}
     .settings-topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
     .settings-child{display:grid;gap:4px;min-width:0;flex:1}
     .settings-child span{font-size:10px;font-weight:900;color:#7b8c98;text-transform:uppercase;letter-spacing:.06em}
-    .settings-child select{height:38px;max-width:220px;border:1px solid var(--line);border-radius:11px;background:#fff;color:#0b2d43;padding:0 30px 0 12px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23506677' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+    .settings-child select,.settings-select{height:38px;max-width:220px;border:1px solid var(--line);border-radius:11px;background:#fff;color:#0b2d43;padding:0 30px 0 12px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23506677' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
     .settings-topbar-actions{display:flex;gap:8px;align-items:center}
     .settings-topbar-actions .small-button{min-width:84px}
     .settings-status-line{margin:0}
