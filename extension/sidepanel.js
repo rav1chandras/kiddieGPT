@@ -110,6 +110,27 @@ const OTP_TEST_CODE = "1234";
 const OTP_TEST_TOKEN = "test-otp-token";
 let otpState = { step: "email", email: "", sentCode: "" };
 
+// ---- Model routing (from benchmark results) ----------------------------------
+// Text tools default to Luna. Terra is a faster / harder-math fallback. Sol is
+// premium/deep only, never the default. Voice (TTS) and moderation are separate,
+// fixed models. gpt-4.1 is no longer the default for anything.
+const MODELS = {
+  defaultText: "gpt-5.6-luna", // tutor explain, mission/flashcards/quizzes, explain, writing
+  math: "gpt-5.6-luna",        // math solve / check / transcribe
+  hardMath: "gpt-5.6-terra",   // optional faster / harder-math fallback
+  premiumDeep: "gpt-5.6-sol",  // premium "deep" mode only, opt-in
+  tts: "gpt-4o-mini-tts",      // tutor voice
+  moderation: "omni-moderation-latest"
+};
+
+// Resolve the text model for a call. mode: "default" | "hard" | "deep".
+// Callers can also pass an explicit model to override routing.
+function modelForText(mode = "default") {
+  if (mode === "deep") return MODELS.premiumDeep;
+  if (mode === "hard") return MODELS.hardMath;
+  return MODELS.defaultText;
+}
+
 async function requestOtp(email) {
   const clean = String(email || "").trim();
   const response = await fetch(`${portalBaseUrl()}/api/auth/otp/request`, {
@@ -392,14 +413,14 @@ function escapeHtml(value) {
 function getSettings() {
   return new Promise(resolve => {
     const localDefaults = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
-    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: "gpt-4.1", activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, ...localDefaults };
+    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, ...localDefaults };
     if (extensionApi?.storage?.local) {
       extensionApi.storage.local.get(defaults, data => {
         resolve({
           ...data,
           openaiApiKey: data.openaiApiKey || localDefaults.openaiApiKey || "",
           openaiDemoEnabled: Boolean(data.openaiApiKey || localDefaults.openaiApiKey) ? true : Boolean(data.openaiDemoEnabled),
-          openaiModel: data.openaiModel || localDefaults.openaiModel || "gpt-4.1"
+          openaiModel: data.openaiModel || localDefaults.openaiModel || MODELS.defaultText
         });
       });
       return;
@@ -410,7 +431,7 @@ function getSettings() {
         ...data,
         openaiApiKey: data.openaiApiKey || localDefaults.openaiApiKey || "",
         openaiDemoEnabled: Boolean(data.openaiApiKey || localDefaults.openaiApiKey) ? true : Boolean(data.openaiDemoEnabled),
-        openaiModel: data.openaiModel || localDefaults.openaiModel || "gpt-4.1"
+        openaiModel: data.openaiModel || localDefaults.openaiModel || MODELS.defaultText
       });
     } catch {
       resolve(defaults);
@@ -1134,7 +1155,7 @@ async function loadSettingsForm() {
   const modelInput = document.getElementById("openaiModelInput");
   if (toggle) toggle.checked = Boolean(settings.openaiDemoEnabled);
   if (keyInput) keyInput.value = settings.openaiApiKey || "";
-  if (modelInput) modelInput.value = settings.openaiModel || "gpt-4.1";
+  if (modelInput) modelInput.value = settings.openaiModel || MODELS.defaultText;
 }
 
 async function saveSettingsForm() {
@@ -1143,7 +1164,7 @@ async function saveSettingsForm() {
   // Only touch OpenAI settings when that UI is actually present (dev builds).
   if (keyInput) {
     const key = keyInput.value.trim();
-    const model = document.getElementById("openaiModelInput")?.value.trim() || "gpt-4.1";
+    const model = document.getElementById("openaiModelInput")?.value.trim() || MODELS.defaultText;
     const enabled = Boolean(document.getElementById("openaiDemoToggle")?.checked);
     await saveSettings({ openaiDemoEnabled: enabled, openaiApiKey: key, openaiModel: model });
     updateSettingsStatus(key ? "Settings saved." : "Saved. Add a key before using OpenAI demo mode.", key ? "" : "warn");
@@ -1218,7 +1239,7 @@ async function moderateFlagged(settings, text) {
       const res = await fetch("https://api.openai.com/v1/moderations", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-        body: JSON.stringify({ model: "omni-moderation-latest", input })
+        body: JSON.stringify({ model: MODELS.moderation, input })
       });
       if (!res.ok) return false;
       const data = await res.json().catch(() => ({}));
@@ -1274,7 +1295,7 @@ async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6
     const direct = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-      body: JSON.stringify({ model: "gpt-4o-mini-tts", voice, input: text, instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`, response_format: "mp3" })
+      body: JSON.stringify({ model: MODELS.tts, voice, input: text, instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`, response_format: "mp3" })
     });
     if (!direct.ok) {
       const detail = await direct.json().catch(() => ({}));
@@ -1307,10 +1328,13 @@ async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6
   return response.blob();
 }
 
-async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true }) {
+async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model }) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const content = [{ type: "input_text", text }, ...parts];
+  // Model routing: an explicit per-call model wins, then any local override,
+  // then the benchmark default (Luna). gpt-4.1 is no longer a fallback.
+  const useModel = model || settings?.openaiModel || MODELS.defaultText;
   // Test mode (dummy OTP + a local dev key): call OpenAI directly, since there is
   // no portal backend to proxy through. Production uses a real token with no
   // local key, so this branch never fires there.
@@ -1319,7 +1343,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-      body: JSON.stringify({ model: settings.openaiModel || "gpt-4.1", instructions, input: [{ role: "user", content }] })
+      body: JSON.stringify({ model: useModel, instructions, input: [{ role: "user", content }] })
     }).finally(() => clearTimeout(timeoutId));
     const directData = await direct.json().catch(() => ({}));
     if (!direct.ok) throw new PortalError(directData?.error?.message || "openai_error", direct.status, directData);
@@ -1337,7 +1361,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
     body: JSON.stringify({
       tool: tool || toolForCurrentView(),
       childId: portalSession?.childId || undefined,
-      model: settings?.openaiModel || undefined,
+      model: useModel,
       instructions,
       input: [{ role: "user", content }]
     })
@@ -2898,10 +2922,11 @@ function mathGradeGuidance(gradeBand) {
   return "Use pre-algebra and algebra as needed, but pick the simplest approach the problem allows and name the rule in each line. Prefer basic geometry and algebra (base times height, Pythagorean theorem, factoring) over trigonometry or calculus unless the problem clearly requires them.";
 }
 
-async function solveMathOnce({ settings, parts, sourceText, gradeBand, disputeNote = "" }) {
+async function solveMathOnce({ settings, parts, sourceText, gradeBand, disputeNote = "", model = MODELS.math }) {
   return callOpenAIJson({
     settings,
     parts,
+    model, // routes to Luna by default; pass MODELS.hardMath/premiumDeep for harder/deep mode
     moderate: false, // math equations/steps are inherently safe; skip the extra round-trip
     instructions: "You are KiddieGPT Math Tutor, a careful teacher for K-8 students (support harder topics like algebra, geometry, vectors, and early calculus when the source shows them). Accuracy is critical: a wrong answer is worse than no answer. If the source contains no readable math problem — it is blank, too blurry or low-quality to read, or simply not math (like a photo, a paragraph of text, or a random screenshot) — do NOT invent a problem. Instead return exactly {\"noMath\": true, \"reason\": \"<one short, kind, kid-friendly sentence explaining what you see and what to do>\"} and nothing else. Otherwise: before solving, read EVERY label, number, and angle in the source and list them as givens. If there is a diagram, state exactly where the unknown sits (for example: which angle it is opposite or adjacent to) and never assume. A small square in a diagram is a right-angle mark: those two segments are perpendicular, so one of them is a height or leg — use it, and never treat a marked height as a slanted side or assume an included angle between them. Solve with the SIMPLEST method a student at the given grade would use: do not reach for an advanced technique (law of sines, trig area formula, calculus) when a basic one from the figure works, such as base times height for area or the Pythagorean theorem for a right triangle. Show the work like a whiteboard: short connected lines, each following from the one above. Always end with a check that substitutes the answer back and confirms it agrees with every given; if the check fails, redo the work before answering. Write every math expression as inline LaTeX (for example \\frac{a}{b}, \\sqrt{48}, x^{2}, a_{1}, 90^{\\circ}, \\int, \\sum); do NOT wrap it in $, $$, \\( \\), or \\[ \\] delimiters, and use no markdown. If several problems are visible, split them. Return only valid JSON.",
     text: `${sourceText}
@@ -2922,11 +2947,12 @@ Every math field (lines, check, answer) must be inline LaTeX with no $ or \\( \\
   });
 }
 
-async function checkMathOnce({ settings, parts, sourceText, problems }) {
+async function checkMathOnce({ settings, parts, sourceText, problems, model = MODELS.math }) {
   const candidates = problems.map((problem, index) => `Problem ${index + 1}: ${problem.equation} | Candidate answer: ${problem.answer}`).join("\n");
   const result = await callOpenAIJson({
     settings,
     parts,
+    model,
     moderate: false,
     instructions: "You are a strict, independent math checker. Re-solve each problem yourself from the original source before looking at the candidate answer, and when possible solve it a SECOND, different way and require both to agree. Do not trust the candidate. Read every label, number, and angle in any diagram carefully, honor right-angle marks (a small square means those segments are perpendicular, so one is a height or leg), and confirm which side or quantity the unknown actually is. Also judge the method: if the candidate used an advanced technique where a simpler one from the figure applies, or its answer disagrees with the simpler method, mark it as not agreeing. Return only valid JSON.",
     text: `${sourceText}
@@ -3206,10 +3232,11 @@ function mathPlaceholderFromTranscript(transcribed, index, total) {
 }
 
 // One vision call: read the image/file into text problems + diagram descriptions. No solving.
-async function transcribeMathProblems({ settings, parts, gradeBand }) {
+async function transcribeMathProblems({ settings, parts, gradeBand, model = MODELS.math }) {
   return callOpenAIJson({
     settings,
     parts,
+    model,
     moderate: false,
     instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.",
     text: `Read this source and list every math problem in reading order, up to 15. Grade band: ${gradeBand}. Return JSON with a problems array. Each item must have: statement (the full question in plain words, for example "Find b in a right triangle with hypotenuse 8, one leg 4, and a 30 degree angle"), meta (short topic like "Geometry · right triangle"), tags (array up to 4 short words), diagram (a complete text description of any figure so it can be solved without the image, or "" if there is no figure), and figure (ONLY for a right triangle: { type:"rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown } using the exact labels shown; omit otherwise).`
