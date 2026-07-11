@@ -3104,6 +3104,13 @@ app.get("/api/entitlements/me", (req, res) => {
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
     familyId: family.id,
+    // The extension builds its student picker from this. Children are stored with
+    // `studentName`/`grade`; expose the { id, name, grade } shape it expects.
+    children: (Array.isArray(family.children) ? family.children : []).map((c) => ({
+      id: c.id,
+      name: c.studentName || c.name || "",
+      grade: c.grade || ""
+    })),
     ttsAllowedVoices: voiceSettings.ttsAllowedVoices,
     ttsDefaultVoice: voiceSettings.ttsDefaultVoice,
     ttsModel: voiceSettings.ttsModel,
