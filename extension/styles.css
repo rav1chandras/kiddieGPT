@@ -287,7 +287,7 @@ body{background:#f6f8f5}
     .math-source-head{display:block;margin-bottom:12px}
     .math-source-head h3{font-size:19px;line-height:1.16;margin:2px 0 5px;color:#0b2d43}
     .math-source-head p{font-size:12px;line-height:1.45;color:#60747d;margin:0}
-    .math-source-pills{float:none;margin:0 0 10px;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex-wrap:nowrap}
+    .math-source-pills{float:none;margin:0 0 10px auto;width:max-content;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex-wrap:nowrap}
     .math-source-pills::-webkit-scrollbar{display:none}
     .math-source-pills button{flex-shrink:0}
     .math-input-card{border:1px solid #dce8df;border-radius:15px;background:rgba(255,255,255,.72);padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:stretch}
