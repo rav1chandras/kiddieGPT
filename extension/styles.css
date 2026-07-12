@@ -287,7 +287,9 @@ body{background:#f6f8f5}
     .math-source-head{display:block;margin-bottom:12px}
     .math-source-head h3{font-size:19px;line-height:1.16;margin:2px 0 5px;color:#0b2d43}
     .math-source-head p{font-size:12px;line-height:1.45;color:#60747d;margin:0}
-    .math-source-pills{margin-left:0;align-self:start}
+    .math-source-pills{float:none;margin:0 0 10px;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex-wrap:nowrap}
+    .math-source-pills::-webkit-scrollbar{display:none}
+    .math-source-pills button{flex-shrink:0}
     .math-input-card{border:1px solid #dce8df;border-radius:15px;background:rgba(255,255,255,.72);padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:stretch}
     .math-source-mode[hidden]{display:none}
     .math-source-mode{min-width:0}
@@ -566,6 +568,23 @@ body{background:#f6f8f5}
     .math-answer-card{display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:13px;background:#004f48;color:#fff;padding:11px 12px}
     .math-answer-card span{font-size:10px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.72)}
     .math-answer-card b{font-size:18px;color:#fff;font-weight:800}
+    /* Consolidated answer panel: answer + verify badge + watch-out + controls */
+    .math-answer-panel{border:1px solid #dce8df;border-radius:15px;background:linear-gradient(180deg,#fffdf8,#fbfdf5);padding:13px 15px;margin-top:11px;box-shadow:0 10px 22px rgba(12,42,60,.05)}
+    .ma-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+    .ma-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
+    .ma-verified{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:#215c1e;background:#dbeecb;border-radius:999px;padding:4px 10px}
+    .ma-verified i{font-style:normal;font-size:11px}
+    .ma-value{font-size:21px;font-weight:800;color:#004f48;overflow-wrap:anywhere;line-height:1.25}
+    .ma-blur{display:inline-block;filter:blur(8px);user-select:none;pointer-events:none}
+    .ma-reveal{margin-top:11px}
+    .ma-reveal .reveal-state{display:none}
+    .ma-hint{font-size:11px;font-weight:700;color:#8a99a0}
+    .ma-watch{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:#2f5b2a;background:#eef8e6;border:1px solid #cfe6bd;border-radius:12px;padding:9px 11px;margin-top:12px}
+    .ma-watch i{font-style:normal;font-weight:900;color:#fff;background:#5aa02f;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:11px;flex-shrink:0;margin-top:1px}
+    .ma-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #eef1ee;margin-top:12px;padding-top:10px}
+    .ma-linkbtn{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font-size:12px;font-weight:800;color:#7c8b93;cursor:pointer}
+    .ma-linkbtn.ma-hide{color:#0f6f52}
+    .ma-linkbtn:hover{text-decoration:underline}
     .math-support-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
     .math-support-actions button{border:1px solid var(--line);border-radius:11px;background:#fff;color:#29495b;height:36px;padding:0 12px;font-size:11px;font-weight:800;cursor:pointer}
     .math-support-actions .primary-action{border:0;background:var(--green);color:#fff}
