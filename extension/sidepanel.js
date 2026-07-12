@@ -237,6 +237,15 @@ function pickChildId(stored, children) {
   return children[0]?.id || stored || "";
 }
 
+// On first load nothing is stored, so pickChildId defaults to the first child.
+// Persist that default so the selection sticks and childId is always sent to the
+// portal (otherwise the server silently attributes usage to its own first child).
+async function persistDefaultChild(storedChildId) {
+  if (!storedChildId && portalSession?.childId) {
+    await storageSet({ [PORTAL_CHILD_KEY]: portalSession.childId });
+  }
+}
+
 async function refreshEntitlement() {
   if (!portalToken) { portalSession = null; return null; }
   const stored = await storageGet([PORTAL_EMAIL_KEY, PORTAL_CHILD_KEY]);
@@ -246,6 +255,7 @@ async function refreshEntitlement() {
       { id: "child_1", name: "Test Student", grade: "6-8" }
     ];
     portalSession = { email: stored[PORTAL_EMAIL_KEY] || "", entitled: true, status: "test", plan: "test", familyId: "", childId: pickChildId(stored[PORTAL_CHILD_KEY], children), children, locked: false };
+    await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
     return portalSession;
   }
   try {
@@ -265,6 +275,7 @@ async function refreshEntitlement() {
       ttsModel: ent.ttsModel,
       locked: Boolean(ent.locked)
     };
+    await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
     return portalSession;
   } catch (error) {
     if (error.status === 401) { portalSession = null; return null; }
@@ -2421,13 +2432,20 @@ function renderMathSolution() {
       const check = current.check;
       const lastLineIndex = lines.reduce((last, line, i) => (line.math ? i : last), -1);
       const derivation = lines.map((line, i) => renderDerivationLine(line, gated && i === lastLineIndex)).join("");
-      const verified = Boolean(current.checked) && !current.disputed;
+      const pinLocked = Boolean(mathParentPinHash);
+      const pinFlowOpen = pinLocked && (mathPinPromptOpen || (pinResetState.where === "reveal" && pinResetState.step !== "idle"));
+      // The reveal control now lives in the answer head (in place of the old
+      // "Double-checked" badge). The body reveal bar only appears for the parent
+      // PIN sub-flow (input / reset), which needs more room than the header.
+      const revealBtn = (gated && !pinFlowOpen)
+        ? `<button class="ma-reveal-btn" type="button" data-reveal-${pinLocked ? "prompt" : "all"}><i>${pinLocked ? "🔒" : "👁"}</i>Reveal answer</button>`
+        : "";
       const answerBody = gated
-        ? `<div class="ma-value"><span class="ma-blur">${renderMathHtml(current.answer)}</span></div>${gateOn ? `<div class="ma-reveal">${renderMathRevealBar()}</div>` : ""}`
+        ? `<div class="ma-value"><span class="ma-blur">${renderMathHtml(current.answer)}</span></div>${pinFlowOpen ? `<div class="ma-reveal">${renderMathRevealBar()}</div>` : ""}`
         : `<div class="ma-value">${renderMathHtml(current.answer)}</div>`;
       const answerPanel = `
         <div class="math-answer-panel">
-          <div class="ma-head"><span class="ma-label">Answer</span>${verified ? `<span class="ma-verified"><i>✓</i>Double-checked</span>` : ""}</div>
+          <div class="ma-head"><span class="ma-label">Answer</span>${revealBtn}</div>
           ${answerBody}
           ${current.warning ? `<div class="ma-watch"><i>!</i><span>${escapeHtml(current.warning)}</span></div>` : ""}
           <div class="ma-foot">${(!gated && gateOn) ? `<button class="ma-linkbtn ma-hide" type="button" data-hide-all>Hide answer</button>` : (gated ? `<span class="ma-hint">Work the steps first</span>` : `<span></span>`)}<button class="ma-linkbtn ma-feedback" type="button" data-math-feedback>👎 Not right?</button></div>
@@ -3592,6 +3610,7 @@ function stopPhoneCapture() {
 function renderCaptureQr(url) {
   const box = document.getElementById("mathQrCode");
   if (!box) return;
+  document.querySelector(".math-qr-box")?.classList.remove("qr-processing");
   if (typeof qrcode === "undefined") { box.innerHTML = ""; return; }
   const qr = qrcode(0, "M");
   qr.addData(url);
@@ -3630,7 +3649,15 @@ function pollCaptureResult(token) {
     try { data = await portalFetch(`/api/capture/${encodeURIComponent(token)}/result`); }
     catch { return; } // transient network hiccup — keep polling
     if (token !== captureToken || !data) return;
-    if (data.status === "solving") { setCaptureState("Got your photo — reading it…", "Hang tight."); return; }
+    if (data.status === "solving") {
+      // Swap the QR out for a playful "we're on it" message while the AI reads
+      // the photo — there's nothing left to scan at this point.
+      const box = document.getElementById("mathQrCode");
+      if (box) box.innerHTML = "";
+      document.querySelector(".math-qr-box")?.classList.add("qr-processing");
+      setCaptureState("Working on it! Math takes a second (even for us).", "Wanna guess the answer? Winner gets… the satisfaction of guessing.");
+      return;
+    }
     if (data.status === "ready") {
       stopPhoneCapture();
       setCaptureState("Photo received!", "Solving it below…");
