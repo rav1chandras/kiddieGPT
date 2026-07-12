@@ -928,6 +928,8 @@ body{background:#f6f8f5}
     .explain-source-mode[hidden]{display:none}
     .explain-input-card{position:relative;z-index:1}
     .explain-input-box i{font-size:15px}
+    .explain-page-box.selecting i{color:#0f69b5}
+    .explain-page-box.selecting:hover{background:#e8f4ff;border-color:#0f8bf2}
     .explain-input-card>.small-button{height:auto;min-height:52px;align-self:stretch;border-radius:13px;min-width:118px}
     .explain-page-card{border:1px solid #dce8df;border-radius:15px;background:rgba(255,255,255,.72);padding:10px;display:grid;gap:10px}
     .explain-result-panel{position:relative;overflow:hidden;background:#fff;border-color:#dce8df}

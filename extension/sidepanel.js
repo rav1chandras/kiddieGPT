@@ -1921,12 +1921,16 @@ async function generateTutorVoice() {
 }
 
 function activeTabIssueMessage(reason) {
+  if (reason === "noselection") return "Highlight some text on the page first, then press Explain — or tap the card to explain the whole page.";
   if (reason === "pdf") return "This tab is a PDF. Download it, then add it as a Local file so KiddieGPT can read it properly.";
   if (reason === "empty") return "KiddieGPT couldn't find readable text on this tab. Open a page with an article or story, or add a Local file.";
   return "KiddieGPT can't read this tab. Open a normal web page, or add a Local file.";
 }
 
-function getActiveTabContext() {
+// opts.mode (Explain tool only): "selection" uses only the student's highlight,
+// "page" uses only the page text (ignoring any stray highlight). Omitting mode
+// keeps the legacy behaviour (prefer selection, else page) for tutor/mission.
+function getActiveTabContext(opts = {}) {
   return new Promise(resolve => {
     const sidePanelText = (document.body?.innerText || "").slice(0, 8000);
     if (!extensionApi?.tabs?.query || !extensionApi?.scripting?.executeScript) {
@@ -1970,14 +1974,18 @@ function getActiveTabContext() {
           return;
         }
         const result = results[0].result;
-        const best = (result.selection || result.text || "").slice(0, maxTabChars);
-        const usable = !result.isPdf && best.trim().length >= 40;
+        const raw = opts.mode === "selection" ? (result.selection || "")
+          : opts.mode === "page" ? (result.text || "")
+          : (result.selection || result.text || "");
+        const best = raw.slice(0, maxTabChars);
+        const minLen = opts.mode === "selection" ? 1 : 40;
+        const usable = !result.isPdf && best.trim().length >= minLen;
         resolve({
           title: result.title || tab.title || "Active tab",
           url: result.url || url,
           text: best,
           usable,
-          reason: result.isPdf ? "pdf" : (usable ? "" : "empty")
+          reason: result.isPdf ? "pdf" : (usable ? "" : (opts.mode === "selection" ? "noselection" : "empty"))
         });
       });
     });
@@ -3728,6 +3736,30 @@ function updateExplainSourceMode() {
   });
 }
 
+// Active-page card doubles as a whole-page ⇄ selection toggle. When selecting,
+// the student highlights text on the tab and Explain reads only that highlight.
+let explainPageSelect = false;
+
+function renderExplainPageBox() {
+  const box = document.getElementById("explainPageBox");
+  if (!box) return;
+  box.classList.toggle("selecting", explainPageSelect);
+  box.setAttribute("aria-pressed", String(explainPageSelect));
+  const icon = box.querySelector(".explain-page-icon");
+  const title = box.querySelector(".explain-page-title");
+  const sub = box.querySelector(".explain-page-sub");
+  if (icon) icon.textContent = explainPageSelect ? "✎" : "▤";
+  if (title) title.textContent = explainPageSelect ? "Now highlight text on the page" : "Explain this whole page";
+  if (sub) sub.textContent = explainPageSelect
+    ? "Select what you want explained on the page, then press Explain. Tap again to switch back to the whole page."
+    : "KiddieGPT reads the main text on the page you're viewing. Tap to explain a selection instead.";
+}
+
+function toggleExplainPageSelect() {
+  explainPageSelect = !explainPageSelect;
+  renderExplainPageBox();
+}
+
 function initMathTool() {
   document.getElementById("mathBrowseButton")?.addEventListener("click", () => {
     document.getElementById("mathFileInput")?.click();
@@ -3807,6 +3839,16 @@ function initExplainTool() {
       input.focus();
     }
   });
+  const pageBox = document.getElementById("explainPageBox");
+  if (pageBox) {
+    pageBox.addEventListener("click", toggleExplainPageSelect);
+    pageBox.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleExplainPageSelect();
+    });
+    renderExplainPageBox();
+  }
   document.getElementById("explainButton")?.addEventListener("click", explainCurrentSource);
   document.getElementById("explainFollowupSend")?.addEventListener("click", answerExplainFollowup);
   document.getElementById("explainFollowupInput")?.addEventListener("keydown", event => {
@@ -3886,13 +3928,16 @@ async function explainCurrentSource() {
       parts.push({ type: "input_image", image_url: selectedExplainCapture });
       sourceText = "Explain the attached screenshot or visual.";
     } else {
-      const context = await getActiveTabContext();
+      const mode = explainPageSelect ? "selection" : "page";
+      const context = await getActiveTabContext({ mode });
       if (!context.usable) {
-        setScreenshotStatus("Can't read tab", "warn");
+        setScreenshotStatus(mode === "selection" ? "Highlight text" : "Can't read tab", "warn");
         if (observation) observation.textContent = activeTabIssueMessage(context.reason);
         return;
       }
-      sourceText = `Explain this active page or selected text.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`;
+      sourceText = mode === "selection"
+        ? `Explain the text this student highlighted on a web page.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`
+        : `Explain this whole web page in grade-safe language.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`;
     }
     const result = await callOpenAIJson({
       settings,
