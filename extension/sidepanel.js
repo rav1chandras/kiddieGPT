@@ -2405,15 +2405,8 @@ function renderMathSolution() {
   const pending = current.status === "solving" || current.status === "error";
   const gateOn = mathAnswerGate || portalRequireSteps || Boolean(mathParentPinHash);
   const gated = gateOn && !pending && !mathAnswersRevealed;
-  if (warning) warning.textContent = current.warning || "";
-  if (answerCard) {
-    answerCard.hidden = pending || gated;
-    if (!answerCard.hidden) {
-      answerCard.innerHTML = `<span>Answer</span><b>${renderMathHtml(current.answer)}</b>`;
-    }
-  }
-  const warningCard = warning?.closest(".math-warning-card");
-  if (warningCard) warningCard.hidden = pending || !current.warning;
+  // The answer, verification badge, watch-out, reveal control and feedback are
+  // now rendered together in one .math-answer-panel inside the step list.
   if (tags) {
     tags.innerHTML = (current.tags || []).map(tag => `<span>${escapeHtml(tag)}</span>`).join("");
   }
@@ -2428,6 +2421,17 @@ function renderMathSolution() {
       const check = current.check;
       const lastLineIndex = lines.reduce((last, line, i) => (line.math ? i : last), -1);
       const derivation = lines.map((line, i) => renderDerivationLine(line, gated && i === lastLineIndex)).join("");
+      const verified = Boolean(current.checked) && !current.disputed;
+      const answerBody = gated
+        ? `<div class="ma-value"><span class="ma-blur">${renderMathHtml(current.answer)}</span></div>${gateOn ? `<div class="ma-reveal">${renderMathRevealBar()}</div>` : ""}`
+        : `<div class="ma-value">${renderMathHtml(current.answer)}</div>`;
+      const answerPanel = `
+        <div class="math-answer-panel">
+          <div class="ma-head"><span class="ma-label">Answer</span>${verified ? `<span class="ma-verified"><i>✓</i>Double-checked</span>` : ""}</div>
+          ${answerBody}
+          ${current.warning ? `<div class="ma-watch"><i>!</i><span>${escapeHtml(current.warning)}</span></div>` : ""}
+          <div class="ma-foot">${(!gated && gateOn) ? `<button class="ma-linkbtn ma-hide" type="button" data-hide-all>Hide answer</button>` : (gated ? `<span class="ma-hint">Work the steps first</span>` : `<span></span>`)}<button class="ma-linkbtn ma-feedback" type="button" data-math-feedback>👎 Not right?</button></div>
+        </div>`;
       steps.innerHTML = `
         ${givens.length ? `<div class="wb-known"><span>Given</span><div class="wb-known-chips">${givens.map(given => `<em>${renderMathHtml(given)}</em>`).join("")}</div></div>` : ""}
         ${current.goal ? `<div class="wb-goal"><span>Find</span><p>${renderMathHtml(current.goal)}</p></div>` : ""}
@@ -2441,9 +2445,8 @@ function renderMathSolution() {
           </div>
           <div class="tb-derivation">${derivation}</div>
           ${!gated && check && (check.math || check.why) ? `<div class="tb-check"><i>✓</i><div>${check.math ? `<div class="tb-check-math">${renderMathHtml(check.math)}</div>` : ""}<small>${escapeHtml(check.why || "The answer fits every given, so it checks out.")}</small></div></div>` : ""}
-          ${gateOn ? `<div class="math-reveal-bar">${renderMathRevealBar()}</div>` : ""}
         </div>
-        <div class="math-feedback-row"><button type="button" class="math-feedback-btn" data-math-feedback>👎 This wasn't right</button></div>
+        ${answerPanel}
       `;
     }
   }
@@ -2998,7 +3001,7 @@ Return JSON with a problems array. Solve at most 15 problems; if the page shows 
 - goal: one line naming the unknown and where it sits, like "b is the vertical leg, opposite the 60 degree angle".
 - lines: the worked solution as a textbook derivation, an array of objects with math and why. The math field must be ONLY a short equation or expression (symbols and numbers), never a sentence, rule name, or description, and never more than one relation per line. Put every explanation, property, or rule statement in why, not in math. Write it the way a math textbook does. When useful, state the general formula first (like "a^{2} + b^{2} = c^{2}"), then show each simplification on its own line. When a line simply continues simplifying the same quantity, start that line with "=" and drop the left side, like "= \\sqrt{64 - 16}" then "= \\sqrt{48}" then "= 4\\sqrt{3}". Write the math as inline LaTeX: \\frac{}{} for fractions, \\sqrt{} for roots, ^{} for powers, _{} for subscripts, \\cdot or \\times for multiplication, \\pi \\theta for symbols; no $ or \\( \\) delimiters. Keep at most one relation per line. why is one short plain sentence for this grade band explaining that line. The lines must read top to bottom as one connected derivation.
 - check: object with math and why that substitutes the final answer back into the original relationship and confirms it agrees with ALL the givens.
-- answer: the final answer only, as inline LaTeX, like "b = 4\\sqrt{3} \\approx 6.93".
+- answer: the final solved VALUE only, as inline LaTeX — never an instruction or a step for the student to finish. For a multiple-choice question, give the value and the matching option letter, like "\\theta = 143^{\\circ} \\text{ (d)}".
 - warning: the most common mistake on this exact problem type.
 - figure (optional): include ONLY when the source shows a diagram you can represent, and only the type "rightTriangle" is supported. For a right triangle return { type: "rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown }. hypotenuse, legVertical, and legBase are the labels exactly as shown on each side (a number like "8" or a letter like "b"); legVertical is the upright leg, legBase is the bottom leg, hypotenuse is the slanted side across from the right angle. angleTop and angleBase are the two acute angle labels like "30 degrees" (use "" if the diagram does not show them). unknown is which of "hypotenuse", "legVertical", or "legBase" the student is solving for. Read the diagram carefully so each label sits on the correct side. Omit figure entirely if there is no diagram or it is not a right triangle.
 Every math field (lines, check, answer) must be inline LaTeX with no $ or \\( \\) delimiters.`
@@ -3296,7 +3299,7 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model = MODE
     parts,
     model,
     moderate: false,
-    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.",
+    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle, and copy each number with its EXACT sign: coordinate points like P(-4, 3) or (-4,-3) have negative values — never drop a minus sign, and keep the order and sign of every coordinate. Copy any multiple-choice options verbatim. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.",
     text: `Read this source and list every math problem in reading order, up to 15. Grade band: ${gradeBand}. Return JSON with a problems array. Each item must have: statement (the full question in plain words, for example "Find b in a right triangle with hypotenuse 8, one leg 4, and a 30 degree angle"), meta (short topic like "Geometry · right triangle"), tags (array up to 4 short words), diagram (a complete text description of any figure so it can be solved without the image, or "" if there is no figure), and figure (ONLY for a right triangle: { type:"rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown } using the exact labels shown; omit otherwise).`
   });
 }
