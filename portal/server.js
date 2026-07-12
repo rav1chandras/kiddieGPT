@@ -2944,56 +2944,157 @@ function renderCapturePage() {
   .card{width:100%;max-width:400px;background:#fff;border-radius:22px;padding:26px;text-align:center;
     box-shadow:0 20px 50px rgba(0,60,50,.14);display:flex;flex-direction:column;gap:14px}
   h1{margin:0;font-size:22px;color:#004f48} p{margin:0;font-size:15px;color:#4f6b67;line-height:1.45}
+  button{padding:14px;border:none;border-radius:999px;font-size:16px;font-weight:800;cursor:pointer}
   .cam{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-radius:16px;
     background:#004f48;color:#fff;font-size:17px;font-weight:800;cursor:pointer}
-  #preview{width:100%;border-radius:14px;border:1px solid #d6e6e1}
-  #send{padding:14px;border:none;border-radius:999px;background:#0f8a63;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
-  #send:disabled{opacity:.6} .done{font-size:44px} #status{min-height:18px;font-weight:600}
+  .stage{position:relative;width:100%;border-radius:14px;overflow:hidden;border:1px solid #d6e6e1;
+    touch-action:none;user-select:none;cursor:crosshair}
+  #preview{width:100%;display:block;-webkit-user-drag:none}
+  .crop{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:3px;pointer-events:auto;cursor:move;touch-action:none}
+  .handle{position:absolute;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #0f8a63;pointer-events:auto;touch-action:none}
+  .handle.tl{left:-16px;top:-16px} .handle.tr{right:-16px;top:-16px} .handle.bl{left:-16px;bottom:-16px} .handle.br{right:-16px;bottom:-16px}
+  .actions{display:flex;gap:10px}
+  #send{flex:1;background:#0f8a63;color:#fff} #send:disabled,#retake:disabled{opacity:.6}
+  .ghost{background:#eef3f1;color:#004f48}
+  .link{background:none;border:none;color:#4f6b67;text-decoration:underline;font-size:13px;font-weight:600;padding:0;cursor:pointer}
+  .done{font-size:44px} #status{min-height:18px;font-weight:600}
+  [hidden]{display:none!important}
+  #camera{display:flex;flex-direction:column;gap:12px;align-items:center}
+  .viewfinder{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden;max-height:62vh}
+  #video{width:100%;display:block;max-height:62vh;object-fit:cover}
+  .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #0f8a63;box-shadow:0 4px 14px rgba(0,0,0,.2);margin:2px auto 0;padding:0}
+  .shutter:active{transform:scale(.94)}
 </style></head>
-<body><div class="card">
+<body><div class="card" id="card">
   <h1>Snap your math problem</h1>
-  <p id="hint">Take a clear photo of one problem from your book.</p>
-  <label class="cam"><input id="file" type="file" accept="image/*" capture="environment" hidden><span>📷 Take photo</span></label>
-  <img id="preview" alt="" hidden>
-  <button id="send" hidden>Send to KiddieGPT</button>
+  <p id="hint">Point at one problem and tap the shutter.</p>
+  <div id="camera" hidden>
+    <div class="viewfinder"><video id="video" playsinline muted autoplay></video></div>
+    <button id="shutter" class="shutter" type="button" aria-label="Take photo"></button>
+  </div>
+  <label class="cam" id="fallback" hidden><input id="file" type="file" accept="image/*" capture="environment" hidden><span>📷 Take photo</span></label>
+  <div id="editor" hidden>
+    <div class="stage" id="stage"><img id="preview" alt="" draggable="false"><div class="crop" id="crop" hidden><div class="handle tl" data-h="tl"></div><div class="handle tr" data-h="tr"></div><div class="handle bl" data-h="bl"></div><div class="handle br" data-h="br"></div></div></div>
+    <div class="actions"><button id="send" type="button">Send</button><button id="retake" class="ghost" type="button">Retake</button></div>
+    <button id="clearCrop" class="link" type="button">Use the whole photo</button>
+  </div>
   <p id="status"></p>
 </div>
 <script>
 (function(){
-  var parts = location.pathname.split("/").filter(Boolean);
-  var uploadUrl = "/api/capture/" + parts[parts.length-1] + "/image";
-  var file=document.getElementById("file"),preview=document.getElementById("preview"),
-      sendBtn=document.getElementById("send"),statusEl=document.getElementById("status"),dataUrl="";
+  var parts=location.pathname.split("/").filter(Boolean);
+  var uploadUrl="/api/capture/"+parts[parts.length-1]+"/image";
+  var $=function(id){return document.getElementById(id);};
+  var hint=$("hint"),camera=$("camera"),video=$("video"),shutter=$("shutter"),
+      fallback=$("fallback"),file=$("file"),editor=$("editor"),stage=$("stage"),
+      preview=$("preview"),cropEl=$("crop"),sendBtn=$("send"),retakeBtn=$("retake"),
+      clearBtn=$("clearCrop"),statusEl=$("status");
+  var stream=null,srcUrl="",srcImg=new Image(),crop=null,drag=null,usingCamera=false;
   function setStatus(m,err){statusEl.textContent=m||"";statusEl.style.color=err?"#b23a48":"#4f6b67";}
+  var stageW=0,stageH=0,mode=null,activeCorner=null,last=null;
+  function measure(){var r=stage.getBoundingClientRect();stageW=r.width;stageH=r.height;return r;}
+  function drawCrop(){
+    if(!crop){cropEl.hidden=true;return;}
+    cropEl.style.left=crop.x+"px";cropEl.style.top=crop.y+"px";cropEl.style.width=crop.w+"px";cropEl.style.height=crop.h+"px";
+    cropEl.hidden=false;
+  }
+  // Pre-fill an adjustable crop box (centered band) the user nudges to frame one problem.
+  function initCrop(){
+    measure();
+    var w=Math.round(stageW*0.82),h=Math.round(stageH*0.34);
+    crop={x:Math.round((stageW-w)/2),y:Math.round((stageH-h)/2),w:w,h:h};
+    drawCrop();
+  }
+  function view(which){
+    camera.hidden=which!=="camera";fallback.hidden=which!=="fallback";editor.hidden=which!=="editor";
+    hint.textContent=which==="camera"?"Point at one problem and tap the shutter."
+      :which==="fallback"?"Take a photo of one problem from the book."
+      :"Drag the box or its corners to frame one problem.";
+  }
+  function stopCamera(){if(stream){try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}stream=null;}}
+  function startCamera(){
+    setStatus("Starting camera…");
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false})
+      .then(function(s){stream=s;video.srcObject=s;var p=video.play();if(p&&p.catch)p.catch(function(){});view("camera");setStatus("");})
+      .catch(function(){usingCamera=false;view("fallback");setStatus("Camera not available — use the button.",true);});
+  }
+  function downscale(el,w,h){
+    var max=1600,scale=Math.min(1,max/Math.max(w,h));
+    var dw=Math.round(w*scale),dh=Math.round(h*scale);
+    var c=document.createElement("canvas");c.width=dw;c.height=dh;
+    c.getContext("2d").drawImage(el,0,0,dw,dh);
+    return c.toDataURL("image/jpeg",0.85);
+  }
+  function useImage(url){
+    srcUrl=url; srcImg.src=url;
+    preview.onload=function(){view("editor");initCrop();setStatus("");};
+    preview.src=url;
+  }
+  shutter.addEventListener("click",function(){
+    if(!video.videoWidth){setStatus("Camera is still starting…");return;}
+    var url=downscale(video,video.videoWidth,video.videoHeight);stopCamera();useImage(url);
+  });
   file.addEventListener("change",function(){
     var f=file.files&&file.files[0]; if(!f)return;
     var reader=new FileReader();
     reader.onload=function(){
       var img=new Image();
-      img.onload=function(){
-        var max=1600,scale=Math.min(1,max/Math.max(img.width,img.height));
-        var w=Math.round(img.width*scale),h=Math.round(img.height*scale);
-        var c=document.createElement("canvas");c.width=w;c.height=h;
-        c.getContext("2d").drawImage(img,0,0,w,h);
-        dataUrl=c.toDataURL("image/jpeg",0.82);
-        preview.src=dataUrl;preview.hidden=false;sendBtn.hidden=false;setStatus("Looks good? Send it.");
-      };
+      img.onload=function(){useImage(downscale(img,img.width,img.height));};
       img.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
       img.src=reader.result;
     };
     reader.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
     reader.readAsDataURL(f);
   });
+  function pt(e){var r=measure();return{x:Math.min(Math.max(e.clientX-r.left,0),stageW),y:Math.min(Math.max(e.clientY-r.top,0),stageH)};}
+  Array.prototype.forEach.call(cropEl.querySelectorAll(".handle"),function(hEl){
+    hEl.addEventListener("pointerdown",function(e){e.preventDefault();e.stopPropagation();try{stage.setPointerCapture(e.pointerId);}catch(x){}mode="resize";activeCorner=hEl.getAttribute("data-h");});
+  });
+  cropEl.addEventListener("pointerdown",function(e){e.preventDefault();try{stage.setPointerCapture(e.pointerId);}catch(x){}mode="move";last=pt(e);});
+  stage.addEventListener("pointermove",function(e){
+    if(!mode||!crop)return; e.preventDefault(); var p=pt(e);
+    if(mode==="resize"){
+      var minS=28,left=crop.x,top=crop.y,right=crop.x+crop.w,bottom=crop.y+crop.h;
+      if(activeCorner.indexOf("l")>=0)left=Math.min(p.x,right-minS);
+      if(activeCorner.indexOf("r")>=0)right=Math.max(p.x,left+minS);
+      if(activeCorner.indexOf("t")>=0)top=Math.min(p.y,bottom-minS);
+      if(activeCorner.indexOf("b")>=0)bottom=Math.max(p.y,top+minS);
+      crop={x:left,y:top,w:right-left,h:bottom-top};
+    }else if(mode==="move"&&last){
+      var dx=p.x-last.x,dy=p.y-last.y; last=p;
+      crop.x=Math.min(Math.max(crop.x+dx,0),stageW-crop.w);
+      crop.y=Math.min(Math.max(crop.y+dy,0),stageH-crop.h);
+    }
+    drawCrop();
+  });
+  stage.addEventListener("pointerup",function(){mode=null;activeCorner=null;last=null;});
+  clearBtn.addEventListener("click",function(){measure();crop={x:0,y:0,w:stageW,h:stageH};drawCrop();});
+  retakeBtn.addEventListener("click",function(){crop=null;drawCrop();if(usingCamera){startCamera();}else{file.value="";file.click();}});
+  function outputDataUrl(){
+    if(crop&&crop.w>=12&&crop.h>=12){
+      var r=stage.getBoundingClientRect();
+      var sc=srcImg.naturalWidth/r.width;
+      var sx=Math.round(crop.x*sc),sy=Math.round(crop.y*sc),sw=Math.max(1,Math.round(crop.w*sc)),sh=Math.max(1,Math.round(crop.h*sc));
+      var cn=document.createElement("canvas");cn.width=sw;cn.height=sh;
+      cn.getContext("2d").drawImage(srcImg,sx,sy,sw,sh,0,0,sw,sh);
+      return cn.toDataURL("image/jpeg",0.85);
+    }
+    return srcUrl;
+  }
   sendBtn.addEventListener("click",function(){
-    if(!dataUrl)return; sendBtn.disabled=true; setStatus("Sending…");
-    fetch(uploadUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:dataUrl})})
+    if(!srcUrl)return; sendBtn.disabled=true;retakeBtn.disabled=true;setStatus("Sending…");
+    fetch(uploadUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:outputDataUrl()})})
       .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
       .then(function(res){
-        if(res.ok){document.querySelector(".card").innerHTML="<div class='done'>✅</div><h1>Sent!</h1><p>Check your KiddieGPT extension on your laptop.</p>";}
-        else{sendBtn.disabled=false;setStatus((res.d&&res.d.error==="already_used")?"Already sent. Make a new QR in KiddieGPT.":"Couldn't send. Try again.",true);}
+        if(res.ok){document.getElementById("card").innerHTML="<div class='done'>✅</div><h1>Sent!</h1><p>Check your KiddieGPT extension on your laptop.</p>";}
+        else{sendBtn.disabled=false;retakeBtn.disabled=false;setStatus((res.d&&res.d.error==="already_used")?"Already sent. Make a new QR in KiddieGPT.":"Couldn't send. Try again.",true);}
       })
-      .catch(function(){sendBtn.disabled=false;setStatus("No connection. Try again.",true);});
+      .catch(function(){sendBtn.disabled=false;retakeBtn.disabled=false;setStatus("No connection. Try again.",true);});
   });
+  // Live camera needs a secure context (HTTPS or localhost). On plain HTTP the
+  // camera API is blocked by the browser, so fall back to the native photo button.
+  if(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){usingCamera=true;startCamera();}
+  else{usingCamera=false;view("fallback");}
 })();
 </script></body></html>`;
 }
