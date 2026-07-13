@@ -913,9 +913,16 @@ body{background:#f6f8f5}
     .tutor-progress-track{flex:1;min-width:0;height:6px;border-radius:999px;background:#d6e4cf;cursor:pointer;overflow:hidden}
     .tutor-progress-fill{display:block;width:0;height:100%;background:#004f48;border-radius:999px}
     .tutor-time{font-size:11px;font-weight:700;color:#60747d;white-space:nowrap}
-    .tutor-player-tools{display:flex;gap:8px;margin-bottom:11px}
+    .tutor-player-tools{display:flex;align-items:center;gap:8px;margin-bottom:11px}
     .tutor-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #dce8df;border-radius:999px;background:#fff;color:#29495b;font-size:11px;font-weight:800;padding:6px 11px;cursor:pointer;text-decoration:none}
     .tutor-chip:hover{border-color:var(--green)}
+    /* Explain depth toggle (Standard / Deep Dive) — shown only for eligible bands */
+    .tutor-depth{display:flex;align-items:center;gap:8px;margin-top:10px}
+    .tutor-depth[hidden]{display:none}
+    .tutor-depth-label{font-size:11px;font-weight:800;color:#29495b}
+    /* Playback speed dropdown */
+    .tutor-speed-label{font-size:11px;font-weight:800;color:#60747d}
+    .tutor-speed-select{display:inline-block;padding:6px 10px}
     .tutor-transcript{font-size:15px;line-height:1.95;color:#5a6b73;max-height:280px;overflow:auto;border-top:1px dashed #dce8df;padding-top:11px}
     .tutor-sentence{border-radius:5px;cursor:pointer;padding:1px 1px}
     .tutor-sentence:hover{background:#f0f5ea}

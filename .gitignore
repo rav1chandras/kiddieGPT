@@ -24,6 +24,7 @@ node_modules/
 
 # Benchmark output (regenerable, large). Keep the eval scripts, not their runs.
 **/evals/results/
+**/evals/tutor-grade-samples/
 
 # ── OS / editor / tooling ──────────────────────────────────────────────
 .DS_Store
