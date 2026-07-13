@@ -132,6 +132,132 @@ const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable"
 const PREFERRED_TTS_VOICES = ["marin", "cedar", "sage"];
 const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
 
+// Speech models the admin may choose from (A/B testing without an extension
+// release). Anything outside this list falls back to the default TTS_MODEL.
+const SUPPORTED_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"];
+
+// Grade bands supported across the product. 9-12 is a real, selectable band
+// (the extension UI has the tab and math already handles it).
+const GRADE_BANDS = ["K-2", "3-5", "6-8", "9-12"];
+
+// Spoken-word budget per narration minute — converts the admin's max-minutes
+// knob into a hard word cap for Explain narration.
+const WORDS_PER_MINUTE = 150;
+
+// Bump when SPEECH_STYLES changes so the extension's audio cache invalidates.
+const SPEECH_STYLE_VERSION = "v2";
+
+// Per-band Explain length model. The admin-set number is the DEEP DIVE max words
+// for that band (also the hard ceiling — nothing exceeds it). Standard mode is a
+// fraction of that (tutorStandardFraction). Deep Dive is offered for the bands in
+// DEEP_DIVE_BANDS only; K-2 is always Standard.
+const DEFAULT_EXPLAIN_MAX_WORDS = {
+  "K-2": 160,
+  "3-5": 400,
+  "6-8": 700,
+  "9-12": 1000
+};
+const DEFAULT_STANDARD_FRACTION = 0.5;
+const DEEP_DIVE_BANDS = ["3-5", "6-8", "9-12"];
+
+// Spoken-style presets by tutor mode + grade band. Resolved server-side in the
+// speech proxy so the client can never inject arbitrary TTS instructions.
+const SPEECH_STYLES = {
+  read: {
+    "K-2": "Read gently, clearly, and slightly slowly. Pause between ideas.",
+    "3-5": "Read clearly at a comfortable pace with a warm tone.",
+    "6-8": "Read naturally, clearly, and confidently.",
+    "9-12": "Read naturally and fluently, like a clear audiobook narrator, at a normal pace."
+  },
+  explain: {
+    "K-2": "Sound warm and playful. Speak slowly with clear pauses, like reading to a young child.",
+    "3-5": "Sound like a patient elementary teacher. Emphasize key ideas and keep a warm, encouraging pace.",
+    "6-8": "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish.",
+    "9-12": "Sound like a knowledgeable, respectful high-school teacher. Concise and direct; do not over-simplify or sound childish."
+  }
+};
+
+function normaliseGradeBand(band) {
+  const b = String(band || "").trim();
+  return GRADE_BANDS.includes(b) ? b : "6-8";
+}
+
+// The instruction spoken by the TTS model, chosen by tutor mode + grade band.
+function resolveSpeechInstruction(mode, gradeBand) {
+  const m = mode === "read" ? "read" : "explain";
+  const band = normaliseGradeBand(gradeBand);
+  return (SPEECH_STYLES[m] && SPEECH_STYLES[m][band]) || TTS_INSTRUCTION;
+}
+
+function normaliseTtsModel(requested) {
+  const model = String(requested || "").trim();
+  return SUPPORTED_TTS_MODELS.includes(model) ? model : TTS_MODEL;
+}
+
+// Clamp/validate the per-band Deep Dive max words. Missing bands fall back to
+// defaults; sane bounds keep a misconfigured value from running up TTS cost.
+function normaliseMaxWords(raw) {
+  const out = {};
+  for (const band of GRADE_BANDS) {
+    let n = Math.round(Number(raw && raw[band]));
+    if (!Number.isFinite(n) || n <= 0) n = DEFAULT_EXPLAIN_MAX_WORDS[band];
+    out[band] = Math.min(Math.max(40, n), 4000);
+  }
+  return out;
+}
+
+// Standard mode is this fraction of the band's Deep Dive max. Clamped 0.3..0.9.
+function normaliseStandardFraction(value) {
+  const f = Number(value);
+  if (!Number.isFinite(f)) return DEFAULT_STANDARD_FRACTION;
+  return Math.min(0.9, Math.max(0.3, f));
+}
+
+// Effective hard word cap for a lesson given band + depth. Deep Dive (non-K-2)
+// = the full band max; Standard (and all of K-2) = fraction of the band max.
+function effectiveExplainMaxWords(settings, gradeBand, depth) {
+  const band = normaliseGradeBand(gradeBand);
+  const maxWords = settings.tutorExplainMaxWords || DEFAULT_EXPLAIN_MAX_WORDS;
+  const bandMax = maxWords[band] || DEFAULT_EXPLAIN_MAX_WORDS[band];
+  const isDeep = depth === "deep" && DEEP_DIVE_BANDS.includes(band);
+  const fraction = Number(settings.tutorStandardFraction) || DEFAULT_STANDARD_FRACTION;
+  return isDeep ? bandMax : Math.round(bandMax * fraction);
+}
+
+function countWords(value) {
+  return String(value || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function splitSentences(value) {
+  return String(value || "").split(/(?<=[.!?])\s+/).filter(Boolean);
+}
+
+// Trim narration to <= maxWords, ending on a sentence boundary where possible.
+function clampNarrationWords(value, maxWords) {
+  if (countWords(value) <= maxWords) return value;
+  const sentences = splitSentences(value);
+  let out = "";
+  let words = 0;
+  for (const sentence of sentences) {
+    const w = countWords(sentence);
+    if (words + w > maxWords) break;
+    out = out ? `${out} ${sentence}` : sentence;
+    words += w;
+  }
+  if (!out) {
+    // First sentence alone exceeds the cap — hard-cut on a word boundary.
+    out = String(value || "").trim().split(/\s+/).slice(0, maxWords).join(" ");
+  }
+  return out.trim();
+}
+
+// Short version token over the tutor length config; folded into the extension's
+// transcript cache key so admin edits auto-invalidate stale transcripts.
+function tutorConfigVersion(maxWords, fraction) {
+  const payload = JSON.stringify({ maxWords, fraction });
+  return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 12);
+}
+
 // Keep only supported, de-duped voices; never allow an empty list.
 function normaliseAllowedVoices(list) {
   const filtered = (Array.isArray(list) ? list : []).filter((v) => SUPPORTED_TTS_VOICES.includes(v));
@@ -166,6 +292,8 @@ function defaultAiSettings() {
     ttsModel: TTS_MODEL,
     ttsDefaultVoice: "marin",
     ttsAllowedVoices: [...PREFERRED_TTS_VOICES],
+    tutorExplainMaxWords: { ...DEFAULT_EXPLAIN_MAX_WORDS },
+    tutorStandardFraction: DEFAULT_STANDARD_FRACTION,
     updatedAt: "",
     updatedBy: ""
   };
@@ -175,6 +303,8 @@ function normaliseAiSettings(settings = {}) {
   const defaults = defaultAiSettings();
   const ttsAllowedVoices = normaliseAllowedVoices(settings.ttsAllowedVoices ?? defaults.ttsAllowedVoices);
   const ttsDefaultVoice = normaliseDefaultVoice(String(settings.ttsDefaultVoice || defaults.ttsDefaultVoice || ""), ttsAllowedVoices);
+  const tutorExplainMaxWords = normaliseMaxWords(settings.tutorExplainMaxWords ?? defaults.tutorExplainMaxWords);
+  const tutorStandardFraction = normaliseStandardFraction(settings.tutorStandardFraction ?? defaults.tutorStandardFraction);
   return {
     ...defaults,
     ...settings,
@@ -183,10 +313,12 @@ function normaliseAiSettings(settings = {}) {
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
-    // TTS model is pinned for now regardless of stored value.
-    ttsModel: TTS_MODEL,
+    // Speech model is admin-configurable, validated against SUPPORTED_TTS_MODELS.
+    ttsModel: normaliseTtsModel(settings.ttsModel),
     ttsAllowedVoices,
     ttsDefaultVoice,
+    tutorExplainMaxWords,
+    tutorStandardFraction,
     updatedAt: settings.updatedAt || "",
     updatedBy: settings.updatedBy || ""
   };
@@ -209,9 +341,16 @@ function safeAiSettings(settings = {}) {
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
     ttsModel: normalised.ttsModel,
+    supportedTtsModels: SUPPORTED_TTS_MODELS,
     ttsDefaultVoice: normalised.ttsDefaultVoice,
     ttsAllowedVoices: normalised.ttsAllowedVoices,
     supportedTtsVoices: SUPPORTED_TTS_VOICES,
+    tutorExplainMaxWords: normalised.tutorExplainMaxWords,
+    tutorStandardFraction: normalised.tutorStandardFraction,
+    deepDiveBands: DEEP_DIVE_BANDS,
+    wordsPerMinute: WORDS_PER_MINUTE,
+    speechStyleVersion: SPEECH_STYLE_VERSION,
+    tutorConfigVersion: tutorConfigVersion(normalised.tutorExplainMaxWords, normalised.tutorStandardFraction),
     updatedAt: normalised.updatedAt,
     updatedBy: normalised.updatedBy
   };
@@ -2229,17 +2368,24 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
     }
-    // Tutor voice shortlist + default. TTS model stays pinned. normaliseAiSettings
-    // re-validates: only supported voices, never empty, default must be allowed
-    // (auto-fixed to marin -> cedar -> sage otherwise).
+    // Tutor voice shortlist + default + speech model + narration length.
+    // normaliseAiSettings re-validates everything below: only supported voices,
+    // never empty, default must be allowed (auto-fixed to marin -> cedar -> sage),
+    // ttsModel constrained to SUPPORTED_TTS_MODELS, word targets/minutes clamped.
     if (Object.prototype.hasOwnProperty.call(body, "ttsModel")) {
-      next.ttsModel = TTS_MODEL;
+      next.ttsModel = normaliseTtsModel(body.ttsModel);
     }
     if (Object.prototype.hasOwnProperty.call(body, "ttsAllowedVoices")) {
       next.ttsAllowedVoices = normaliseAllowedVoices(body.ttsAllowedVoices);
     }
     if (Object.prototype.hasOwnProperty.call(body, "ttsDefaultVoice")) {
       next.ttsDefaultVoice = String(body.ttsDefaultVoice || "");
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "tutorExplainMaxWords")) {
+      next.tutorExplainMaxWords = body.tutorExplainMaxWords;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "tutorStandardFraction")) {
+      next.tutorStandardFraction = body.tutorStandardFraction;
     }
     next.updatedAt = nowIso();
     next.updatedBy = req.auth?.email || "admin";
@@ -2249,8 +2395,11 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
       mathProblemsPerUserDaily: db.aiSettings.mathProblemsPerUserDaily,
       tutorVoiceMinutesPerUserDaily: db.aiSettings.tutorVoiceMinutesPerUserDaily,
       tutorVoiceEnabled: db.aiSettings.tutorVoiceEnabled,
+      ttsModel: db.aiSettings.ttsModel,
       ttsDefaultVoice: db.aiSettings.ttsDefaultVoice,
-      ttsAllowedVoices: db.aiSettings.ttsAllowedVoices
+      ttsAllowedVoices: db.aiSettings.ttsAllowedVoices,
+      tutorExplainMaxWords: db.aiSettings.tutorExplainMaxWords,
+      tutorStandardFraction: db.aiSettings.tutorStandardFraction
     }, req.auth?.email || "admin");
     return safeAiSettings(db.aiSettings);
   });
@@ -2831,6 +2980,18 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return res.status(response.status || 502).json({ error: "openai_error", detail: data });
+    // Backstop: cap Tutor Explain narration server-side so a stale/modified
+    // extension can't run up TTS cost. The tutor returns { title, script } as JSON
+    // output text; clamp `script` to the admin word budget on a sentence boundary.
+    if (tool === "tutor") {
+      const maxWords = effectiveExplainMaxWords(settings, body.gradeBand, body.explainDepth);
+      const parsed = safeParseJson(extractOutputText(data));
+      if (parsed && typeof parsed.script === "string" && countWords(parsed.script) > maxWords) {
+        parsed.script = clampNarrationWords(parsed.script, maxWords);
+        data.output_text = JSON.stringify(parsed);
+        delete data.output;
+      }
+    }
     const tokens = Number(data.usage?.total_tokens || data.usage?.input_tokens + data.usage?.output_tokens || 0) || 0;
     mutateDb((store) => {
       const fam = parentFamilyForIdentity(store, req.auth);
@@ -2868,7 +3029,9 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
         model: settings.ttsModel,
         voice,
         input: text,
-        instructions: TTS_INSTRUCTION,
+        // Spoken style resolved server-side from tutor mode + grade band, so the
+        // client can't inject arbitrary TTS instructions.
+        instructions: resolveSpeechInstruction(body.mode, body.gradeBand),
         response_format: "mp3"
       })
     });
@@ -3455,6 +3618,13 @@ app.get("/api/entitlements/me", (req, res) => {
     ttsAllowedVoices: voiceSettings.ttsAllowedVoices,
     ttsDefaultVoice: voiceSettings.ttsDefaultVoice,
     ttsModel: voiceSettings.ttsModel,
+    // Tutor length + style config the extension folds into its prompt + cache keys.
+    speechStyleVersion: SPEECH_STYLE_VERSION,
+    tutorExplainMaxWords: voiceSettings.tutorExplainMaxWords,
+    tutorStandardFraction: voiceSettings.tutorStandardFraction,
+    deepDiveBands: DEEP_DIVE_BANDS,
+    wordsPerMinute: WORDS_PER_MINUTE,
+    tutorConfigVersion: tutorConfigVersion(voiceSettings.tutorExplainMaxWords, voiceSettings.tutorStandardFraction),
     createdAt: family.createdAt || "",
     paymentStatus: family.paymentStatus || "",
     overrideUntil: family.entitlementOverrideUntil || "",

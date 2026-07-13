@@ -423,16 +423,31 @@
               <span>Tutor voice enabled</span>
               <small>Turn off voice while keeping text tutoring active.</small>
             </label>
+            <label>Tutor voice (TTS) model
+              <select name="ttsModel" id="tts-model"></select>
+              <small>Speech model the voice proxy uses. Change to A/B test without shipping a new extension.</small>
+            </label>
+            <label>Standard length (% of Deep Dive)
+              <input type="number" name="tutorStandardPercent" min="30" max="90" step="5">
+              <small>Standard mode = this % of a band's Deep Dive max (below). Deep Dive = 100%. K-2 is always Standard.</small>
+            </label>
             <div class="tts-voice-field" id="tts-voice-section">
               <div class="tts-voice-head">
                 <b>Tutor voice</b>
-                <small>Check which voices students may choose from, and pick the default. TTS model is fixed to <code>gpt-4o-mini-tts</code>. Recommended for middle school: Marin, Cedar, Sage.</small>
+                <small>Check which voices students may choose from, and pick the default. Recommended for middle school: Marin, Cedar, Sage.</small>
               </div>
               <div class="tts-voice-list" id="tts-voice-list"></div>
               <label class="tts-default-field">Default voice
                 <select name="ttsDefaultVoice" id="tts-default-voice"></select>
                 <small>Used when a student hasn't chosen, or their choice is no longer allowed.</small>
               </label>
+            </div>
+            <div class="tts-voice-field" id="tutor-length-section">
+              <div class="tts-voice-head">
+                <b>Explain lesson length — Deep Dive max words</b>
+                <small>Max spoken words per band for a Deep Dive lesson — also the hard ceiling; nothing exceeds it. Standard mode is the % above. K-2 is Standard only.</small>
+              </div>
+              <div id="tutor-word-targets"></div>
             </div>
             <div class="ai-settings-actions">
               <button class="button primary" type="submit">Save AI controls</button>
