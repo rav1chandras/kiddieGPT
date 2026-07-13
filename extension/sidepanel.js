@@ -119,8 +119,9 @@ const MODELS = {
   math: "gpt-5.6-luna",        // math solve / check / transcribe
   hardMath: "gpt-5.6-terra",   // optional faster / harder-math fallback
   premiumDeep: "gpt-5.6-sol",  // premium "deep" mode only, opt-in
-  tts: "gpt-4o-mini-tts",      // tutor voice
   moderation: "omni-moderation-latest"
+  // Tutor TTS model is resolved via resolveSpeechModel() (session -> local -> default);
+  // production uses the portal's server-side model, so it is not pinned here.
 };
 
 // Resolve the text model for a call. mode: "default" | "hard" | "deep".
@@ -142,7 +143,8 @@ const VOICE_LABELS = {
   cedar: "Cedar - steady tutor",
   sage: "Sage - gentle guide"
 };
-const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
+// Spoken TTS style is resolved server-side (mode + gradeBand); the test-mode
+// mirror lives in tutor-voice.js (SPEECH_STYLES). No single client instruction.
 
 function voiceLabel(voice) {
   const v = String(voice || "").trim().toLowerCase();
@@ -273,6 +275,14 @@ async function refreshEntitlement() {
       ttsAllowedVoices: ent.ttsAllowedVoices,
       ttsDefaultVoice: ent.ttsDefaultVoice,
       ttsModel: ent.ttsModel,
+      // Backend-authoritative Tutor voice config (speech model + spoken style are
+      // resolved server-side; these drive extension prompts, caps, and cache keys).
+      speechStyleVersion: ent.speechStyleVersion,
+      tutorExplainMaxWords: ent.tutorExplainMaxWords,   // per-band Deep Dive max words
+      tutorStandardFraction: ent.tutorStandardFraction, // Standard = fraction of the band max
+      deepDiveBands: ent.deepDiveBands,                 // bands where Deep Dive is offered
+      wordsPerMinute: ent.wordsPerMinute,
+      tutorConfigVersion: ent.tutorConfigVersion,
       locked: Boolean(ent.locked)
     };
     await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
@@ -379,9 +389,22 @@ async function hashPin(pin) {
 let selectedExplainCapture = null;
 let tutorAudioUrl = "";
 let tutorMode = "read";
+let tutorExplainDepth = "standard"; // "standard" | "deep" (Deep Dive; eligible bands only)
+let tutorGradeBand = "6-8";        // cached from settings for synchronous UI decisions
 let tutorPlaybackRate = 1;
 let tutorSentences = [];
 let tutorSentenceBounds = [];
+
+// ---- Tutor voice v2 (queued segments) ----------------------------------------
+// The new cascaded/queued pipeline. The OLD single-blob flow stays reachable as
+// generateTutorVoiceLegacy() behind this flag until v2 is verified in the field.
+const TUTOR_VOICE_V2 = true;
+const AUDIO_FORMAT = "mp3";
+let tutorQueue = null;              // TutorVoice.TutorAudioQueue instance
+let tutorSegments = [];            // [{ id, text, durationMs }] for transcript render
+let tutorController = null;         // AbortController for the active request
+let tutorActiveIdentity = "";       // request-identity of the in-flight request (dedup)
+let tutorActivePromise = null;      // the in-flight promise (dedup reuse)
 let tutorCurrentSentence = -1;
 let missionReadSeconds = 0;
 let missionReadTimerId = 0;
@@ -478,7 +501,7 @@ function escapeHtml(value) {
 function getSettings() {
   return new Promise(resolve => {
     const localDefaults = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
-    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, studentVoice: "", ...localDefaults };
+    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorExplainDepth: "standard", tutorPlaybackRate: 1, studentVoice: "", ...localDefaults };
     if (extensionApi?.storage?.local) {
       extensionApi.storage.local.get(defaults, data => {
         resolve({
@@ -789,7 +812,12 @@ function renderDashboardToolDetail(detail, name) {
 
 function setGrade(button) {
   button.parentElement.querySelectorAll("button").forEach(tab => tab.classList.toggle("active", tab === button));
-  saveSettings({ gradeBand: button.textContent.trim() });
+  tutorGradeBand = button.textContent.trim();
+  saveSettings({ gradeBand: tutorGradeBand });
+  updateTutorDepthUi(); // Deep Dive availability + K-2 exclusion depend on the band
+  // Grade band changes the lesson/voice — cancel any in-flight Tutor request and
+  // drop the now-stale player so it regenerates for the new band.
+  if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
 }
 
 function setPreferenceTab(button) {
@@ -822,6 +850,8 @@ function setToolSource(tool, source) {
     updatePdfSourceMode();
     updateTutorSourceSummary();
     saveSettings({ pdfSource: source, readSource: source });
+    // Source changed — cancel any in-flight Tutor request and clear the player.
+    if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
     return;
   }
   if (tool === "math") updateMathSourceMode();
@@ -1350,19 +1380,28 @@ async function getOpenAISettings() {
   return { ...settings, portal: true };
 }
 
-async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
+// Resolve the TTS model client-side ONLY for the test-mode direct call and for
+// audio cache keys. Production requests never pin a model — the portal resolves it.
+function resolveSpeechModel() {
+  return TutorVoice.resolveSpeechModel(portalSession, globalThis.KIDDIEGPT_LOCAL_SETTINGS || {});
+}
+
+async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8", mode = "read", signal }) {
   // All AI goes through the portal proxy so usage/tokens are recorded and the
   // OpenAI key stays server-side.
   // Screen what will be spoken aloud before generating audio.
   if (await moderateFlagged(settings, text)) throw new PortalError("content_blocked", 200);
   // Single voice-resolution point: student's choice if still admin-approved, else default.
   const useVoice = resolveVoice(voice);
+  const speechMode = mode === "explain" ? "explain" : "read";
   // Test mode: call OpenAI TTS directly with the local dev key (no portal backend).
+  // Here (and only here) we apply a local model + spoken style mirror.
   if (portalToken === OTP_TEST_TOKEN && settings?.openaiApiKey) {
     const direct = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-      body: JSON.stringify({ model: MODELS.tts, voice: useVoice, input: text, instructions: TTS_INSTRUCTION, response_format: "mp3" })
+      body: JSON.stringify({ model: resolveSpeechModel(), voice: useVoice, input: text, instructions: TutorVoice.speechStyleFor(speechMode, gradeBand), response_format: "mp3" })
     });
     if (!direct.ok) {
       const detail = await direct.json().catch(() => ({}));
@@ -1370,8 +1409,12 @@ async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
     }
     return direct.blob();
   }
+  // Production: send inputs only. The portal resolves the speech model and the
+  // spoken style server-side from (mode + gradeBand); client model/instructions
+  // are ignored, so we no longer send them. `mode` is required by the contract.
   const response = await fetch(`${portalBaseUrl()}/api/ai/speech`, {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
       ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {})
@@ -1379,9 +1422,8 @@ async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
     body: JSON.stringify({
       text,
       voice: useVoice,
-      model: MODELS.tts,
-      instructions: TTS_INSTRUCTION,
       gradeBand,
+      mode: speechMode,
       childId: portalSession?.childId || undefined,
       estSeconds: Math.ceil(String(text || "").length / 14)
     })
@@ -1397,7 +1439,7 @@ async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
   return response.blob();
 }
 
-async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model }) {
+async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model, gradeBand, explainDepth }) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const content = [{ type: "input_text", text }, ...parts];
@@ -1431,6 +1473,10 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
       tool: tool || toolForCurrentView(),
       childId: portalSession?.childId || undefined,
       model: useModel,
+      // Explain tutor calls carry grade + depth so the portal clamps narration
+      // to the effective cap server-side (ignored by non-tutor tools).
+      gradeBand: gradeBand || undefined,
+      explainDepth: explainDepth || undefined,
       instructions,
       input: [{ role: "user", content }]
     })
@@ -1609,6 +1655,8 @@ async function bootstrapPortal() {
   await loadPortalToken();
   await refreshEntitlement();
   renderPortalState();
+  // The session may customize deepDiveBands — reflect it in the depth toggle.
+  updateTutorDepthUi();
 }
 
 function getCurrentStudyPackText() {
@@ -1677,7 +1725,33 @@ function setTutorMode(mode) {
   });
   const button = document.getElementById("tutorGenerateButton");
   if (button && !button.disabled) button.textContent = tutorMode === "read" ? "Read it aloud" : "Explain it aloud";
+  updateTutorDepthUi(); // depth toggle is Explain-only
   saveSettings({ tutorMode });
+}
+
+// Show the Standard/Deep Dive toggle only for Explain on a deep-dive-eligible
+// band; hide it (and force Standard) for Read mode or K-2 / ineligible bands.
+function updateTutorDepthUi() {
+  const el = document.getElementById("tutorDepth");
+  const band = TutorVoice.normalizeBand(tutorGradeBand);
+  const eligible = TutorVoice.deepDiveAvailable(portalSession, band);
+  if (!eligible) tutorExplainDepth = "standard";
+  if (!el) return;
+  const show = eligible && tutorMode === "explain";
+  el.hidden = !show;
+  el.querySelectorAll("[data-depth]").forEach(btn => btn.classList.toggle("active", btn.dataset.depth === tutorExplainDepth));
+}
+
+function setTutorDepth(depth) {
+  const band = TutorVoice.normalizeBand(tutorGradeBand);
+  if (!TutorVoice.deepDiveAvailable(portalSession, band)) return; // ignore when hidden
+  const d = depth === "deep" ? "deep" : "standard";
+  if (d === tutorExplainDepth) { updateTutorDepthUi(); return; }
+  tutorExplainDepth = d;
+  saveSettings({ tutorExplainDepth: d });
+  updateTutorDepthUi();
+  // Depth changes the lesson — cancel any in-flight request and clear the player.
+  if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
 }
 
 function studyFileKey(file) {
@@ -1756,9 +1830,16 @@ function updateTutorPlayButton(playing) {
 }
 
 function updateTutorTime() {
-  const audio = document.getElementById("tutorAudioPlayer");
   const time = document.getElementById("tutorTime");
   const fill = document.getElementById("tutorProgressFill");
+  // v2: compute lesson-wide time across the segment queue.
+  if (tutorQueue) {
+    const { current, total } = tutorOverallTime();
+    if (time) time.textContent = `${formatTutorTime(current)} / ${formatTutorTime(total)}`;
+    if (fill) fill.style.width = `${total ? Math.min(100, (current / total) * 100) : 0}%`;
+    return;
+  }
+  const audio = document.getElementById("tutorAudioPlayer");
   if (!audio) return;
   if (time) time.textContent = `${formatTutorTime(audio.currentTime)} / ${formatTutorTime(audio.duration)}`;
   if (fill) fill.style.width = `${audio.duration ? (audio.currentTime / audio.duration) * 100 : 0}%`;
@@ -1773,6 +1854,7 @@ function renderTutorTranscript() {
 }
 
 function updateTutorHighlight() {
+  if (tutorQueue) return; // v2 drives highlight from the queue's segment changes
   const audio = document.getElementById("tutorAudioPlayer");
   if (!audio || !audio.duration || !tutorSentenceBounds.length) return;
   const progress = audio.currentTime / audio.duration;
@@ -1801,12 +1883,6 @@ function setupTutorPlayback(transcript, title) {
     audio.src = tutorAudioUrl;
     audio.playbackRate = tutorPlaybackRate;
     audio.load();
-  }
-  const download = document.getElementById("tutorDownloadLink");
-  if (download) {
-    const safe = (title || "tutor-lesson").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "tutor-lesson";
-    download.href = tutorAudioUrl;
-    download.download = `kiddiegpt-${safe}.mp3`;
   }
   const chapter = document.getElementById("tutorChapter");
   if (chapter) chapter.textContent = title || "";
@@ -1841,17 +1917,17 @@ function chunkForTts(text, maxChars = ttsChunkChars) {
 
 // Long transcripts exceed OpenAI's ~4096-char TTS limit, so synthesize in chunks
 // and stitch the MP3 blobs into one track (one audio element = one read-along).
-async function synthesizeTutorSpeech({ settings, text, voice, gradeBand, onProgress }) {
+async function synthesizeTutorSpeech({ settings, text, voice, gradeBand, mode = "read", onProgress }) {
   const chunks = chunkForTts(text);
   const blobs = [];
   for (let i = 0; i < chunks.length; i += 1) {
     onProgress?.(i + 1, chunks.length);
-    blobs.push(await callOpenAISpeech({ settings, text: chunks[i], voice, gradeBand }));
+    blobs.push(await callOpenAISpeech({ settings, text: chunks[i], voice, gradeBand, mode }));
   }
   return new Blob(blobs, { type: "audio/mpeg" });
 }
 
-async function generateTutorVoice() {
+async function generateTutorVoiceLegacy() {
   const button = document.getElementById("tutorGenerateButton");
   const setBusy = (busy, label) => {
     if (!button) return;
@@ -1885,11 +1961,12 @@ async function generateTutorVoice() {
         setTutorStatus(activeTabIssueMessage(source.issue || "empty"), "warn");
         return;
       }
-      const words = gradeBand === "K-2" ? "80-200" : gradeBand === "3-5" ? "200-600" : "600-1800";
+      // 9-12 is a real band — use its own cap instead of bucketing it into 6-8.
+      const words = `up to about ${TutorVoice.effectiveExplainMaxWords(portalSession, gradeBand, "standard")}`;
       const result = await callOpenAIJson({
         settings,
         instructions: `You are KiddieGPT Tutor Mode for a grade ${gradeBand} student. Create a spoken lesson about the source. Sound like a calm, warm teacher, not a textbook. Do not read the source word for word; teach it in your own simple words, section by section. Return only valid JSON.`,
-        text: `Source: ${source.label}\n${source.text}\nReturn JSON with title string and script string. The script should be about ${words} words, walk through the whole source in grade ${gradeBand} language, add a memory trick or two, and end with one recall question. Only make it long if the source has enough to cover; do not pad or repeat.`
+        text: `Source: ${source.label}\n${source.text}\nReturn JSON with title string and script string. The script should be ${words} words, walk through the whole source in grade ${gradeBand} language, add a memory trick or two, and end with one recall question. Only make it long if the source has enough to cover; do not pad or repeat.`
       });
       transcript = (result.script || "").slice(0, maxTutorExplainChars);
       title = result.title || source.label;
@@ -1904,6 +1981,7 @@ async function generateTutorVoice() {
       text: transcript,
       voice: resolveVoice(settings.studentVoice),
       gradeBand,
+      mode: tutorMode,
       onProgress: (index, total) => setTutorStatus(total > 1 ? `Making audio… (part ${index} of ${total})` : "Generating the tutor voice…", "blue")
     });
     if (tutorAudioUrl) URL.revokeObjectURL(tutorAudioUrl);
@@ -1917,6 +1995,417 @@ async function generateTutorVoice() {
     setTutorStatus(`Could not generate: ${friendlyError(error)}`, "warn");
   } finally {
     setBusy(false, tutorMode === "read" ? "Read it aloud" : "Explain it aloud");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tutor voice v2 — cascaded, cached, queued-segment pipeline.
+// source -> normalize -> (lesson model for Explain) -> transcript -> semantic
+// chunks -> segment-cached speech -> ordered audio queue. No concatenated MP3,
+// no realtime speech-to-speech. Gated by TUTOR_VOICE_V2; legacy path preserved.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ---- Client-side IndexedDB caches (transcripts, audio manifests, segments) ---
+const TUTOR_DB_NAME = "kiddiegpt-tutor";
+const TUTOR_DB_VERSION = 1;
+const TUTOR_STORE_TRANSCRIPTS = "transcripts";
+const TUTOR_STORE_MANIFESTS = "audioManifests";
+const TUTOR_STORE_SEGMENTS = "segments";
+let tutorDbPromise = null;
+
+function openTutorDb() {
+  if (tutorDbPromise) return tutorDbPromise;
+  tutorDbPromise = new Promise(resolve => {
+    if (!globalThis.indexedDB) { resolve(null); return; }
+    let req;
+    try { req = indexedDB.open(TUTOR_DB_NAME, TUTOR_DB_VERSION); } catch { resolve(null); return; }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      [TUTOR_STORE_TRANSCRIPTS, TUTOR_STORE_MANIFESTS, TUTOR_STORE_SEGMENTS].forEach(name => {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+      });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+  return tutorDbPromise;
+}
+
+async function idbGet(store, key) {
+  const db = await openTutorDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction(store, "readonly").objectStore(store).get(key);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
+async function idbPut(store, key, value) {
+  const db = await openTutorDb();
+  if (!db) return;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
+// Wipe all on-device Tutor voice caches (transcripts, manifests, segments).
+async function clearTutorCaches() {
+  tutorDbPromise = null;
+  return new Promise(resolve => {
+    if (!globalThis.indexedDB) { resolve(); return; }
+    try {
+      const req = indexedDB.deleteDatabase(TUTOR_DB_NAME);
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
+// ---- Cancellation + duplicate-request protection -----------------------------
+function newTutorRun() {
+  if (tutorController) { try { tutorController.abort(); } catch {} }
+  tutorController = new AbortController();
+  return tutorController;
+}
+
+// Cancel on: source change, grade-band change, Stop/reset, panel close.
+function cancelTutorRequest() {
+  if (tutorController) { try { tutorController.abort(); } catch {} tutorController = null; }
+  tutorActiveIdentity = "";
+  tutorActivePromise = null;
+}
+
+// ---- Telemetry (one compact event per request; never source/transcript text) -
+function logTutorTelemetry(event) {
+  try { reportIssue("tutor_telemetry", JSON.stringify(event).slice(0, 900)); } catch {}
+}
+
+// ---- Player teardown ---------------------------------------------------------
+function resetTutorPlayer() {
+  if (tutorQueue) { try { tutorQueue.destroy(); } catch {} tutorQueue = null; }
+  tutorSegments = [];
+  tutorCurrentSentence = -1;
+  const audio = document.getElementById("tutorAudioPlayer");
+  if (audio) { try { audio.pause(); } catch {} audio.removeAttribute("src"); try { audio.load(); } catch {} }
+}
+
+// ---- Source acquisition (reuses existing extractors) -------------------------
+async function getTutorSource(mode) {
+  if (mode === "read") {
+    const s = await getTutorReadAloudText();
+    if (!s.text || s.text.trim().length < 4) {
+      return { blocked: true, message: tutorSourceMode() === "file"
+        ? "Choose a file to read, or switch to Active tab."
+        : activeTabIssueMessage(s.issue || "empty") };
+    }
+    return { label: s.label, text: s.text };
+  }
+  const s = await getTutorExplainSource();
+  if (tutorSourceMode() === "browser" && (!s.text || s.text.trim().length < 4)) {
+    return { blocked: true, message: activeTabIssueMessage(s.issue || "empty") };
+  }
+  if (!s.text || s.text.trim().length < 4) {
+    return { blocked: true, message: "Choose a file, or open a readable page first." };
+  }
+  return { label: s.label, text: s.text };
+}
+
+// (7) Reuse an existing, grade-matched spoken study explanation when present.
+// Packs are not grade-stamped or given a full spoken lesson today, so this stays
+// dormant (returns null) until pack.gradeBand + a substantive summary exist —
+// wired now so it activates without further Tutor changes.
+function getReusableStudyExplanation(gradeBand) {
+  const pack = currentStudyPack;
+  if (!pack || tutorSourceMode() !== "file") return null;
+  const spoken = String(pack.spokenExplanation || "").trim();
+  if (!spoken || spoken.length < 200) return null;
+  if (!pack.gradeBand || pack.gradeBand !== gradeBand) return null;
+  return { text: spoken, title: pack.title || "Study mission" };
+}
+
+// (3,5,6,8,18) Build the Explain transcript: reuse -> cache -> model (+validate/trim).
+async function buildExplainTranscript({ settings, gradeBand, depth, normalizedSource, label, signal, telemetry }) {
+  const config = TutorVoice.buildLessonConfig(portalSession, gradeBand, depth);
+  const cap = config.targetWords;               // effective, depth-aware cap
+  const lessonModel = settings.openaiModel || MODELS.defaultText;
+  const promptVersion = TutorVoice.TUTOR_VERSIONS.lessonPrompt;
+  const cfgVer = TutorVoice.tutorConfigVersion(portalSession);
+
+  const reused = getReusableStudyExplanation(gradeBand);
+  if (reused) {
+    telemetry.transcriptCacheHit = true; // reuse = no model call
+    return { transcript: TutorVoice.trimToWordCeiling(reused.text, cap), title: reused.title || label, lessonModel: null };
+  }
+
+  const key = await TutorVoice.transcriptCacheKey({
+    normalizedSourceText: normalizedSource, gradeBand, tutorMode: "explain", explainDepth: config.depth,
+    lessonPromptVersion: promptVersion, lessonModel, tutorConfigVersion: cfgVer
+  });
+  const cached = await idbGet(TUTOR_STORE_TRANSCRIPTS, key);
+  if (cached && cached.transcript) {
+    telemetry.transcriptCacheHit = true;
+    return { transcript: cached.transcript, title: cached.title || label, lessonModel };
+  }
+
+  let transcript = "", title = label;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal.aborted) return null;
+    const result = await callOpenAIJson({
+      settings,
+      tool: "tutor",            // portal enforces the narration cap for the tutor tool
+      gradeBand,
+      explainDepth: config.depth, // portal clamps to the same effective cap
+      model: lessonModel,
+      instructions: TutorVoice.LESSON_SYSTEM_INSTRUCTION + (attempt ? " The previous draft was rejected: be concise, no tables, include one recall question." : ""),
+      text: TutorVoice.buildLessonUserPayload(label, normalizedSource.slice(0, maxTutorExplainSourceChars), config)
+    });
+    transcript = String(result.script || "").trim();
+    title = result.title || label;
+    const check = TutorVoice.validateTranscript(transcript, cap);
+    if (check.ok || attempt === 1) break; // regenerate once at most
+  }
+  if (!transcript) return null;
+  transcript = TutorVoice.trimToWordCeiling(transcript, cap); // (3) sentence-boundary cap
+  await idbPut(TUTOR_STORE_TRANSCRIPTS, key, {
+    sourceHash: key, gradeBand, mode: "explain", depth: config.depth, transcript, title,
+    lessonModel, promptVersion, tutorConfigVersion: cfgVer, createdAt: Date.now()
+  });
+  return { transcript, title, lessonModel };
+}
+
+function estSegmentDurationMs(text) {
+  return Math.max(1000, Math.ceil(String(text || "").length / 14) * 1000);
+}
+
+// (6,9,11,16) Semantic chunk -> per-segment audio cache -> ordered segment list.
+async function synthesizeSegmentsV2({ settings, transcript, voice, gradeBand, mode, speechModel, styleVersion, signal, telemetry, t0 }) {
+  const chunks = TutorVoice.semanticChunk(transcript);
+  telemetry.audioSegmentCount = chunks.length;
+  if (!chunks.length) return { segments: [] };
+
+  // (6) Whole-transcript audio manifest: full reuse when every segment is cached.
+  const manifestKey = await TutorVoice.audioCacheKey({
+    normalizedTranscript: transcript, voice, speechModel, speechStyleVersion: styleVersion, audioFormat: AUDIO_FORMAT
+  });
+  const manifest = await idbGet(TUTOR_STORE_MANIFESTS, manifestKey);
+  if (manifest && Array.isArray(manifest.segKeys) && manifest.segKeys.length === chunks.length) {
+    const reused = [];
+    let allHit = true;
+    for (let i = 0; i < manifest.segKeys.length; i += 1) {
+      const seg = await idbGet(TUTOR_STORE_SEGMENTS, manifest.segKeys[i]);
+      if (!seg || !seg.blob) { allHit = false; break; }
+      reused.push({ id: i, text: chunks[i], blob: seg.blob, durationMs: seg.durationMs || estSegmentDurationMs(chunks[i]) });
+    }
+    if (allHit) {
+      telemetry.audioCacheHit = true;
+      telemetry.segmentCacheHits = reused.length;
+      telemetry.timeToFirstAudioMs = Math.round(performance.now() - t0);
+      return { segments: reused };
+    }
+  }
+
+  // (11) Per-segment: reuse hits, synthesize only misses, preserve order.
+  const segKeys = [];
+  const segments = [];
+  let firstAudioLogged = false;
+  for (let i = 0; i < chunks.length; i += 1) {
+    if (signal.aborted) return null;
+    setTutorStatus(chunks.length > 1 ? `Making audio… (part ${i + 1} of ${chunks.length})` : "Generating the tutor voice…", "blue");
+    const chunk = chunks[i];
+    const segKey = await TutorVoice.segmentCacheKey({
+      normalizedChunkText: chunk, voice, speechModel, speechStyleVersion: styleVersion, audioFormat: AUDIO_FORMAT
+    });
+    segKeys.push(segKey);
+    let entry = await idbGet(TUTOR_STORE_SEGMENTS, segKey);
+    if (entry && entry.blob) {
+      telemetry.segmentCacheHits += 1;
+    } else {
+      telemetry.segmentCacheMisses += 1;
+      const blob = await callOpenAISpeech({ settings, text: chunk, voice, gradeBand, mode, signal });
+      if (signal.aborted) return null;
+      entry = { blob, durationMs: estSegmentDurationMs(chunk), createdAt: Date.now() };
+      await idbPut(TUTOR_STORE_SEGMENTS, segKey, entry);
+    }
+    if (!firstAudioLogged) { telemetry.timeToFirstAudioMs = Math.round(performance.now() - t0); firstAudioLogged = true; }
+    segments.push({ id: i, text: chunk, blob: entry.blob, durationMs: entry.durationMs || estSegmentDurationMs(chunk) });
+  }
+  await idbPut(TUTOR_STORE_MANIFESTS, manifestKey, { segKeys, count: chunks.length, createdAt: Date.now() });
+  return { segments };
+}
+
+// ---- Queued playback + segment-timed highlighting (10, 12) -------------------
+function startTutorQueue(segments, title) {
+  resetTutorPlayer();
+  const audio = document.getElementById("tutorAudioPlayer");
+  tutorSegments = segments.map(s => ({ id: s.id, text: s.text, durationMs: s.durationMs }));
+  tutorQueue = new TutorVoice.TutorAudioQueue({
+    audio,
+    createUrl: blob => URL.createObjectURL(blob),
+    revokeUrl: url => { try { URL.revokeObjectURL(url); } catch {} },
+    onSegmentChange: index => updateTutorSegmentHighlight(index),
+    onPlayStateChange: playing => updateTutorPlayButton(playing),
+    onEnded: () => { updateTutorPlayButton(false); }
+  });
+  tutorQueue.load(segments.map(s => ({ id: s.id, text: s.text, blob: s.blob, durationMs: s.durationMs })));
+  if (audio) audio.playbackRate = tutorPlaybackRate;
+  const chapter = document.getElementById("tutorChapter");
+  if (chapter) chapter.textContent = title || "";
+  renderTutorSegments();
+  showTutorPlayer(true);
+  updateTutorPlayButton(false);
+  updateTutorTime();
+}
+
+function renderTutorSegments() {
+  const el = document.getElementById("tutorTranscript");
+  if (!el) return;
+  el.innerHTML = tutorSegments
+    .map((seg, index) => `<span class="tutor-sentence${index === tutorCurrentSentence ? " reading" : ""}" data-segment="${index}">${escapeHtml(seg.text)} </span>`)
+    .join("");
+}
+
+function updateTutorSegmentHighlight(index) {
+  tutorCurrentSentence = index;
+  const el = document.getElementById("tutorTranscript");
+  if (!el) return;
+  el.querySelectorAll(".tutor-sentence").forEach((span, i) => span.classList.toggle("reading", i === index));
+  el.querySelector(`.tutor-sentence[data-segment="${index}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Cross-segment lesson time (uses measured durations where known, else estimates).
+function tutorOverallTime() {
+  const audio = document.getElementById("tutorAudioPlayer");
+  if (!tutorQueue || !tutorSegments.length) return { current: 0, total: 0 };
+  const idx = Math.max(0, tutorQueue.index);
+  let priorMs = 0;
+  for (let i = 0; i < idx && i < tutorSegments.length; i += 1) priorMs += tutorSegments[i].durationMs || 0;
+  const curMs = (audio && Number.isFinite(audio.currentTime)) ? audio.currentTime * 1000 : 0;
+  const totalMs = tutorSegments.reduce((sum, seg) => sum + (seg.durationMs || 0), 0);
+  return { current: (priorMs + curMs) / 1000, total: totalMs / 1000 };
+}
+
+function seekTutorToRatio(ratio) {
+  if (!tutorQueue || !tutorSegments.length) return;
+  const totalMs = tutorSegments.reduce((sum, seg) => sum + (seg.durationMs || 0), 0);
+  if (!totalMs) return;
+  const targetMs = Math.max(0, Math.min(1, ratio)) * totalMs;
+  let acc = 0, seg = 0;
+  for (; seg < tutorSegments.length; seg += 1) {
+    const d = tutorSegments[seg].durationMs || 0;
+    if (acc + d >= targetMs) break;
+    acc += d;
+  }
+  seg = Math.min(seg, tutorSegments.length - 1);
+  const withinSec = Math.max(0, (targetMs - acc) / 1000);
+  tutorQueue.seekToSegment(seg).then(() => {
+    const audio = document.getElementById("tutorAudioPlayer");
+    if (!audio) return;
+    const apply = () => { try { audio.currentTime = Math.min(withinSec, audio.duration || withinSec); } catch {} };
+    if (audio.readyState >= 1) apply(); else audio.addEventListener("loadedmetadata", apply, { once: true });
+  });
+}
+
+// ---- Dispatcher + v2 orchestration ------------------------------------------
+function generateTutorVoice() {
+  return TUTOR_VOICE_V2 ? generateTutorVoiceV2() : generateTutorVoiceLegacy();
+}
+
+async function generateTutorVoiceV2() {
+  const button = document.getElementById("tutorGenerateButton");
+  const setBusy = (busy, label) => { if (!button) return; button.disabled = busy; button.textContent = label; };
+  const mode = tutorMode;
+  const t0 = performance.now();
+  const telemetry = {
+    mode, gradeBand: "", explainDepth: "standard", lessonModel: null, speechModel: resolveSpeechModel(),
+    sourceCharacterCount: 0, transcriptWordCount: 0, transcriptCacheHit: false, audioCacheHit: false,
+    segmentCacheHits: 0, segmentCacheMisses: 0, audioSegmentCount: 0,
+    generationLatencyMs: 0, timeToFirstAudioMs: 0, canceled: false, failed: false
+  };
+
+  setBusy(true, mode === "read" ? "Getting text…" : "Writing lesson…");
+  setTutorStatus(mode === "read" ? "Getting the passage ready…" : "Writing the lesson…", "blue");
+  const controller = newTutorRun();
+  const signal = controller.signal;
+  try {
+    const settings = await getOpenAISettings();
+    if (!settings) { setTutorStatus("Add your OpenAI key in Settings to generate the tutor voice.", "warn"); return; }
+    const gradeBand = TutorVoice.normalizeBand(settings.gradeBand || "6-8");
+    const voice = resolveVoice(settings.studentVoice);
+    tutorGradeBand = gradeBand;
+    // Depth applies to Explain only, and only where Deep Dive is allowed.
+    const depth = mode === "explain"
+      ? TutorVoice.resolveExplainDepth(portalSession, gradeBand, settings.tutorExplainDepth || tutorExplainDepth)
+      : "standard";
+    telemetry.gradeBand = gradeBand;
+    telemetry.explainDepth = depth;
+
+    const rawSource = await getTutorSource(mode);
+    if (signal.aborted) { telemetry.canceled = true; return; }
+    if (rawSource.blocked) { setTutorStatus(rawSource.message, "warn"); return; }
+    const normalizedSource = TutorVoice.normalizeSource(rawSource.text || "");
+    telemetry.sourceCharacterCount = normalizedSource.length;
+    if (!normalizedSource || normalizedSource.trim().length < 4) {
+      setTutorStatus("Couldn't find readable text to use. Try another page or file.", "warn"); return;
+    }
+
+    // (16) Duplicate-request protection.
+    const identity = await TutorVoice.requestIdentity({
+      mode, normalizedSourceText: normalizedSource, gradeBand, explainDepth: depth, voice,
+      lessonPromptVersion: TutorVoice.TUTOR_VERSIONS.lessonPrompt,
+      speechStyleVersion: TutorVoice.speechStyleVersion(portalSession),
+      tutorConfigVersion: TutorVoice.tutorConfigVersion(portalSession)
+    });
+    if (tutorActiveIdentity && tutorActiveIdentity === identity) {
+      setTutorStatus("Already working on this one — one moment…", "blue"); return;
+    }
+    tutorActiveIdentity = identity;
+
+    let transcript = "", title = rawSource.label;
+    if (mode === "explain") {
+      const built = await buildExplainTranscript({ settings, gradeBand, depth, normalizedSource, label: rawSource.label, signal, telemetry });
+      if (signal.aborted) { telemetry.canceled = true; return; }
+      if (!built || !built.transcript) { setTutorStatus("Couldn't write a lesson from that source. Try another page.", "warn"); return; }
+      transcript = built.transcript;
+      title = built.title || rawSource.label;
+      telemetry.lessonModel = built.lessonModel;
+    } else {
+      // (14) Read Aloud = lowest-cost path: no lesson model, source verbatim.
+      transcript = normalizedSource.slice(0, maxTutorReadChars);
+    }
+    telemetry.transcriptWordCount = TutorVoice.countWords(transcript);
+
+    setBusy(true, "Making audio…");
+    const normalizedTranscript = TutorVoice.normalizeSource(transcript);
+    const speechModel = resolveSpeechModel();
+    const styleVersion = TutorVoice.speechStyleVersion(portalSession);
+    const synth = await synthesizeSegmentsV2({
+      settings, transcript: normalizedTranscript, voice, gradeBand, mode, speechModel, styleVersion, signal, telemetry, t0
+    });
+    if (signal.aborted) { telemetry.canceled = true; return; }
+    if (!synth || !synth.segments.length) { setTutorStatus("Could not generate audio. Please try again.", "warn"); return; }
+
+    startTutorQueue(synth.segments, title);
+    bumpActivity("tutorLessons", 1);
+    awardStars(3);
+    setTutorStatus(mode === "read" ? "Press play and follow along." : "Press play to hear the lesson.", "blue");
+  } catch (error) {
+    if (signal.aborted || error?.name === "AbortError") { telemetry.canceled = true; return; }
+    telemetry.failed = true;
+    console.warn("Tutor voice failed", error);
+    setTutorStatus(`Could not generate: ${friendlyError(error)}`, "warn");
+  } finally {
+    telemetry.generationLatencyMs = Math.round(performance.now() - t0);
+    tutorActiveIdentity = "";
+    tutorActivePromise = null;
+    logTutorTelemetry(telemetry);
+    setBusy(false, mode === "read" ? "Read it aloud" : "Explain it aloud");
   }
 }
 
@@ -3869,33 +4358,54 @@ function initTutorMode() {
   });
   const audio = document.getElementById("tutorAudioPlayer");
   document.getElementById("tutorPlayButton")?.addEventListener("click", () => {
+    if (tutorQueue) { if (tutorQueue.playing) tutorQueue.pause(); else tutorQueue.resume(); return; }
     if (!audio || !audio.src) return;
     if (audio.paused) audio.play(); else audio.pause();
   });
   audio?.addEventListener("play", () => updateTutorPlayButton(true));
   audio?.addEventListener("pause", () => updateTutorPlayButton(false));
-  audio?.addEventListener("ended", () => updateTutorPlayButton(false));
+  // In v2 the queue advances on 'ended'; only the final end flips the button.
+  audio?.addEventListener("ended", () => { if (!tutorQueue) updateTutorPlayButton(false); });
   audio?.addEventListener("timeupdate", () => { updateTutorTime(); updateTutorHighlight(); });
-  audio?.addEventListener("loadedmetadata", updateTutorTime);
+  audio?.addEventListener("loadedmetadata", () => {
+    // Re-apply the chosen speed to each new segment as it loads (the queue reuses
+    // one element, but reassigning src can reset playbackRate in some browsers).
+    if (audio) audio.playbackRate = tutorPlaybackRate;
+    // v2: refine the current segment's duration from real audio metadata.
+    if (tutorQueue && audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+      const seg = tutorSegments[tutorQueue.index];
+      if (seg) seg.durationMs = Math.round(audio.duration * 1000);
+    }
+    updateTutorTime();
+  });
   document.getElementById("tutorProgressTrack")?.addEventListener("click", event => {
-    if (!audio || !audio.duration) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    if (tutorQueue) { seekTutorToRatio(ratio); updateTutorTime(); return; }
+    if (!audio || !audio.duration) return;
     audio.currentTime = ratio * audio.duration;
     updateTutorTime();
     updateTutorHighlight();
   });
-  document.getElementById("tutorSpeed")?.addEventListener("click", () => {
-    const rates = [1, 1.25, 0.75];
-    tutorPlaybackRate = rates[(rates.indexOf(tutorPlaybackRate) + 1) % rates.length];
-    if (audio) audio.playbackRate = tutorPlaybackRate;
-    const speed = document.getElementById("tutorSpeed");
-    if (speed) speed.textContent = `Speed ${tutorPlaybackRate}×`;
-    saveSettings({ tutorPlaybackRate });
+  document.getElementById("tutorDepth")?.addEventListener("click", event => {
+    const btn = event.target.closest("[data-depth]");
+    if (btn) setTutorDepth(btn.dataset.depth);
+  });
+  document.getElementById("tutorSpeed")?.addEventListener("change", event => {
+    const rate = TutorVoice.parsePlaybackRate(event.target.value);
+    tutorPlaybackRate = rate;
+    if (audio) audio.playbackRate = rate; // queue reuses this element; loadedmetadata re-applies per segment
+    saveSettings({ tutorPlaybackRate: rate });
   });
   document.getElementById("tutorTranscript")?.addEventListener("click", event => {
     const span = event.target.closest(".tutor-sentence");
-    if (!span || !audio || !audio.duration) return;
+    if (!span) return;
+    if (tutorQueue) {
+      const i = Number(span.dataset.segment);
+      if (Number.isInteger(i)) tutorQueue.seekToSegment(i);
+      return;
+    }
+    if (!audio || !audio.duration) return;
     const bound = tutorSentenceBounds[Number(span.dataset.sentence)];
     if (!bound) return;
     audio.currentTime = bound.start * audio.duration;
@@ -4561,17 +5071,14 @@ function initSettingsTool() {
     });
   });
   document.getElementById("clearGeneratedAudioButton")?.addEventListener("click", () => {
-    const audio = document.getElementById("tutorAudioPlayer");
-    if (audio && !audio.paused) audio.pause();
+    // Stop pressed / reset: cancel any in-flight request and tear down v2 + legacy.
+    cancelTutorRequest();
+    resetTutorPlayer();
     if (tutorAudioUrl) URL.revokeObjectURL(tutorAudioUrl);
     tutorAudioUrl = "";
     tutorSentences = [];
     tutorSentenceBounds = [];
     tutorCurrentSentence = -1;
-    if (audio) {
-      audio.removeAttribute("src");
-      audio.load();
-    }
     showTutorPlayer(false);
     updateSettingsStatus("Generated tutor audio cleared from this session.", "blue");
   });
@@ -4597,6 +5104,11 @@ function initSettingsTool() {
     selectedPdfFile = null;
     currentSourceText = "";
     currentSourceKey = "";
+    // Tear down the tutor player and wipe the on-device Tutor voice caches.
+    cancelTutorRequest();
+    resetTutorPlayer();
+    showTutorPlayer(false);
+    await clearTutorCaches();
     renderMissionCards();
     renderMissionQuiz();
     updateMissionReadUi();
@@ -5080,6 +5592,7 @@ globalThis.kiddieGPTDemo = {
 getSettings().then(data => {
   showPanel(data.activeView || "dashboard");
   if (data.gradeBand) {
+    tutorGradeBand = data.gradeBand;
     document.querySelectorAll(".grade-tabs button").forEach(button => {
       button.classList.toggle("active", button.textContent.trim() === data.gradeBand);
     });
@@ -5093,11 +5606,13 @@ getSettings().then(data => {
   });
   setToolSource("pdf", data.pdfSource || "file");
   setToolSource("read", data.readSource || data.pdfSource || "file");
+  if (data.tutorExplainDepth === "deep" || data.tutorExplainDepth === "standard") tutorExplainDepth = data.tutorExplainDepth;
   if (data.tutorMode) setTutorMode(data.tutorMode);
+  updateTutorDepthUi(); // reflect restored grade/depth/mode (also enforces K-2 = Standard)
   if (data.tutorPlaybackRate) {
-    tutorPlaybackRate = data.tutorPlaybackRate;
+    tutorPlaybackRate = TutorVoice.parsePlaybackRate(data.tutorPlaybackRate);
     const speed = document.getElementById("tutorSpeed");
-    if (speed) speed.textContent = `Speed ${tutorPlaybackRate}×`;
+    if (speed) speed.value = String(tutorPlaybackRate);
   }
   mathAnswerGate = data.mathAnswerGate !== false;
   mathParentPinHash = data.mathParentPin || "";
