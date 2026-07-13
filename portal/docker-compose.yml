@@ -30,6 +30,10 @@ services:
       ALLOWED_PARENT_EMAIL_DOMAINS: ${ALLOWED_PARENT_EMAIL_DOMAINS:-gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       REQUIRE_AUTH: ${REQUIRE_AUTH:-true}
+      # OpenAI proxy: key stays server-side. Leave blank to instead set it from the
+      # admin console (AI controls), which stores it in the DB.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       # Origin the phone-capture QR points at. Phones can't reach localhost; set
       # this to your laptop's LAN IP for dev (e.g. PUBLIC_ORIGIN=http://10.0.0.98:8080
       # docker compose up -d), or the real domain in prod. Falls back to request host.
