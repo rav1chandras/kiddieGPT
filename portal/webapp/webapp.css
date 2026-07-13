@@ -6122,3 +6122,16 @@ body[data-page="admin"] .raw-feed > .admin-table-card { margin-bottom: 14px; }
 @media (max-width: 720px) {
   body[data-page="admin"] .digest-stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---- Admin: Tutor voice shortlist ---------------------------------------- */
+body[data-page="admin"] .tts-voice-field { grid-column: 1 / -1; display: grid; gap: 10px; padding: 14px; border: 1px solid #e4ece9; border-radius: 14px; background: #f8faf8; }
+body[data-page="admin"] .tts-voice-head b { color: #16342d; font-size: 0.92rem; }
+body[data-page="admin"] .tts-voice-head small { display: block; color: #6a827d; font-size: 0.76rem; margin-top: 2px; line-height: 1.45; }
+body[data-page="admin"] .tts-voice-head code { background: #eef3f1; padding: 1px 5px; border-radius: 5px; font-size: 0.72rem; }
+body[data-page="admin"] .tts-voice-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+body[data-page="admin"] .tts-voice-list label { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #e4ece9; border-radius: 10px; background: #fff; font-size: 0.82rem; font-weight: 600; color: #33474a; cursor: pointer; }
+body[data-page="admin"] .tts-voice-list label.is-checked { border-color: #0f6e56; background: #eefaf3; color: #12463c; }
+body[data-page="admin"] .tts-voice-list input { margin: 0; }
+body[data-page="admin"] .tts-default-field { display: grid; gap: 4px; font-weight: 700; color: #16342d; font-size: 0.82rem; max-width: 300px; }
+body[data-page="admin"] .tts-default-field select { min-height: 38px; border: 1px solid #cfe0dc; border-radius: 10px; padding: 0 10px; font: inherit; background: #fff; }
+body[data-page="admin"] .tts-default-field small { font-weight: 600; color: #6a827d; }

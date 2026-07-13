@@ -121,13 +121,51 @@ function normalisePricing(pricing = {}) {
   };
 }
 
+// ---- Tutor voice (TTS) --------------------------------------------------
+// Text-model routing (openaiModel) is SEPARATE from the tutor voice below.
+// The TTS model is pinned to gpt-4o-mini-tts for now; admins control which
+// voices are available and which is the default. Students pick from the
+// admin-approved shortlist in the extension.
+const TTS_MODEL = "gpt-4o-mini-tts";
+const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
+// Preferred order for middle school; also the non-empty fallback shortlist.
+const PREFERRED_TTS_VOICES = ["marin", "cedar", "sage"];
+const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
+
+// Keep only supported, de-duped voices; never allow an empty list.
+function normaliseAllowedVoices(list) {
+  const filtered = (Array.isArray(list) ? list : []).filter((v) => SUPPORTED_TTS_VOICES.includes(v));
+  const unique = [...new Set(filtered)];
+  return unique.length ? unique : [...PREFERRED_TTS_VOICES];
+}
+
+// If the default isn't in the allowed list, fall back to the first preferred
+// voice that is allowed (marin -> cedar -> sage), else the first allowed voice.
+function normaliseDefaultVoice(requested, allowed) {
+  if (requested && allowed.includes(requested)) return requested;
+  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0];
+}
+
+// Resolve the voice for a TTS call: student pick if allowed, else admin
+// default, else fallback order (marin -> cedar -> sage), else first allowed.
+function resolveTtsVoice(requested, settings) {
+  const allowed = normaliseAllowedVoices(settings.ttsAllowedVoices);
+  if (requested && allowed.includes(requested)) return requested;
+  const def = normaliseDefaultVoice(settings.ttsDefaultVoice, allowed);
+  if (def) return def;
+  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0] || "marin";
+}
+
 function defaultAiSettings() {
   return {
     openaiApiKey: process.env.OPENAI_API_KEY || "",
-    openaiModel: process.env.OPENAI_MODEL || "gpt-4.1",
+    openaiModel: process.env.OPENAI_MODEL || "gpt-5.6-luna",
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
     tutorVoiceEnabled: true,
+    ttsModel: TTS_MODEL,
+    ttsDefaultVoice: "marin",
+    ttsAllowedVoices: [...PREFERRED_TTS_VOICES],
     updatedAt: "",
     updatedBy: ""
   };
@@ -135,14 +173,20 @@ function defaultAiSettings() {
 
 function normaliseAiSettings(settings = {}) {
   const defaults = defaultAiSettings();
+  const ttsAllowedVoices = normaliseAllowedVoices(settings.ttsAllowedVoices ?? defaults.ttsAllowedVoices);
+  const ttsDefaultVoice = normaliseDefaultVoice(String(settings.ttsDefaultVoice || defaults.ttsDefaultVoice || ""), ttsAllowedVoices);
   return {
     ...defaults,
     ...settings,
     openaiApiKey: typeof settings.openaiApiKey === "string" ? settings.openaiApiKey : defaults.openaiApiKey,
-    openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-4.1"),
+    openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-5.6-luna"),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
+    // TTS model is pinned for now regardless of stored value.
+    ttsModel: TTS_MODEL,
+    ttsAllowedVoices,
+    ttsDefaultVoice,
     updatedAt: settings.updatedAt || "",
     updatedBy: settings.updatedBy || ""
   };
@@ -164,6 +208,10 @@ function safeAiSettings(settings = {}) {
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
+    ttsModel: normalised.ttsModel,
+    ttsDefaultVoice: normalised.ttsDefaultVoice,
+    ttsAllowedVoices: normalised.ttsAllowedVoices,
+    supportedTtsVoices: SUPPORTED_TTS_VOICES,
     updatedAt: normalised.updatedAt,
     updatedBy: normalised.updatedBy
   };
@@ -476,6 +524,7 @@ function readDb() {
   db.processedWebhookEvents = db.processedWebhookEvents || [];
   db.issues = db.issues || [];
   db.supportMessages = db.supportMessages || [];
+  db.captureSessions = db.captureSessions || [];
   if (changed) writeDb(db);
   return db;
 }
@@ -1423,7 +1472,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   }
 });
 
-app.use(express.json());
+// 6mb accommodates base64 image payloads (AI vision calls + phone capture uploads);
+// the capture page downscales photos client-side so real uploads stay well under this.
+app.use(express.json({ limit: "6mb" }));
 
 async function sendEmail({ to, template, message }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
@@ -2178,6 +2229,18 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
     }
+    // Tutor voice shortlist + default. TTS model stays pinned. normaliseAiSettings
+    // re-validates: only supported voices, never empty, default must be allowed
+    // (auto-fixed to marin -> cedar -> sage otherwise).
+    if (Object.prototype.hasOwnProperty.call(body, "ttsModel")) {
+      next.ttsModel = TTS_MODEL;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "ttsAllowedVoices")) {
+      next.ttsAllowedVoices = normaliseAllowedVoices(body.ttsAllowedVoices);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "ttsDefaultVoice")) {
+      next.ttsDefaultVoice = String(body.ttsDefaultVoice || "");
+    }
     next.updatedAt = nowIso();
     next.updatedBy = req.auth?.email || "admin";
     db.aiSettings = normaliseAiSettings(next);
@@ -2185,7 +2248,9 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
       hasOpenAIKey: Boolean(db.aiSettings.openaiApiKey),
       mathProblemsPerUserDaily: db.aiSettings.mathProblemsPerUserDaily,
       tutorVoiceMinutesPerUserDaily: db.aiSettings.tutorVoiceMinutesPerUserDaily,
-      tutorVoiceEnabled: db.aiSettings.tutorVoiceEnabled
+      tutorVoiceEnabled: db.aiSettings.tutorVoiceEnabled,
+      ttsDefaultVoice: db.aiSettings.ttsDefaultVoice,
+      ttsAllowedVoices: db.aiSettings.ttsAllowedVoices
     }, req.auth?.email || "admin");
     return safeAiSettings(db.aiSettings);
   });
@@ -2206,6 +2271,12 @@ app.get("/api/ai/usage-limits", requireParent, (req, res) => {
     requireSteps: limits.requireSteps,
     controls: limits.controls,
     aiConfigured: Boolean(settings.openaiApiKey),
+    // Admin-controlled tutor voice policy — the student picks from `allowed`.
+    voice: {
+      allowed: settings.ttsAllowedVoices,
+      default: settings.ttsDefaultVoice,
+      model: settings.ttsModel
+    },
     remaining: family
       ? usageRemaining(family, settings, childId)
       : { mathProblems: limits.mathProblemsPerUserDaily, voiceMinutes: limits.tutorVoiceMinutesPerUserDaily }
@@ -2711,7 +2782,7 @@ app.get("/api/admin/logs/digest", requireAdmin, async (req, res) => {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
         body: JSON.stringify({
-          model: settings.openaiModel || "gpt-4.1-mini",
+          model: settings.openaiModel || "gpt-5.6-luna",
           instructions: `You are an operations assistant for KiddieGPT, a kids' learning Chrome extension. You are given grouped error/issue data from the last ${days} days. Write a short brief (max 120 words) for a solo founder. Lead with extension-facing problems (crashes, login failures, AI failures) because those directly break the product for kids. Name the single most urgent group, the likely root cause, and one concrete next action. Plain text, no markdown headings, no fluff.`,
           input: JSON.stringify(compact)
         })
@@ -2753,7 +2824,7 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({
-        model: body.model || settings.openaiModel || "gpt-4.1",
+        model: body.model || settings.openaiModel || "gpt-5.6-luna",
         instructions,
         input: body.input
       })
@@ -2786,21 +2857,18 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   }
   const text = String(body.text || "").trim();
   if (!text) return res.status(400).json({ error: "empty_text" });
-  const gradeBand = body.gradeBand || "6-8";
-  const pace = gradeBand === "K-2"
-    ? "Speak slowly and gently for a young child."
-    : gradeBand === "3-5"
-      ? "Speak at a calm, clear pace."
-      : "Speak at a natural, encouraging pace.";
+  // Resolve the voice server-side: student pick if allowed, else admin default,
+  // else fallback order (marin -> cedar -> sage). Never trust a raw client voice.
+  const voice = resolveTtsVoice(body.voice, settings);
   try {
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: body.voice || "sage",
+        model: settings.ttsModel,
+        voice,
         input: text,
-        instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`,
+        instructions: TTS_INSTRUCTION,
         response_format: "mp3"
       })
     });
@@ -2820,6 +2888,344 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     mutateDb((store) => monitor(store, "error", "ai", "OpenAI speech proxy failed", { detail: String(error.message || error) }, req.auth.email));
     res.status(502).json({ error: "openai_unreachable" });
   }
+});
+
+// ---- QR phone-capture --------------------------------------------------------
+// A student photographs a physical-book math problem with their phone; the portal
+// transcribes the image -> text (vision only, no solving) and hands the text to
+// the extension's existing solve pipeline. The raw image is transient — never
+// persisted; only the short transcription is stored, briefly, against a token.
+const CAPTURE_TTL_MS = 5 * 60 * 1000;                 // token lifetime (~5 min)
+const CAPTURE_MAX_IMAGE_BYTES = 5 * 1024 * 1024;      // ~5 MB decoded
+const CAPTURE_RATE_WINDOW_MS = 60 * 1000;
+const CAPTURE_RATE_MAX = 5;                           // sessions per family per window
+const CAPTURE_TRANSCRIBE_INSTRUCTION = "You are KiddieGPT's math reader. Your only job is to read the image exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.";
+
+function captureOrigin(req) {
+  // Phones can't reach localhost; prod sets PUBLIC_ORIGIN, dev can set it to a
+  // LAN IP or tunnel. Falls back to the request host.
+  return process.env.PUBLIC_ORIGIN || process.env.CAPTURE_PUBLIC_ORIGIN || `${req.protocol}://${req.get("host")}`;
+}
+function pruneCaptureSessions(db) {
+  const cutoff = Date.now() - 30 * 60 * 1000; // keep 30 min for late polls, then drop
+  db.captureSessions = (db.captureSessions || []).filter((s) => new Date(s.createdAt || 0).getTime() >= cutoff).slice(0, 500);
+}
+function findCaptureSession(db, token) {
+  return (db.captureSessions || []).find((s) => s.token === token) || null;
+}
+function captureExpired(session) {
+  return !session || Date.now() > Number(session.expiresAt || 0);
+}
+function safeParseJson(raw) {
+  if (!raw) return null;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  try { return JSON.parse(text); } catch { return null; }
+}
+async function moderationFlagged(apiKey, text) {
+  if (!apiKey || !text) return false;
+  try {
+    const r = await fetch("https://api.openai.com/v1/moderations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: "omni-moderation-latest", input: String(text).slice(0, 4000) })
+    });
+    const d = await r.json().catch(() => ({}));
+    return Boolean(d.results && d.results[0] && d.results[0].flagged);
+  } catch { return false; } // fail-open: don't block a kid's math on a moderation outage
+}
+
+function renderCapturePage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>KiddieGPT — Scan your problem</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Inter,Arial,sans-serif;background:#eef5f1;color:#173c36;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{width:100%;max-width:400px;background:#fff;border-radius:22px;padding:26px;text-align:center;
+    box-shadow:0 20px 50px rgba(0,60,50,.14);display:flex;flex-direction:column;gap:14px}
+  h1{margin:0;font-size:22px;color:#004f48} p{margin:0;font-size:15px;color:#4f6b67;line-height:1.45}
+  button{padding:14px;border:none;border-radius:999px;font-size:16px;font-weight:800;cursor:pointer}
+  .cam{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-radius:16px;
+    background:#004f48;color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+  .stage{position:relative;width:100%;border-radius:14px;overflow:hidden;border:1px solid #d6e6e1;
+    touch-action:none;user-select:none;cursor:crosshair}
+  #preview{width:100%;display:block;-webkit-user-drag:none}
+  .crop{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:3px;pointer-events:auto;cursor:move;touch-action:none}
+  .handle{position:absolute;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #0f8a63;pointer-events:auto;touch-action:none}
+  .handle.tl{left:-16px;top:-16px} .handle.tr{right:-16px;top:-16px} .handle.bl{left:-16px;bottom:-16px} .handle.br{right:-16px;bottom:-16px}
+  .actions{display:flex;gap:10px}
+  #send{flex:1;background:#0f8a63;color:#fff} #send:disabled,#retake:disabled{opacity:.6}
+  .ghost{background:#eef3f1;color:#004f48}
+  .link{background:none;border:none;color:#4f6b67;text-decoration:underline;font-size:13px;font-weight:600;padding:0;cursor:pointer}
+  .done{font-size:44px} #status{min-height:18px;font-weight:600}
+  [hidden]{display:none!important}
+  #camera{display:flex;flex-direction:column;gap:12px;align-items:center}
+  .viewfinder{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden;max-height:62vh}
+  #video{width:100%;display:block;max-height:62vh;object-fit:cover}
+  .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #0f8a63;box-shadow:0 4px 14px rgba(0,0,0,.2);margin:2px auto 0;padding:0}
+  .shutter:active{transform:scale(.94)}
+  .brand{align-self:flex-start;font-size:15px;font-weight:800;color:#004f48;letter-spacing:.2px}
+</style></head>
+<body><div class="card" id="card">
+  <div class="brand">KiddieGPT</div>
+  <h1 id="title" hidden></h1>
+  <p id="hint"></p>
+  <div id="camera" hidden>
+    <div class="viewfinder"><video id="video" playsinline muted autoplay></video></div>
+    <button id="shutter" class="shutter" type="button" aria-label="Take photo"></button>
+  </div>
+  <label class="cam" id="fallback" hidden><input id="file" type="file" accept="image/*" capture="environment" hidden><span>📷 Take photo</span></label>
+  <div id="editor" hidden>
+    <div class="stage" id="stage"><img id="preview" alt="" draggable="false"><div class="crop" id="crop" hidden><div class="handle tl" data-h="tl"></div><div class="handle tr" data-h="tr"></div><div class="handle bl" data-h="bl"></div><div class="handle br" data-h="br"></div></div></div>
+    <div class="actions"><button id="send" type="button">Crop &amp; Send</button><button id="retake" class="ghost" type="button">Retake</button></div>
+  </div>
+  <p id="status"></p>
+</div>
+<script>
+(function(){
+  var parts=location.pathname.split("/").filter(Boolean);
+  var uploadUrl="/api/capture/"+parts[parts.length-1]+"/image";
+  var $=function(id){return document.getElementById(id);};
+  var hint=$("hint"),camera=$("camera"),video=$("video"),shutter=$("shutter"),
+      fallback=$("fallback"),file=$("file"),editor=$("editor"),stage=$("stage"),
+      preview=$("preview"),cropEl=$("crop"),sendBtn=$("send"),retakeBtn=$("retake"),
+      title=$("title"),statusEl=$("status");
+  var stream=null,srcUrl="",srcImg=new Image(),crop=null,drag=null,usingCamera=false;
+  function setStatus(m,err){statusEl.textContent=m||"";statusEl.style.color=err?"#b23a48":"#4f6b67";}
+  var stageW=0,stageH=0,mode=null,activeCorner=null,last=null;
+  function measure(){var r=stage.getBoundingClientRect();stageW=r.width;stageH=r.height;return r;}
+  function drawCrop(){
+    if(!crop){cropEl.hidden=true;return;}
+    cropEl.style.left=crop.x+"px";cropEl.style.top=crop.y+"px";cropEl.style.width=crop.w+"px";cropEl.style.height=crop.h+"px";
+    cropEl.hidden=false;
+  }
+  // Pre-fill an adjustable crop box (centered band) the user nudges to frame one problem.
+  function initCrop(){
+    measure();
+    var w=Math.round(stageW*0.82),h=Math.round(stageH*0.34);
+    crop={x:Math.round((stageW-w)/2),y:Math.round((stageH-h)/2),w:w,h:h};
+    drawCrop();
+  }
+  function view(which){
+    camera.hidden=which!=="camera";fallback.hidden=which!=="fallback";editor.hidden=which!=="editor";
+    var t=which==="editor"?"Crop your math problem":which==="fallback"?"Snap your math problem":"";
+    title.textContent=t; title.hidden=!t;
+    hint.textContent=which==="camera"?"Point at one problem and click."
+      :which==="fallback"?"Take a photo of one problem from the book."
+      :"Make sure it's sharp and clear.";
+  }
+  function stopCamera(){if(stream){try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}stream=null;}}
+  function startCamera(){
+    setStatus("Starting camera…");
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false})
+      .then(function(s){stream=s;video.srcObject=s;var p=video.play();if(p&&p.catch)p.catch(function(){});view("camera");setStatus("");})
+      .catch(function(){usingCamera=false;view("fallback");setStatus("Camera not available — use the button.",true);});
+  }
+  function downscale(el,w,h){
+    var max=1600,scale=Math.min(1,max/Math.max(w,h));
+    var dw=Math.round(w*scale),dh=Math.round(h*scale);
+    var c=document.createElement("canvas");c.width=dw;c.height=dh;
+    c.getContext("2d").drawImage(el,0,0,dw,dh);
+    return c.toDataURL("image/jpeg",0.85);
+  }
+  function useImage(url){
+    srcUrl=url; srcImg.src=url;
+    preview.onload=function(){view("editor");initCrop();setStatus("");};
+    preview.src=url;
+  }
+  shutter.addEventListener("click",function(){
+    if(!video.videoWidth){setStatus("Camera is still starting…");return;}
+    var url=downscale(video,video.videoWidth,video.videoHeight);stopCamera();useImage(url);
+  });
+  file.addEventListener("change",function(){
+    var f=file.files&&file.files[0]; if(!f)return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      var img=new Image();
+      img.onload=function(){useImage(downscale(img,img.width,img.height));};
+      img.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
+      img.src=reader.result;
+    };
+    reader.onerror=function(){setStatus("Couldn't read that photo. Try again.",true);};
+    reader.readAsDataURL(f);
+  });
+  function pt(e){var r=measure();return{x:Math.min(Math.max(e.clientX-r.left,0),stageW),y:Math.min(Math.max(e.clientY-r.top,0),stageH)};}
+  Array.prototype.forEach.call(cropEl.querySelectorAll(".handle"),function(hEl){
+    hEl.addEventListener("pointerdown",function(e){e.preventDefault();e.stopPropagation();try{stage.setPointerCapture(e.pointerId);}catch(x){}mode="resize";activeCorner=hEl.getAttribute("data-h");});
+  });
+  cropEl.addEventListener("pointerdown",function(e){e.preventDefault();try{stage.setPointerCapture(e.pointerId);}catch(x){}mode="move";last=pt(e);});
+  stage.addEventListener("pointermove",function(e){
+    if(!mode||!crop)return; e.preventDefault(); var p=pt(e);
+    if(mode==="resize"){
+      var minS=28,left=crop.x,top=crop.y,right=crop.x+crop.w,bottom=crop.y+crop.h;
+      if(activeCorner.indexOf("l")>=0)left=Math.min(p.x,right-minS);
+      if(activeCorner.indexOf("r")>=0)right=Math.max(p.x,left+minS);
+      if(activeCorner.indexOf("t")>=0)top=Math.min(p.y,bottom-minS);
+      if(activeCorner.indexOf("b")>=0)bottom=Math.max(p.y,top+minS);
+      crop={x:left,y:top,w:right-left,h:bottom-top};
+    }else if(mode==="move"&&last){
+      var dx=p.x-last.x,dy=p.y-last.y; last=p;
+      crop.x=Math.min(Math.max(crop.x+dx,0),stageW-crop.w);
+      crop.y=Math.min(Math.max(crop.y+dy,0),stageH-crop.h);
+    }
+    drawCrop();
+  });
+  stage.addEventListener("pointerup",function(){mode=null;activeCorner=null;last=null;});
+  retakeBtn.addEventListener("click",function(){crop=null;drawCrop();if(usingCamera){startCamera();}else{file.value="";file.click();}});
+  function outputDataUrl(){
+    if(crop&&crop.w>=12&&crop.h>=12){
+      var r=stage.getBoundingClientRect();
+      var sc=srcImg.naturalWidth/r.width;
+      var sx=Math.round(crop.x*sc),sy=Math.round(crop.y*sc),sw=Math.max(1,Math.round(crop.w*sc)),sh=Math.max(1,Math.round(crop.h*sc));
+      var cn=document.createElement("canvas");cn.width=sw;cn.height=sh;
+      cn.getContext("2d").drawImage(srcImg,sx,sy,sw,sh,0,0,sw,sh);
+      return cn.toDataURL("image/jpeg",0.85);
+    }
+    return srcUrl;
+  }
+  sendBtn.addEventListener("click",function(){
+    if(!srcUrl)return; sendBtn.disabled=true;retakeBtn.disabled=true;setStatus("Sending…");
+    fetch(uploadUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:outputDataUrl()})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){
+        if(res.ok){document.getElementById("card").innerHTML="<div class='done'>✅</div><h1>Sent!</h1><p>Check your KiddieGPT extension on your laptop.</p>";}
+        else{sendBtn.disabled=false;retakeBtn.disabled=false;setStatus((res.d&&res.d.error==="already_used")?"Already sent. Make a new QR in KiddieGPT.":"Couldn't send. Try again.",true);}
+      })
+      .catch(function(){sendBtn.disabled=false;retakeBtn.disabled=false;setStatus("No connection. Try again.",true);});
+  });
+  // Live camera needs a secure context (HTTPS or localhost). On plain HTTP the
+  // camera API is blocked by the browser, so fall back to the native photo button.
+  if(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){usingCamera=true;startCamera();}
+  else{usingCamera=false;view("fallback");}
+})();
+</script></body></html>`;
+}
+
+function renderCaptureExpiredPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>KiddieGPT</title>
+<style>body{margin:0;font-family:-apple-system,Inter,Arial,sans-serif;background:#eef5f1;color:#173c36;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{max-width:360px;background:#fff;border-radius:22px;padding:28px;text-align:center;box-shadow:0 20px 50px rgba(0,60,50,.14)}
+  h1{margin:0 0 8px;color:#004f48;font-size:22px}p{margin:0;color:#4f6b67;line-height:1.45}</style></head>
+<body><div class="card"><div style="font-size:40px">⏳</div><h1>This link expired</h1>
+<p>Generate a new QR code in your KiddieGPT extension and scan again.</p></div></body></html>`;
+}
+
+// 1) Mint a short-lived, single-use capture token bound to {family, child}.
+app.post("/api/capture/session", requireParent, (req, res) => {
+  const body = req.body || {};
+  const result = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return { error: "family_not_found" };
+    const child = ownedChild(family, body.childId);
+    if (!child) return { error: "not_your_child" };
+    pruneCaptureSessions(db);
+    const recent = (db.captureSessions || []).filter((s) => s.familyId === family.id && Date.now() - new Date(s.createdAt || 0).getTime() < CAPTURE_RATE_WINDOW_MS);
+    if (recent.length >= CAPTURE_RATE_MAX) return { error: "rate_limited" };
+    const session = {
+      token: "cap_" + crypto.randomBytes(24).toString("hex"),
+      familyId: family.id,
+      childId: child.id,
+      gradeBand: String(body.gradeBand || child.grade || "6-8").slice(0, 12),
+      status: "waiting",
+      problems: null,
+      reason: "",
+      createdAt: nowIso(),
+      expiresAt: Date.now() + CAPTURE_TTL_MS,
+      used: false
+    };
+    db.captureSessions.unshift(session);
+    return { ok: true, token: session.token, expiresAt: session.expiresAt };
+  });
+  if (result.error === "family_not_found") return res.status(404).json({ error: "family_not_found" });
+  if (result.error === "not_your_child") return res.status(403).json({ error: "not_your_child" });
+  if (result.error === "rate_limited") return res.status(429).json({ error: "rate_limited" });
+  res.json({ token: result.token, captureUrl: `${captureOrigin(req)}/capture/${result.token}`, expiresAt: result.expiresAt });
+});
+
+// 2) Mobile capture page (no auth — the token IS the scoped credential).
+app.get("/capture/:token", (req, res) => {
+  const session = findCaptureSession(readDb(), req.params.token);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(!session || session.used || captureExpired(session) ? renderCaptureExpiredPage() : renderCapturePage());
+});
+
+// 3) Phone uploads the photo -> transcribe -> moderate -> store text (image is transient).
+app.post("/api/capture/:token/image", async (req, res) => {
+  const token = req.params.token;
+  // Claim the token single-use and flip to "solving" atomically.
+  const claim = mutateDb((db) => {
+    const session = findCaptureSession(db, token);
+    if (!session) return { error: "not_found" };
+    if (captureExpired(session)) { session.status = "expired"; return { error: "expired" }; }
+    if (session.used) return { error: "used" };
+    session.used = true;
+    session.status = "solving";
+    return { ok: true, gradeBand: session.gradeBand };
+  });
+  if (claim.error === "not_found" || claim.error === "expired") return res.status(410).json({ error: claim.error });
+  if (claim.error === "used") return res.status(409).json({ error: "already_used" });
+
+  const setSession = (patch) => mutateDb((db) => { const s = findCaptureSession(db, token); if (s) Object.assign(s, patch); });
+  const dataUrl = String((req.body && req.body.image) || "");
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl);
+  if (!match) { setSession({ status: "error", reason: "That didn't look like a photo. Try again." }); return res.status(400).json({ error: "bad_image" }); }
+  if (Buffer.byteLength(match[2], "base64") > CAPTURE_MAX_IMAGE_BYTES) { setSession({ status: "error", reason: "That photo is too large. Try again." }); return res.status(413).json({ error: "too_large" }); }
+
+  const settings = normaliseAiSettings(readDb().aiSettings);
+  if (!settings.openaiApiKey) { setSession({ status: "error", reason: "The tutor isn't set up yet. Ask a parent." }); return res.json({ ok: true }); }
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
+      body: JSON.stringify({
+        model: settings.openaiModel,
+        instructions: CAPTURE_TRANSCRIBE_INSTRUCTION,
+        input: [{ role: "user", content: [
+          { type: "input_text", text: `Read this photo and list every math problem in reading order, up to 15. Grade band: ${claim.gradeBand}. Return JSON with a problems array. Each item: statement (full question in plain words), meta (short topic like "Geometry · right triangle"), diagram (complete text description of any figure so it can be solved without the image, or "" if none).` },
+          { type: "input_image", image_url: dataUrl }
+        ] }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setSession({ status: "error", reason: "Couldn't read that photo. Try a clearer picture." });
+      mutateDb((store) => monitor(store, "error", "ai", "Capture transcription failed", { detail: String(data?.error?.message || "") }));
+      return res.json({ ok: true });
+    }
+    const parsed = safeParseJson(extractOutputText(data));
+    if (!parsed || parsed.noMath) { setSession({ status: "error", reason: (parsed && parsed.reason) || "I couldn't find a math problem in that photo." }); return res.json({ ok: true }); }
+    const problems = (Array.isArray(parsed.problems) ? parsed.problems : []).slice(0, 15).map((p) => Object.assign({
+      statement: String(p.statement || p.equation || "").slice(0, 1000),
+      diagram: String(p.diagram || "").slice(0, 1500),
+      meta: String(p.meta || "").slice(0, 120)
+    }, p.figure ? { figure: p.figure } : {})).filter((p) => p.statement);
+    if (!problems.length) { setSession({ status: "error", reason: "I couldn't find a math problem in that photo." }); return res.json({ ok: true }); }
+    if (await moderationFlagged(settings.openaiApiKey, problems.map((p) => p.statement + " " + p.diagram).join("\n"))) {
+      setSession({ status: "error", reason: "That doesn't look like schoolwork." });
+      return res.json({ ok: true });
+    }
+    setSession({ status: "ready", problems, reason: "" });
+    res.json({ ok: true });
+  } catch (error) {
+    setSession({ status: "error", reason: "Something went wrong. Try again." });
+    mutateDb((store) => monitor(store, "error", "ai", "Capture transcription error", { detail: String(error.message || error) }));
+    res.json({ ok: true });
+  }
+});
+
+// 4) Extension polls for the transcription (must own the session).
+app.get("/api/capture/:token/result", requireParent, (req, res) => {
+  const db = readDb();
+  const family = parentFamilyForIdentity(db, req.auth);
+  const session = findCaptureSession(db, req.params.token);
+  if (!session) return res.json({ status: "expired" });
+  if (!family || session.familyId !== family.id) return res.status(403).json({ error: "not_your_session" });
+  if (session.status === "ready") return res.json({ status: "ready", problems: session.problems || [] });
+  if (session.status === "error") return res.json({ status: "error", reason: session.reason || "Couldn't read that photo." });
+  if (captureExpired(session) && session.status !== "solving") return res.json({ status: "expired" });
+  return res.json({ status: session.status === "solving" ? "solving" : "waiting" });
 });
 
 app.post("/api/families", (req, res) => {
@@ -3030,12 +3436,25 @@ app.get("/api/entitlements/me", (req, res) => {
   }
   const overrideActive = hasActiveOverride(family);
   const active = (family.subscriptionStatus === "active" || cancellationStillActive(family) || overrideActive) && !family.accountLocked;
+  // Admin-controlled tutor voice policy — the extension builds its student voice
+  // picker (shortlist + default) from these fields on the session.
+  const voiceSettings = normaliseAiSettings(readDb().aiSettings);
   res.json({
     active,
     status: family.subscriptionStatus,
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
     familyId: family.id,
+    // The extension builds its student picker from this. Children are stored with
+    // `studentName`/`grade`; expose the { id, name, grade } shape it expects.
+    children: (Array.isArray(family.children) ? family.children : []).map((c) => ({
+      id: c.id,
+      name: c.studentName || c.name || "",
+      grade: c.grade || ""
+    })),
+    ttsAllowedVoices: voiceSettings.ttsAllowedVoices,
+    ttsDefaultVoice: voiceSettings.ttsDefaultVoice,
+    ttsModel: voiceSettings.ttsModel,
     createdAt: family.createdAt || "",
     paymentStatus: family.paymentStatus || "",
     overrideUntil: family.entitlementOverrideUntil || "",

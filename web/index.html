@@ -3,12 +3,25 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KiddieGPT — Curiosity, the way kids are meant to learn it</title>
-<meta name="description" content="A safe, AI-powered Chrome extension that turns any webpage into a learning experience for kids 5–12, with real parent controls." />
+<title>KiddieGPT — Grade-safe homework help that teaches, not cheats</title>
+<meta name="description" content="A grade-safe AI study buddy in your browser for K–8 to K–12. Step-by-step math, read-aloud tutoring, kid-simple explanations, and writing coaching — it teaches the steps instead of handing over answers." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
+<style>
+  /* portrait side-panel screenshot presented as a clean app panel */
+  .app-panel{ max-width:322px; margin:0 auto; border-radius:26px; overflow:hidden;
+    border:1px solid var(--line); background:var(--white); box-shadow:var(--shadow-card);
+    transform:rotate(-1.5deg); transition:transform .3s var(--t), box-shadow .3s var(--t); }
+  .app-panel:hover{ transform:rotate(0) scale(1.015); box-shadow:var(--shadow-hover); }
+  .app-panel img{ width:100%; display:block; }
+  /* keep portrait panel screenshots a tidy device size inside tour rows */
+  .tour-shot{ max-width:342px; margin-inline:auto; }
+  /* the scan band uses a light background, so its heading must be dark to read */
+  .collage-band .section-head h2{ color:var(--teal); }
+  .collage-band .section-head p{ color:var(--muted); }
+</style>
 <link rel="icon" type="image/png" href="assets/logo.png" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23ECFE01'/><circle cx='50' cy='52' r='28' fill='%23005248'/><circle cx='40' cy='48' r='7' fill='white'/><circle cx='60' cy='48' r='7' fill='white'/><circle cx='40' cy='48' r='3' fill='%230A1F1A'/><circle cx='60' cy='48' r='3' fill='%230A1F1A'/></svg>" />
 </head>
@@ -70,7 +83,7 @@
       <div class="hero-text" data-reveal>
         <span class="eyebrow">Coming soon to the Chrome Web Store ✨</span>
         <h1>Homework help that teaches — not just answers.</h1>
-        <p class="hero-sub">KiddieGPT helps elementary and middle-school kids understand reading, homework, and web content with age-aware explanations parents can trust.</p>
+        <p class="hero-sub">KiddieGPT is a grade-safe study buddy in your browser. It walks kids through math step by step, reads and explains any page, coaches their writing, and double-checks every answer — so they learn instead of copy.</p>
         <form class="waitlist-form" data-waitlist novalidate>
           <input type="email" placeholder="parent@email.com" required aria-label="Email address" />
           <button type="submit">Join Waitlist →</button>
@@ -78,20 +91,16 @@
         <p class="waitlist-meta">Parent-first. No spam. One email when the Chrome extension is ready.</p>
       </div>
       <div class="hero-art" data-reveal>
-        <div class="hero-shot">
-          <div class="frame-bar">
-            <i></i><i></i><i></i>
-            <small>en.wikipedia.org/wiki/Water_cycle</small>
-          </div>
-          <img src="assets/hero-extension.jpg" alt="KiddieGPT side panel open on a Wikipedia article" />
+        <div class="app-panel">
+          <img src="assets/screen-home.png" alt="KiddieGPT side panel — the student home screen with learning tools" />
         </div>
         <div class="hero-float">
           <span class="hf-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </span>
           <div>
-            <strong>Safe Mode: On</strong>
-            <span>Built for learning, not shortcuts.</span>
+            <strong>Grade safe</strong>
+            <span>Teaches the steps, never just answers.</span>
           </div>
         </div>
       </div>
@@ -110,42 +119,42 @@
 <section class="section">
   <div class="container">
     <div class="section-head" data-reveal>
-      <span class="eyebrow">Four tools</span>
-      <h2>Built for homework nights, reading confidence, and curious questions.</h2>
-      <p>KiddieGPT gives kids the support they need while helping parents feel comfortable with how AI is being used.</p>
+      <span class="eyebrow">The toolkit</span>
+      <h2>One study buddy for math, reading, writing, and every homework question.</h2>
+      <p>Each tool is built to help kids do the thinking — with explanations parents can trust and answers that stay checked.</p>
     </div>
     <div class="features-grid">
       <article class="feature-card fc-light" data-reveal>
         <span class="fc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="13" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/><circle cx="17" cy="17" r="2.5"/><line x1="18.8" y1="18.8" x2="20.5" y2="20.5"/></svg>
         </span>
-        <h3>Explain</h3>
-        <p>Turn dense Wikipedia articles, news stories, or science pages into clear, kid-friendly summaries with key takeaways and vocabulary.</p>
-        <span class="fc-meta">Reading · Comprehension</span>
+        <h3>Math Tutor</h3>
+        <p>Paste, screenshot, or scan a problem. KiddieGPT shows the steps one line at a time and keeps the final answer behind a Reveal button — so kids work first.</p>
+        <span class="fc-meta">Steps-first · Double-checked</span>
       </article>
       <article class="feature-card fc-olive" data-reveal>
         <span class="fc-icon">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 4H3a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8V5h2v15h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zM11 18H4V6h7v12zm9 0h-7V6h7v12z"/></svg>
         </span>
-        <h3>Simplify</h3>
-        <p>Rewrite any selected text at your child's reading level. Choose basic, medium, or light simplification — define hard words, keep the meaning.</p>
-        <span class="fc-meta">Vocabulary · Confidence</span>
+        <h3>Study Missions</h3>
+        <p>Turn any page or PDF into one focused study pack — a clear read, flashcards, and a quiz — so studying has a path instead of a blank page.</p>
+        <span class="fc-meta">Reading · Practice</span>
       </article>
       <article class="feature-card fc-cream" data-reveal>
         <span class="fc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5"/><circle cx="12" cy="16" r="0.8" fill="currentColor"/></svg>
         </span>
-        <h3>Ask Questions</h3>
-        <p>"Why is the sky blue?" "How do volcanoes work?" Curious kids ask anything and get age-appropriate answers that build on what they're seeing.</p>
-        <span class="fc-meta">Curiosity · Inquiry</span>
+        <h3>Explain This</h3>
+        <p>One click turns a confusing web page, a highlighted selection, or a screenshot of a diagram into kid-simple words — then kids can ask follow-ups.</p>
+        <span class="fc-meta">Comprehension · Vocabulary</span>
       </article>
       <article class="feature-card fc-dark" data-reveal>
         <span class="fc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 3 6 1 1 1 2 1 3h6c0-1 0-2 1-3 1-1 3-3 3-6a7 7 0 0 0-7-7z"/><line x1="12" y1="9" x2="12" y2="14"/><line x1="9.5" y1="11" x2="14.5" y2="11"/></svg>
         </span>
-        <h3>Homework Helper</h3>
-        <p>Step-by-step hints that teach, not solve. Three modes — hint only, step-by-step walkthrough, or review-my-work — keep your child doing the thinking.</p>
-        <span class="fc-meta">Thinking · Independence</span>
+        <h3>Writing Coach</h3>
+        <p>Helps plan the assignment, flags weak spots in a draft, and explains grammar — while your child's own words stay their own. It never writes it for them.</p>
+        <span class="fc-meta">Writing · Integrity</span>
       </article>
     </div>
   </div>
@@ -164,38 +173,62 @@
       <div class="tour-text">
         <span class="tour-num">01 — The home panel</span>
         <h3>Everything one tap away</h3>
-        <p>Large learning cards make it simple for kids to choose Explain, Simplify, Ask Questions, or Homework Helper. The experience is visual, friendly, and easy to navigate.</p>
-        <div class="tour-tags"><span>Elementary + middle school</span><span>Always-visible learning progress</span><span>Simple tool cards</span></div>
+        <p>Large, friendly cards let kids jump into a Study Mission, the Math Tutor, the read-aloud Tutor, Writing help, or Explain This — plus a daily mission and stars to keep them going.</p>
+        <div class="tour-tags"><span>K–8 to K–12</span><span>Daily mission + stars</span><span>Simple tool cards</span></div>
       </div>
       <div class="tour-shot">
-        <img src="assets/hero-extension.jpg" alt="KiddieGPT home panel beside a webpage" />
+        <img src="assets/screen-home.png" alt="KiddieGPT home panel with learning tools and daily mission" />
       </div>
     </div>
 
     <div class="tour-row" data-reveal>
       <div class="tour-text">
-        <span class="tour-num">02 — Real answers, real fast</span>
-        <h3>Explanations that fit your child</h3>
-        <p>When kids get stuck, KiddieGPT can explain a concept, summarize what matters, and define vocabulary in simple language — so they understand the lesson instead of copying an answer.</p>
-        <div class="tour-tags"><span>Key takeaways</span><span>Vocabulary builder</span><span>Read aloud</span></div>
+        <span class="tour-num">02 — Math, done right</span>
+        <h3>Steps first, answer last</h3>
+        <p>The Math Tutor writes a textbook-style solution one line at a time, each with a plain-language “why.” The final answer stays blurred behind a Reveal button — and a parent PIN can keep it locked until the work is done.</p>
+        <div class="tour-tags"><span>Solved twice, cross-checked</span><span>Answer-gating</span><span>Parent PIN</span></div>
       </div>
       <div class="tour-shot">
-        <img src="assets/app-tour.jpg" alt="KiddieGPT explanation, simplify, and ask screens" />
+        <img src="assets/screen-math-solved.png" alt="KiddieGPT Math Tutor showing worked steps and a gated Reveal-answer button" />
+      </div>
+    </div>
+
+    <div class="tour-row" data-reveal>
+      <div class="tour-text">
+        <span class="tour-num">03 — Explain This</span>
+        <h3>Any page, in kid-simple words</h3>
+        <p>Explain the whole page, just a highlighted selection, or a screenshot of a diagram or worksheet. KiddieGPT gives a short, grade-safe explanation with key vocabulary — and kids can ask follow-ups.</p>
+        <div class="tour-tags"><span>Whole page or selection</span><span>Screenshots too</span><span>Ask follow-ups</span></div>
+      </div>
+      <div class="tour-shot">
+        <img src="assets/screen-explain-result.png" alt="KiddieGPT Explain This result with a kid-simple explanation" />
+      </div>
+    </div>
+
+    <div class="tour-row" data-reveal>
+      <div class="tour-text">
+        <span class="tour-num">04 — Read-aloud Tutor</span>
+        <h3>Reads it aloud, or explains it</h3>
+        <p>A calm tutor voice reads a passage with each line highlighting as it plays, or gives a short kid-friendly lesson — great for reading support and kids who learn by listening.</p>
+        <div class="tour-tags"><span>Line-by-line highlighting</span><span>Calm tutor voice</span><span>Read or explain</span></div>
+      </div>
+      <div class="tour-shot">
+        <img src="assets/screen-tutor.png" alt="KiddieGPT read-aloud Tutor with line highlighting" />
       </div>
     </div>
   </div>
 </section>
 
 <!-- ── COLLAGE BAND ──────────────────────────────────────────────── -->
-<section class="collage-band" data-reveal>
+<section class="collage-band" id="scan" data-reveal>
   <div class="container">
     <div class="section-head">
-      <span class="eyebrow">Every screen</span>
-      <h2>A complete learning flow, from reading to parent controls.</h2>
-      <p>The screenshots show the home dashboard, explanation result, parent controls, settings, and the browser side-panel experience.</p>
+      <span class="eyebrow">Scan from your book</span>
+      <h2>Stuck on a problem in a paper textbook? Snap it.</h2>
+      <p>Show a QR code in the extension, snap the problem with your phone, and the solved, step-by-step answer appears back in your KiddieGPT panel — the photo never touches your computer.</p>
     </div>
   </div>
-  <img class="collage-img" src="assets/product-screens.jpg" alt="All eleven KiddieGPT screens" />
+  <img class="collage-img" src="assets/scan-hero.png" alt="A phone photographing a geometry problem from a worksheet, framed by KiddieGPT's camera scanner" />
 </section>
 
 <!-- ── HOW IT WORKS ──────────────────────────────────────────────── -->
@@ -214,12 +247,12 @@
       <li data-reveal>
         <span class="step-num">2</span>
         <h3>Open the side panel</h3>
-        <p>On any webpage your child is reading. Pick a tool — Explain, Simplify, Ask, or Homework Helper.</p>
+        <p>On any page your child is reading — or paste, screenshot, or scan a math problem. Pick a tool and go.</p>
       </li>
       <li data-reveal>
         <span class="step-num">3</span>
-        <h3>Set up parent controls</h3>
-        <p>Create a PIN, set time limits and a safe-mode level. Two minutes, and you're in control.</p>
+        <h3>Keep it grade-safe</h3>
+        <p>Turn on answer-locking with a parent PIN so kids do the thinking first. Two minutes, and you're set.</p>
       </li>
     </ol>
   </div>
@@ -231,19 +264,18 @@
     <div class="safety-grid">
       <div data-reveal>
         <span class="eyebrow">Built for trust</span>
-        <h2 style="margin-top:18px">Real parent controls — <em>not just a label.</em></h2>
-        <p>KiddieGPT isn't kid-friendly because we say so. Every plan includes a PIN-protected parent dashboard with real content filtering, real time-limit enforcement, and a real activity log.</p>
+        <h2 style="margin-top:18px">Made to help — <em>not to cheat.</em></h2>
+        <p>KiddieGPT isn't grade-safe because we say so. It's built so kids do the thinking, answers stay checked, and parents stay in control.</p>
         <ul class="check-list">
-          <li>4-digit PIN gate — your child can't change settings without you</li>
-          <li>Daily and weekly time limits that actually pause tools when reached</li>
-          <li>Six content categories with a custom block list for your family's values</li>
-          <li>Activity history with weekly summary and blocked-attempt log</li>
+          <li>Answer-gating — the final answer stays hidden behind a Reveal button until the steps are done</li>
+          <li>A parent PIN locks answers so kids can't skip straight to the solution</li>
+          <li>Every math answer is solved twice and cross-checked before it's shown</li>
+          <li>Private by default — activity stays on the device; no student name or email stored</li>
         </ul>
       </div>
       <div class="hero-art" data-reveal>
-        <div class="hero-shot" style="max-width:300px;margin:0 auto;transform:rotate(2deg)">
-          <div class="frame-bar"><i></i><i></i><i></i><small>Parent Dashboard</small></div>
-          <img src="assets/parent-controls.jpg" alt="KiddieGPT parent controls dashboard" />
+        <div class="app-panel" style="transform:rotate(2deg)">
+          <img src="assets/screen-math-solved.png" alt="KiddieGPT keeping the final math answer locked behind a Reveal button" />
         </div>
       </div>
     </div>
@@ -260,15 +292,15 @@
     <div class="faq-list">
       <details class="faq-item" data-reveal>
         <summary>Is this actually safe for my kid?</summary>
-        <p>Every plan includes content filtering across six categories — violence, drugs, adult content, self-harm, gambling, and hate speech — with three strictness levels. Parents set a 4-digit PIN to lock the dashboard, choose what's filtered, and see exactly what their child has asked. Every blocked attempt is logged.</p>
+        <p>KiddieGPT is grade-safe by design. It teaches the steps instead of handing over answers, and a parent PIN can keep the final answer locked until the work is done. Content runs through safety moderation, there are no ads, and almost everything stays on your device.</p>
       </details>
       <details class="faq-item" data-reveal>
         <summary>What age is KiddieGPT designed for?</summary>
-        <p>Kids 5 to 12. The grade-level setting — 3rd, 5th, 8th, or High School — controls how the AI talks: vocabulary, sentence length, and examples. A 7-year-old gets very different answers than a 12-year-old asking the same question.</p>
+        <p>Students from early elementary through high school. A grade-band setting — K–2, 3–5, 6–8, or 9–12 — controls how KiddieGPT talks: vocabulary, sentence length, and how far the math goes. A younger child and an older one get very different help on the same page.</p>
       </details>
       <details class="faq-item" data-reveal>
         <summary>How is this different from giving my kid ChatGPT?</summary>
-        <p>ChatGPT wasn't built for children. KiddieGPT is built around three things ChatGPT doesn't do: age-aware prompting that adapts to grade level, a parent dashboard with real PIN-protected controls, and contextual page-reading so kids learn from what they're actually browsing — not a blank chat box.</p>
+        <p>ChatGPT wasn't built for students — and it just hands over the answer. KiddieGPT is built to teach: it shows math one step at a time and keeps the answer gated, double-checks every solution, reads and explains the exact page or worksheet your child is on, and gives parents a PIN to lock answers.</p>
       </details>
       <details class="faq-item" data-reveal>
         <summary>Do I need an OpenAI account?</summary>
