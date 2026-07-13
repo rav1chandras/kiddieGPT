@@ -131,6 +131,56 @@ function modelForText(mode = "default") {
   return MODELS.defaultText;
 }
 
+// ---- Tutor voice (TTS) --------------------------------------------------------
+// Students pick from the admin-approved voice list only. The extension never
+// shows the full OpenAI voice set. Voice is separate from the text model routing.
+const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
+const DEFAULT_ALLOWED_VOICES = ["marin", "cedar", "sage"]; // offline/dev shortlist
+const DEFAULT_VOICE = "marin";
+const VOICE_LABELS = {
+  marin: "Marin - calm tutor",
+  cedar: "Cedar - steady tutor",
+  sage: "Sage - gentle guide"
+};
+const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
+
+function voiceLabel(voice) {
+  const v = String(voice || "").trim().toLowerCase();
+  return VOICE_LABELS[v] || (v ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+}
+
+// Admin-approved, client-sanitized allowed voices. Source order: portal session
+// -> local-settings (dev) -> default shortlist. Removes unsupported voices,
+// de-dupes, and never returns empty.
+function allowedVoices() {
+  const local = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
+  const raw = (Array.isArray(portalSession?.ttsAllowedVoices) && portalSession.ttsAllowedVoices.length)
+    ? portalSession.ttsAllowedVoices
+    : (Array.isArray(local.ttsAllowedVoices) && local.ttsAllowedVoices.length)
+      ? local.ttsAllowedVoices
+      : DEFAULT_ALLOWED_VOICES;
+  const list = [...new Set(raw.map(v => String(v || "").trim().toLowerCase()))].filter(v => SUPPORTED_TTS_VOICES.includes(v));
+  return list.length ? list : DEFAULT_ALLOWED_VOICES.slice();
+}
+
+// The default voice: admin default if allowed, else marin -> cedar -> sage if
+// allowed, else the first allowed voice. Always returns an allowed voice.
+function defaultVoice() {
+  const list = allowedVoices();
+  const local = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
+  const adminDefault = String(portalSession?.ttsDefaultVoice || local.ttsDefaultVoice || "").trim().toLowerCase();
+  if (adminDefault && list.includes(adminDefault)) return adminDefault;
+  for (const v of [DEFAULT_VOICE, "cedar", "sage"]) if (list.includes(v)) return v;
+  return list[0];
+}
+
+// Single voice-resolution helper for every TTS call: the student's choice if it
+// is still allowed, otherwise the (admin) default voice.
+function resolveVoice(studentVoice) {
+  const chosen = String(studentVoice || "").trim().toLowerCase();
+  return allowedVoices().includes(chosen) ? chosen : defaultVoice();
+}
+
 async function requestOtp(email) {
   const clean = String(email || "").trim();
   const response = await fetch(`${portalBaseUrl()}/api/auth/otp/request`, {
@@ -174,7 +224,8 @@ function normalizeChildren(list) {
   return (Array.isArray(list) ? list : [])
     .map((child, index) => ({
       id: String(child.id || child.childId || `child_${index + 1}`),
-      name: String(child.name || child.firstName || `Student ${index + 1}`),
+      // Portal stores the name as `studentName`; also accept name/firstName.
+      name: String(child.name || child.studentName || child.firstName || `Student ${index + 1}`),
       grade: String(child.grade || child.gradeBand || "")
     }))
     .filter(child => child.id);
@@ -186,16 +237,25 @@ function pickChildId(stored, children) {
   return children[0]?.id || stored || "";
 }
 
+// On first load nothing is stored, so pickChildId defaults to the first child.
+// Persist that default so the selection sticks and childId is always sent to the
+// portal (otherwise the server silently attributes usage to its own first child).
+async function persistDefaultChild(storedChildId) {
+  if (!storedChildId && portalSession?.childId) {
+    await storageSet({ [PORTAL_CHILD_KEY]: portalSession.childId });
+  }
+}
+
 async function refreshEntitlement() {
   if (!portalToken) { portalSession = null; return null; }
   const stored = await storageGet([PORTAL_EMAIL_KEY, PORTAL_CHILD_KEY]);
   if (portalToken === OTP_TEST_TOKEN) {
     const configured = normalizeChildren(globalThis.KIDDIEGPT_LOCAL_SETTINGS?.children);
     const children = configured.length ? configured : [
-      { id: "child_1", name: "Alex", grade: "6-8" },
-      { id: "child_2", name: "Sam", grade: "3-5" }
+      { id: "child_1", name: "Test Student", grade: "6-8" }
     ];
     portalSession = { email: stored[PORTAL_EMAIL_KEY] || "", entitled: true, status: "test", plan: "test", familyId: "", childId: pickChildId(stored[PORTAL_CHILD_KEY], children), children, locked: false };
+    await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
     return portalSession;
   }
   try {
@@ -209,8 +269,13 @@ async function refreshEntitlement() {
       familyId: ent.familyId || "",
       children,
       childId: pickChildId(stored[PORTAL_CHILD_KEY], children),
+      // Admin-approved tutor voices (sanitized at use-time by allowedVoices()).
+      ttsAllowedVoices: ent.ttsAllowedVoices,
+      ttsDefaultVoice: ent.ttsDefaultVoice,
+      ttsModel: ent.ttsModel,
       locked: Boolean(ent.locked)
     };
+    await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
     return portalSession;
   } catch (error) {
     if (error.status === 401) { portalSession = null; return null; }
@@ -413,7 +478,7 @@ function escapeHtml(value) {
 function getSettings() {
   return new Promise(resolve => {
     const localDefaults = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
-    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, ...localDefaults };
+    const defaults = { openaiDemoEnabled: false, openaiApiKey: "", openaiModel: MODELS.defaultText, activeView: "dashboard", gradeBand: "6-8", explanationStyle: "Balanced", mathAnswerGate: true, mathParentPin: "", tutorMode: "read", tutorPlaybackRate: 1, studentVoice: "", ...localDefaults };
     if (extensionApi?.storage?.local) {
       extensionApi.storage.local.get(defaults, data => {
         resolve({
@@ -653,8 +718,9 @@ function showPanel(name) {
   if (toolDetails[panelName]) {
     selectTool(panelName);
   }
-  if (panelName === "settings") { renderChildSelect(); renderParentPinArea(); }
+  if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); }
   if (panelName === "dashboard") renderStars();
+  if (panelName !== "math") stopPhoneCapture(); // don't keep polling off-screen
 
   currentView = panelName;
   saveSettings({ activeView: panelName });
@@ -1284,18 +1350,19 @@ async function getOpenAISettings() {
   return { ...settings, portal: true };
 }
 
-async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6-8" }) {
+async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8" }) {
   // All AI goes through the portal proxy so usage/tokens are recorded and the
   // OpenAI key stays server-side.
   // Screen what will be spoken aloud before generating audio.
   if (await moderateFlagged(settings, text)) throw new PortalError("content_blocked", 200);
+  // Single voice-resolution point: student's choice if still admin-approved, else default.
+  const useVoice = resolveVoice(voice);
   // Test mode: call OpenAI TTS directly with the local dev key (no portal backend).
   if (portalToken === OTP_TEST_TOKEN && settings?.openaiApiKey) {
-    const pace = gradeBand === "K-2" ? "Speak slowly and gently." : gradeBand === "3-5" ? "Speak at a calm, steady pace." : "Speak clearly at a natural pace.";
     const direct = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
-      body: JSON.stringify({ model: MODELS.tts, voice, input: text, instructions: `Speak like a warm, patient tutor. ${pace} Clear, encouraging, not childish. Add gentle pauses between sentences.`, response_format: "mp3" })
+      body: JSON.stringify({ model: MODELS.tts, voice: useVoice, input: text, instructions: TTS_INSTRUCTION, response_format: "mp3" })
     });
     if (!direct.ok) {
       const detail = await direct.json().catch(() => ({}));
@@ -1311,7 +1378,9 @@ async function callOpenAISpeech({ settings, text, voice = "sage", gradeBand = "6
     },
     body: JSON.stringify({
       text,
-      voice,
+      voice: useVoice,
+      model: MODELS.tts,
+      instructions: TTS_INSTRUCTION,
       gradeBand,
       childId: portalSession?.childId || undefined,
       estSeconds: Math.ceil(String(text || "").length / 14)
@@ -1833,7 +1902,7 @@ async function generateTutorVoice() {
     const blob = await synthesizeTutorSpeech({
       settings,
       text: transcript,
-      voice: settings.tutorVoice || "sage",
+      voice: resolveVoice(settings.studentVoice),
       gradeBand,
       onProgress: (index, total) => setTutorStatus(total > 1 ? `Making audio… (part ${index} of ${total})` : "Generating the tutor voice…", "blue")
     });
@@ -1852,12 +1921,16 @@ async function generateTutorVoice() {
 }
 
 function activeTabIssueMessage(reason) {
+  if (reason === "noselection") return "Highlight some text on the page first, then press Explain — or tap the card to explain the whole page.";
   if (reason === "pdf") return "This tab is a PDF. Download it, then add it as a Local file so KiddieGPT can read it properly.";
   if (reason === "empty") return "KiddieGPT couldn't find readable text on this tab. Open a page with an article or story, or add a Local file.";
   return "KiddieGPT can't read this tab. Open a normal web page, or add a Local file.";
 }
 
-function getActiveTabContext() {
+// opts.mode (Explain tool only): "selection" uses only the student's highlight,
+// "page" uses only the page text (ignoring any stray highlight). Omitting mode
+// keeps the legacy behaviour (prefer selection, else page) for tutor/mission.
+function getActiveTabContext(opts = {}) {
   return new Promise(resolve => {
     const sidePanelText = (document.body?.innerText || "").slice(0, 8000);
     if (!extensionApi?.tabs?.query || !extensionApi?.scripting?.executeScript) {
@@ -1901,14 +1974,18 @@ function getActiveTabContext() {
           return;
         }
         const result = results[0].result;
-        const best = (result.selection || result.text || "").slice(0, maxTabChars);
-        const usable = !result.isPdf && best.trim().length >= 40;
+        const raw = opts.mode === "selection" ? (result.selection || "")
+          : opts.mode === "page" ? (result.text || "")
+          : (result.selection || result.text || "");
+        const best = raw.slice(0, maxTabChars);
+        const minLen = opts.mode === "selection" ? 1 : 40;
+        const usable = !result.isPdf && best.trim().length >= minLen;
         resolve({
           title: result.title || tab.title || "Active tab",
           url: result.url || url,
           text: best,
           usable,
-          reason: result.isPdf ? "pdf" : (usable ? "" : "empty")
+          reason: result.isPdf ? "pdf" : (usable ? "" : (opts.mode === "selection" ? "noselection" : "empty"))
         });
       });
     });
@@ -2347,15 +2424,8 @@ function renderMathSolution() {
   const pending = current.status === "solving" || current.status === "error";
   const gateOn = mathAnswerGate || portalRequireSteps || Boolean(mathParentPinHash);
   const gated = gateOn && !pending && !mathAnswersRevealed;
-  if (warning) warning.textContent = current.warning || "";
-  if (answerCard) {
-    answerCard.hidden = pending || gated;
-    if (!answerCard.hidden) {
-      answerCard.innerHTML = `<span>Answer</span><b>${renderMathHtml(current.answer)}</b>`;
-    }
-  }
-  const warningCard = warning?.closest(".math-warning-card");
-  if (warningCard) warningCard.hidden = pending || !current.warning;
+  // The answer, verification badge, watch-out, reveal control and feedback are
+  // now rendered together in one .math-answer-panel inside the step list.
   if (tags) {
     tags.innerHTML = (current.tags || []).map(tag => `<span>${escapeHtml(tag)}</span>`).join("");
   }
@@ -2370,6 +2440,24 @@ function renderMathSolution() {
       const check = current.check;
       const lastLineIndex = lines.reduce((last, line, i) => (line.math ? i : last), -1);
       const derivation = lines.map((line, i) => renderDerivationLine(line, gated && i === lastLineIndex)).join("");
+      const pinLocked = Boolean(mathParentPinHash);
+      const pinFlowOpen = pinLocked && (mathPinPromptOpen || (pinResetState.where === "reveal" && pinResetState.step !== "idle"));
+      // The reveal control now lives in the answer head (in place of the old
+      // "Double-checked" badge). The body reveal bar only appears for the parent
+      // PIN sub-flow (input / reset), which needs more room than the header.
+      const revealBtn = (gated && !pinFlowOpen)
+        ? `<button class="ma-reveal-btn" type="button" data-reveal-${pinLocked ? "prompt" : "all"}><i>${pinLocked ? "🔒" : "👁"}</i>Reveal answer</button>`
+        : "";
+      const answerBody = gated
+        ? `<div class="ma-value"><span class="ma-blur">${renderMathHtml(current.answer)}</span></div>${pinFlowOpen ? `<div class="ma-reveal">${renderMathRevealBar()}</div>` : ""}`
+        : `<div class="ma-value">${renderMathHtml(current.answer)}</div>`;
+      const answerPanel = `
+        <div class="math-answer-panel">
+          <div class="ma-head"><span class="ma-label">Answer</span>${revealBtn}</div>
+          ${answerBody}
+          ${current.warning ? `<div class="ma-watch"><i>!</i><span>${escapeHtml(current.warning)}</span></div>` : ""}
+          <div class="ma-foot">${(!gated && gateOn) ? `<button class="ma-linkbtn ma-hide" type="button" data-hide-all>Hide answer</button>` : (gated ? `<span class="ma-hint">Work the steps first</span>` : `<span></span>`)}<button class="ma-linkbtn ma-feedback" type="button" data-math-feedback>👎 Not right?</button></div>
+        </div>`;
       steps.innerHTML = `
         ${givens.length ? `<div class="wb-known"><span>Given</span><div class="wb-known-chips">${givens.map(given => `<em>${renderMathHtml(given)}</em>`).join("")}</div></div>` : ""}
         ${current.goal ? `<div class="wb-goal"><span>Find</span><p>${renderMathHtml(current.goal)}</p></div>` : ""}
@@ -2383,9 +2471,8 @@ function renderMathSolution() {
           </div>
           <div class="tb-derivation">${derivation}</div>
           ${!gated && check && (check.math || check.why) ? `<div class="tb-check"><i>✓</i><div>${check.math ? `<div class="tb-check-math">${renderMathHtml(check.math)}</div>` : ""}<small>${escapeHtml(check.why || "The answer fits every given, so it checks out.")}</small></div></div>` : ""}
-          ${gateOn ? `<div class="math-reveal-bar">${renderMathRevealBar()}</div>` : ""}
         </div>
-        <div class="math-feedback-row"><button type="button" class="math-feedback-btn" data-math-feedback>👎 This wasn't right</button></div>
+        ${answerPanel}
       `;
     }
   }
@@ -2940,7 +3027,7 @@ Return JSON with a problems array. Solve at most 15 problems; if the page shows 
 - goal: one line naming the unknown and where it sits, like "b is the vertical leg, opposite the 60 degree angle".
 - lines: the worked solution as a textbook derivation, an array of objects with math and why. The math field must be ONLY a short equation or expression (symbols and numbers), never a sentence, rule name, or description, and never more than one relation per line. Put every explanation, property, or rule statement in why, not in math. Write it the way a math textbook does. When useful, state the general formula first (like "a^{2} + b^{2} = c^{2}"), then show each simplification on its own line. When a line simply continues simplifying the same quantity, start that line with "=" and drop the left side, like "= \\sqrt{64 - 16}" then "= \\sqrt{48}" then "= 4\\sqrt{3}". Write the math as inline LaTeX: \\frac{}{} for fractions, \\sqrt{} for roots, ^{} for powers, _{} for subscripts, \\cdot or \\times for multiplication, \\pi \\theta for symbols; no $ or \\( \\) delimiters. Keep at most one relation per line. why is one short plain sentence for this grade band explaining that line. The lines must read top to bottom as one connected derivation.
 - check: object with math and why that substitutes the final answer back into the original relationship and confirms it agrees with ALL the givens.
-- answer: the final answer only, as inline LaTeX, like "b = 4\\sqrt{3} \\approx 6.93".
+- answer: the final solved VALUE only, as inline LaTeX — never an instruction or a step for the student to finish. For a multiple-choice question, give the value and the matching option letter, like "\\theta = 143^{\\circ} \\text{ (d)}".
 - warning: the most common mistake on this exact problem type.
 - figure (optional): include ONLY when the source shows a diagram you can represent, and only the type "rightTriangle" is supported. For a right triangle return { type: "rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown }. hypotenuse, legVertical, and legBase are the labels exactly as shown on each side (a number like "8" or a letter like "b"); legVertical is the upright leg, legBase is the bottom leg, hypotenuse is the slanted side across from the right angle. angleTop and angleBase are the two acute angle labels like "30 degrees" (use "" if the diagram does not show them). unknown is which of "hypotenuse", "legVertical", or "legBase" the student is solving for. Read the diagram carefully so each label sits on the correct side. Omit figure entirely if there is no diagram or it is not a right triangle.
 Every math field (lines, check, answer) must be inline LaTeX with no $ or \\( \\) delimiters.`
@@ -3238,7 +3325,7 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model = MODE
     parts,
     model,
     moderate: false,
-    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.",
+    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle, and copy each number with its EXACT sign: coordinate points like P(-4, 3) or (-4,-3) have negative values — never drop a minus sign, and keep the order and sign of every coordinate. Copy any multiple-choice options verbatim. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.",
     text: `Read this source and list every math problem in reading order, up to 15. Grade band: ${gradeBand}. Return JSON with a problems array. Each item must have: statement (the full question in plain words, for example "Find b in a right triangle with hypotenuse 8, one leg 4, and a 30 degree angle"), meta (short topic like "Geometry · right triangle"), tags (array up to 4 short words), diagram (a complete text description of any figure so it can be solved without the image, or "" if there is no figure), and figure (ONLY for a right triangle: { type:"rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown } using the exact labels shown; omit otherwise).`
   });
 }
@@ -3505,12 +3592,140 @@ async function correctMathProblem() {
   }
 }
 
+// ---- Phone capture (QR) ------------------------------------------------------
+// Mint a paired capture session on the portal, show a QR the student scans with
+// their phone, poll for the portal's transcription, then solve it through the
+// normal pipeline. The phone only uploads; the image never reaches the laptop.
+// Needs a real parent portal session — the dummy test sign-in can't mint tokens.
+let captureToken = "";
+let capturePollTimer = 0;
+
+function setCaptureState(title, hint, showRefresh = false) {
+  const t = document.getElementById("mathQrTitle");
+  const h = document.getElementById("mathQrHint");
+  const r = document.getElementById("mathQrRefresh");
+  if (t) t.textContent = title;
+  if (h) h.textContent = hint;
+  if (r) r.hidden = !showRefresh;
+}
+
+function stopPhoneCapture() {
+  clearInterval(capturePollTimer);
+  capturePollTimer = 0;
+  captureToken = "";
+}
+
+function renderCaptureQr(url) {
+  const box = document.getElementById("mathQrCode");
+  if (!box) return;
+  document.querySelector(".math-qr-box")?.classList.remove("qr-processing");
+  if (typeof qrcode === "undefined") { box.innerHTML = ""; return; }
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  box.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+}
+
+async function startPhoneCapture() {
+  stopPhoneCapture();
+  const box = document.getElementById("mathQrCode");
+  if (box) box.innerHTML = "";
+  if (!portalToken || portalToken === OTP_TEST_TOKEN) {
+    setCaptureState("Phone capture needs the parent portal", "Sign in with your parent account to use it. In test mode, use Paste, Screenshot, or Local file.", false);
+    return;
+  }
+  setCaptureState("Getting your code…", "");
+  const settings = await getOpenAISettings();
+  const gradeBand = settings?.gradeBand || "6-8";
+  try {
+    const res = await portalFetch("/api/capture/session", { method: "POST", body: { childId: portalSession?.childId || undefined, gradeBand } });
+    if (!res?.captureUrl || !res?.token) throw new Error("no_session");
+    captureToken = res.token;
+    renderCaptureQr(res.captureUrl);
+    setCaptureState("Scan with your phone", "Open your phone camera, point it at this code, and snap the problem from your book.");
+    pollCaptureResult(res.token);
+  } catch (error) {
+    setCaptureState("Couldn't start phone capture", friendlyError(error) || "Try again in a moment.", true);
+  }
+}
+
+function pollCaptureResult(token) {
+  clearInterval(capturePollTimer);
+  capturePollTimer = setInterval(async () => {
+    if (token !== captureToken) return;
+    let data;
+    try { data = await portalFetch(`/api/capture/${encodeURIComponent(token)}/result`); }
+    catch { return; } // transient network hiccup — keep polling
+    if (token !== captureToken || !data) return;
+    if (data.status === "solving") {
+      // Swap the QR out for a playful "we're on it" message while the AI reads
+      // the photo — there's nothing left to scan at this point.
+      const box = document.getElementById("mathQrCode");
+      if (box) box.innerHTML = "";
+      document.querySelector(".math-qr-box")?.classList.add("qr-processing");
+      setCaptureState("Working on it! Math takes a second (even for us).", "Wanna guess the answer? Winner gets… the satisfaction of guessing.");
+      return;
+    }
+    if (data.status === "ready") {
+      stopPhoneCapture();
+      setCaptureState("Photo received!", "Solving it below…");
+      solveCapturedProblems(Array.isArray(data.problems) ? data.problems : []);
+      return;
+    }
+    if (data.status === "error" || data.status === "expired") {
+      stopPhoneCapture();
+      setCaptureState(
+        data.status === "expired" ? "This code expired" : "Couldn't use that photo",
+        data.reason || (data.status === "expired" ? "Tap New code and try again." : "Try a clearer photo."),
+        true
+      );
+    }
+  }, 2000);
+}
+
+// Solve the portal's transcription through the same pipeline the image path uses.
+async function solveCapturedProblems(problems) {
+  const transcript = (Array.isArray(problems) ? problems : [])
+    .map(item => ({ statement: String(item.statement || ""), diagram: String(item.diagram || ""), meta: String(item.meta || ""), figure: item.figure }))
+    .filter(item => item.statement);
+  if (!transcript.length) { setCaptureState("No problem found", "I couldn't read a math problem. Try another photo.", true); return; }
+  const settings = await getOpenAISettings();
+  if (!settings) { showMathNotice("Turn on OpenAI first", "Sign in to solve the problem from your photo."); return; }
+  const gradeBand = settings.gradeBand || "6-8";
+  const token = ++mathSolveToken;
+  mathAnswersRevealed = false;
+  mathPinPromptOpen = false;
+  startMathThinking("Reading your problem, every number and label…", { gradeBand });
+  lastMathSolve = { transcript, gradeBand };
+  const total = transcript.length;
+  const list = transcript.map((item, index) => mathPlaceholderFromTranscript(item, index, total));
+  mathSolveState.index = 0;
+  mathSolveState.problems = list;
+  renderMathSolution();
+  refreshMathThinkingTips({ gradeBand, hint: mathTopicHint(list) });
+  await solveMathProblemInPlace({ settings, gradeBand, index: 0, token });
+  if (token !== mathSolveToken) return;
+  bumpActivity("mathSolved", total);
+  awardStars(total);
+  stopMathThinking();
+  for (let index = 1; index < list.length; index += 1) {
+    if (token !== mathSolveToken) return;
+    await solveMathProblemInPlace({ settings, gradeBand, index, token });
+  }
+}
+
 function updateMathSourceMode() {
   const mode = sourceState.math || "screenshot";
   document.querySelectorAll("[data-math-source-mode]").forEach(panel => {
     panel.hidden = panel.dataset.mathSourceMode !== mode;
     panel.classList.toggle("active", panel.dataset.mathSourceMode === mode);
   });
+  // Phone capture auto-solves when the photo arrives, so the manual Solve button
+  // doesn't apply. Start/stop the QR session as the student enters/leaves the tab.
+  const solveBtn = document.getElementById("mathSolveButton");
+  if (solveBtn) solveBtn.hidden = mode === "qr";
+  if (mode === "qr") startPhoneCapture();
+  else stopPhoneCapture();
 }
 
 function updateExplainSourceMode() {
@@ -3519,6 +3734,30 @@ function updateExplainSourceMode() {
     panel.hidden = panel.dataset.explainSourceMode !== mode;
     panel.classList.toggle("active", panel.dataset.explainSourceMode === mode);
   });
+}
+
+// Active-page card doubles as a whole-page ⇄ selection toggle. When selecting,
+// the student highlights text on the tab and Explain reads only that highlight.
+let explainPageSelect = false;
+
+function renderExplainPageBox() {
+  const box = document.getElementById("explainPageBox");
+  if (!box) return;
+  box.classList.toggle("selecting", explainPageSelect);
+  box.setAttribute("aria-pressed", String(explainPageSelect));
+  const icon = box.querySelector(".explain-page-icon");
+  const title = box.querySelector(".explain-page-title");
+  const sub = box.querySelector(".explain-page-sub");
+  if (icon) icon.textContent = explainPageSelect ? "✎" : "▤";
+  if (title) title.textContent = explainPageSelect ? "Now highlight text on the page" : "Explain this whole page";
+  if (sub) sub.textContent = explainPageSelect
+    ? "Select what you want explained on the page, then press Explain. Tap again to switch back to the whole page."
+    : "KiddieGPT reads the main text on the page you're viewing. Tap to explain a selection instead.";
+}
+
+function toggleExplainPageSelect() {
+  explainPageSelect = !explainPageSelect;
+  renderExplainPageBox();
 }
 
 function initMathTool() {
@@ -3532,6 +3771,7 @@ function initMathTool() {
     captureMathProblemRegion();
   });
   document.getElementById("mathSolveButton")?.addEventListener("click", solveMathWithAI);
+  document.getElementById("mathQrRefresh")?.addEventListener("click", startPhoneCapture);
   // Enter solves from the paste box; Shift+Enter makes a new line.
   document.getElementById("mathPasteInput")?.addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -3599,6 +3839,16 @@ function initExplainTool() {
       input.focus();
     }
   });
+  const pageBox = document.getElementById("explainPageBox");
+  if (pageBox) {
+    pageBox.addEventListener("click", toggleExplainPageSelect);
+    pageBox.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleExplainPageSelect();
+    });
+    renderExplainPageBox();
+  }
   document.getElementById("explainButton")?.addEventListener("click", explainCurrentSource);
   document.getElementById("explainFollowupSend")?.addEventListener("click", answerExplainFollowup);
   document.getElementById("explainFollowupInput")?.addEventListener("keydown", event => {
@@ -3678,13 +3928,16 @@ async function explainCurrentSource() {
       parts.push({ type: "input_image", image_url: selectedExplainCapture });
       sourceText = "Explain the attached screenshot or visual.";
     } else {
-      const context = await getActiveTabContext();
+      const mode = explainPageSelect ? "selection" : "page";
+      const context = await getActiveTabContext({ mode });
       if (!context.usable) {
-        setScreenshotStatus("Can't read tab", "warn");
+        setScreenshotStatus(mode === "selection" ? "Highlight text" : "Can't read tab", "warn");
         if (observation) observation.textContent = activeTabIssueMessage(context.reason);
         return;
       }
-      sourceText = `Explain this active page or selected text.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`;
+      sourceText = mode === "selection"
+        ? `Explain the text this student highlighted on a web page.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`
+        : `Explain this whole web page in grade-safe language.\nTitle: ${context.title}\nURL: ${context.url}\nText: ${context.text}`;
     }
     const result = await callOpenAIJson({
       settings,
@@ -4201,7 +4454,6 @@ async function handleParentPinAction(event) {
 function renderChildSelect() {
   const select = document.getElementById("childSelect");
   const badge = document.getElementById("settingsStudentBadge");
-  const nameFromEmail = () => (portalSession?.email ? portalSession.email.split("@")[0] : "Student");
   if (!select) return;
   // Session children come from the portal; fall back to the local-settings list
   // so a configured dev/test list always shows even if the session path missed it.
@@ -4215,12 +4467,13 @@ function renderChildSelect() {
     )).join("");
     select.disabled = false;
   } else {
-    // No portal child list yet (test mode / backend TODO) -> single placeholder.
-    select.innerHTML = `<option value="${escapeHtml(active)}">${escapeHtml(nameFromEmail())}</option>`;
+    // No student list available yet (portal hasn't returned children). Use a
+    // neutral placeholder — never the parent's email, which isn't the student.
+    select.innerHTML = `<option value="${escapeHtml(active)}">Student</option>`;
     select.disabled = true;
   }
   const current = children.find(child => child.id === active);
-  if (badge) badge.textContent = current?.name || nameFromEmail();
+  if (badge) badge.textContent = current?.name || "Student";
 }
 
 async function onChildSelectChange(event) {
@@ -4235,6 +4488,29 @@ async function handleSignOut() {
   await portalSignOut();
   renderChildSelect();
   renderPortalGate("login", "");
+}
+
+// ---- Tutor voice selector (admin-approved list only) ----
+async function renderVoiceSelect() {
+  const select = document.getElementById("studentVoiceSelect");
+  if (!select) return;
+  const list = allowedVoices();
+  const settings = await getSettings();
+  let current = String(settings.studentVoice || "").trim().toLowerCase();
+  // Saved voice no longer approved -> reset to the (admin) default and persist.
+  if (!list.includes(current)) {
+    current = defaultVoice();
+    await saveSettings({ studentVoice: current });
+  }
+  select.innerHTML = list.map(voice => (
+    `<option value="${escapeHtml(voice)}"${voice === current ? " selected" : ""}>${escapeHtml(voiceLabel(voice))}</option>`
+  )).join("");
+}
+
+async function onVoiceSelectChange(event) {
+  const voice = resolveVoice(event.target.value);
+  await saveSettings({ studentVoice: voice });
+  event.target.value = voice;
 }
 
 // ---- Stars: motivational reward derived from the week's real activity ----
@@ -4269,6 +4545,7 @@ function initSettingsTool() {
   document.getElementById("clearOpenAIButton")?.addEventListener("click", clearOpenAISettings);
   document.getElementById("testOpenAIButton")?.addEventListener("click", testOpenAIKey);
   document.getElementById("childSelect")?.addEventListener("change", onChildSelectChange);
+  document.getElementById("studentVoiceSelect")?.addEventListener("change", onVoiceSelectChange);
   document.getElementById("signOutButton")?.addEventListener("click", handleSignOut);
   document.getElementById("mathAnswerGateToggle")?.addEventListener("change", event => {
     mathAnswerGate = event.target.checked;

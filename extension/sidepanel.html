@@ -326,7 +326,7 @@
           <section class="panel panel-pad math-source-panel">
             <div class="math-source-head">
               <div>
-                <div class="source-pills math-source-pills hdr-pill" data-source-group="math"><button class="active" data-source-option="paste">Paste</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button></div>
+                <div class="source-pills math-source-pills hdr-pill" data-source-group="math"><button class="active" data-source-option="paste">Paste</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button><button data-source-option="qr">Scan phone</button></div>
                 <span class="mission-eyebrow">Math Tutor</span>
                 <h3>Add your math problem</h3>
                 <p>Type it, screenshot it, or upload a worksheet.</p>
@@ -357,6 +357,16 @@
                     <small>One page · PDF, JPG, or PNG · up to 5 MB</small>
                   </div>
                   <button class="browse-button" id="mathBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
+                </div>
+              </div>
+              <div class="math-source-mode" data-math-source-mode="qr" hidden>
+                <div class="math-qr-box">
+                  <div class="math-qr-code" id="mathQrCode" aria-hidden="true"></div>
+                  <div class="math-qr-copy">
+                    <b id="mathQrTitle">Scan with your phone</b>
+                    <small id="mathQrHint">Open your phone camera, scan this code, and snap the problem from your book.</small>
+                    <button class="browse-button" id="mathQrRefresh" type="button" hidden>New code</button>
+                  </div>
                 </div>
               </div>
               <button class="small-button primary-action" id="mathSolveButton" type="button">Solve &amp; Explain</button>
@@ -406,8 +416,6 @@
                 </div>
                 <div class="math-step-list" id="mathStepList"></div>
                 <button class="math-continue-button" id="mathContinueSteps" type="button" hidden>Continue steps</button>
-                <div class="math-answer-card" id="mathAnswerCard"><span>Answer</span><b id="mathAnswerValue">x = 5</b></div>
-                <div class="math-warning-card"><span>Watch out</span><p id="mathWarningText">Do the same operation to both sides so the equation stays balanced.</p></div>
               </div>
             </div>
           </section>
@@ -458,11 +466,11 @@
             </div>
             <div class="math-input-card explain-input-card">
               <div class="explain-source-mode active" data-explain-source-mode="page">
-                <div class="math-capture-box explain-input-box">
-                  <i>⌕</i>
+                <div class="math-capture-box explain-input-box explain-page-box" id="explainPageBox" role="button" tabindex="0" aria-pressed="false">
+                  <i class="explain-page-icon">▤</i>
                   <div>
-                    <b>Use the active page</b>
-                    <small>Explain the page you are viewing, or selected text if you highlighted something.</small>
+                    <b class="explain-page-title">Explain this whole page</b>
+                    <small class="explain-page-sub">KiddieGPT reads the main text on the page you're viewing. Tap to explain a selection instead.</small>
                   </div>
                 </div>
               </div>
@@ -554,8 +562,12 @@
                 <div class="style-tabs" data-preference-group="explanationStyle"><button type="button" data-preference-value="Simple">Simple</button><button class="active" type="button" data-preference-value="Balanced">Balanced</button><button type="button" data-preference-value="Challenge">Challenge</button></div>
               </div>
               <div class="settings-row">
+                <div class="settings-row-label"><b>Tutor voice</b><small>Used for read-aloud and tutor audio.</small></div>
+                <select id="studentVoiceSelect" class="settings-select" aria-label="Tutor voice"></select>
+              </div>
+              <div class="settings-row">
                 <div class="settings-row-label"><b>Math answers</b><small>Show worked steps first; reveal the answer after.</small></div>
-                <label class="settings-toggle"><input type="checkbox" id="mathAnswerGateToggle" checked /><span>Hide answer until revealed</span></label>
+                <label class="settings-toggle"><input type="checkbox" id="mathAnswerGateToggle" checked /><span>Hide answer</span></label>
               </div>
               <div class="settings-row">
                 <div class="settings-row-label"><b>Parent lock</b><small id="parentPinNote">Set a PIN so only a parent can reveal answers.</small></div>
@@ -593,6 +605,7 @@
     </aside>
   </div>
   <script src="katex/katex.min.js"></script>
+  <script src="vendor/qrcode.js"></script>
   <script src="local-settings.js"></script>
   <script src="sidepanel.js"></script>
 </body>

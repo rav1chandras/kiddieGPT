@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=106">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=108">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -407,7 +407,7 @@
               <small>Stored server-side and used by the extension proxy. Leave blank to keep the current key.</small>
             </label>
             <label>OpenAI model
-              <input type="text" name="openaiModel" placeholder="gpt-4.1" autocomplete="off">
+              <input type="text" name="openaiModel" placeholder="gpt-5.6-luna" autocomplete="off">
               <small>Model the tutor proxy uses for responses.</small>
             </label>
             <label>Math problems per user/day
@@ -423,6 +423,17 @@
               <span>Tutor voice enabled</span>
               <small>Turn off voice while keeping text tutoring active.</small>
             </label>
+            <div class="tts-voice-field" id="tts-voice-section">
+              <div class="tts-voice-head">
+                <b>Tutor voice</b>
+                <small>Check which voices students may choose from, and pick the default. TTS model is fixed to <code>gpt-4o-mini-tts</code>. Recommended for middle school: Marin, Cedar, Sage.</small>
+              </div>
+              <div class="tts-voice-list" id="tts-voice-list"></div>
+              <label class="tts-default-field">Default voice
+                <select name="ttsDefaultVoice" id="tts-default-voice"></select>
+                <small>Used when a student hasn't chosen, or their choice is no longer allowed.</small>
+              </label>
+            </div>
             <div class="ai-settings-actions">
               <button class="button primary" type="submit">Save AI controls</button>
               <button class="table-action danger" type="button" id="clear-openai-key">Clear key</button>
@@ -620,6 +631,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=106"></script>
+  <script src="/webapp/webapp.js?v=108"></script>
 </body>
 </html>
