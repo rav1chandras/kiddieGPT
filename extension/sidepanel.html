@@ -267,6 +267,13 @@
               <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read aloud</b><small>Reads the text word for word.</small></button>
               <button class="tutor-mode-card" data-tutor-mode="explain" type="button"><b>Explain it</b><small>A short lesson in kid words.</small></button>
             </div>
+            <div class="tutor-depth" id="tutorDepth" role="group" aria-label="Explain depth" hidden>
+              <span class="tutor-depth-label">Lesson depth</span>
+              <div class="source-pills" id="tutorDepthPills">
+                <button type="button" class="active" data-depth="standard">Standard</button>
+                <button type="button" data-depth="deep">Deep Dive</button>
+              </div>
+            </div>
             <div class="tutor-actions">
               <button class="small-button primary-action" id="tutorGenerateButton" type="button">Read it aloud</button>
               <small id="tutorStatus"></small>
@@ -312,8 +319,16 @@
               <span class="tutor-time" id="tutorTime">0:00 / 0:00</span>
             </div>
             <div class="tutor-player-tools">
-              <button class="tutor-chip" id="tutorSpeed" type="button">Speed 1×</button>
-              <a class="tutor-chip" id="tutorDownloadLink" href="#" download="kiddiegpt-tutor-lesson.mp3">Download</a>
+              <label class="tutor-speed-label" for="tutorSpeed">Speed</label>
+              <select class="tutor-chip tutor-speed-select" id="tutorSpeed" aria-label="Playback speed">
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1" selected>1×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="1.75">1.75×</option>
+                <option value="2">2×</option>
+              </select>
             </div>
             <div class="tutor-transcript" id="tutorTranscript"></div>
             <audio id="tutorAudioPlayer" hidden></audio>
@@ -607,6 +622,7 @@
   <script src="katex/katex.min.js"></script>
   <script src="vendor/qrcode.js"></script>
   <script src="local-settings.js"></script>
+  <script src="tutor-voice.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

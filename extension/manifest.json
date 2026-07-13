@@ -5,7 +5,7 @@
   "description": "Smart help. Clear answers. Better learning for kids.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "scripting", "sidePanel"],
-  "host_permissions": ["<all_urls>", "https://app.kiddiegpt.com/*", "https://api.openai.com/*", "https://api.anthropic.com/*"],
+  "host_permissions": ["<all_urls>", "https://app.kiddiegpt.com/*", "https://api.openai.com/*"],
   "action": {
     "default_title": "Open KiddieGPT",
     "default_icon": {
