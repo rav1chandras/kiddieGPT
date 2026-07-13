@@ -2964,10 +2964,12 @@ function renderCapturePage() {
   #video{width:100%;display:block;max-height:62vh;object-fit:cover}
   .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #0f8a63;box-shadow:0 4px 14px rgba(0,0,0,.2);margin:2px auto 0;padding:0}
   .shutter:active{transform:scale(.94)}
+  .brand{align-self:flex-start;font-size:15px;font-weight:800;color:#004f48;letter-spacing:.2px}
 </style></head>
 <body><div class="card" id="card">
-  <h1>Snap your math problem</h1>
-  <p id="hint">Point at one problem and tap the shutter.</p>
+  <div class="brand">KiddieGPT</div>
+  <h1 id="title" hidden></h1>
+  <p id="hint"></p>
   <div id="camera" hidden>
     <div class="viewfinder"><video id="video" playsinline muted autoplay></video></div>
     <button id="shutter" class="shutter" type="button" aria-label="Take photo"></button>
@@ -2975,8 +2977,7 @@ function renderCapturePage() {
   <label class="cam" id="fallback" hidden><input id="file" type="file" accept="image/*" capture="environment" hidden><span>📷 Take photo</span></label>
   <div id="editor" hidden>
     <div class="stage" id="stage"><img id="preview" alt="" draggable="false"><div class="crop" id="crop" hidden><div class="handle tl" data-h="tl"></div><div class="handle tr" data-h="tr"></div><div class="handle bl" data-h="bl"></div><div class="handle br" data-h="br"></div></div></div>
-    <div class="actions"><button id="send" type="button">Send</button><button id="retake" class="ghost" type="button">Retake</button></div>
-    <button id="clearCrop" class="link" type="button">Use the whole photo</button>
+    <div class="actions"><button id="send" type="button">Crop &amp; Send</button><button id="retake" class="ghost" type="button">Retake</button></div>
   </div>
   <p id="status"></p>
 </div>
@@ -2988,7 +2989,7 @@ function renderCapturePage() {
   var hint=$("hint"),camera=$("camera"),video=$("video"),shutter=$("shutter"),
       fallback=$("fallback"),file=$("file"),editor=$("editor"),stage=$("stage"),
       preview=$("preview"),cropEl=$("crop"),sendBtn=$("send"),retakeBtn=$("retake"),
-      clearBtn=$("clearCrop"),statusEl=$("status");
+      title=$("title"),statusEl=$("status");
   var stream=null,srcUrl="",srcImg=new Image(),crop=null,drag=null,usingCamera=false;
   function setStatus(m,err){statusEl.textContent=m||"";statusEl.style.color=err?"#b23a48":"#4f6b67";}
   var stageW=0,stageH=0,mode=null,activeCorner=null,last=null;
@@ -3007,9 +3008,11 @@ function renderCapturePage() {
   }
   function view(which){
     camera.hidden=which!=="camera";fallback.hidden=which!=="fallback";editor.hidden=which!=="editor";
-    hint.textContent=which==="camera"?"Point at one problem and tap the shutter."
+    var t=which==="editor"?"Crop your math problem":which==="fallback"?"Snap your math problem":"";
+    title.textContent=t; title.hidden=!t;
+    hint.textContent=which==="camera"?"Point at one problem and click."
       :which==="fallback"?"Take a photo of one problem from the book."
-      :"Drag the box or its corners to frame one problem.";
+      :"Make sure it's sharp and clear.";
   }
   function stopCamera(){if(stream){try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}stream=null;}}
   function startCamera(){
@@ -3068,7 +3071,6 @@ function renderCapturePage() {
     drawCrop();
   });
   stage.addEventListener("pointerup",function(){mode=null;activeCorner=null;last=null;});
-  clearBtn.addEventListener("click",function(){measure();crop={x:0,y:0,w:stageW,h:stageH};drawCrop();});
   retakeBtn.addEventListener("click",function(){crop=null;drawCrop();if(usingCamera){startCamera();}else{file.value="";file.click();}});
   function outputDataUrl(){
     if(crop&&crop.w>=12&&crop.h>=12){
