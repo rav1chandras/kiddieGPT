@@ -3379,12 +3379,60 @@
         tutorVoiceMinutesPerUserDaily: 10,
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
+        supportedTtsModels: ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
         ttsDefaultVoice: "marin",
         ttsAllowedVoices: ["marin", "cedar", "sage"],
         supportedTtsVoices: SUPPORTED_TTS_VOICES,
+        tutorExplainMaxWords: { "K-2": 160, "3-5": 400, "6-8": 700, "9-12": 1000 },
+        tutorStandardFraction: 0.5,
+        deepDiveBands: ["3-5", "6-8", "9-12"],
+        wordsPerMinute: 150,
         updatedAt: "",
         updatedBy: ""
       };
+    }
+
+    var GRADE_BANDS = ["K-2", "3-5", "6-8", "9-12"];
+
+    function renderTtsModelOptions(settings) {
+      var sel = document.getElementById("tts-model");
+      if (!sel) return;
+      var models = (settings.supportedTtsModels && settings.supportedTtsModels.length) ? settings.supportedTtsModels.slice() : ["gpt-4o-mini-tts"];
+      var current = settings.ttsModel || models[0];
+      if (models.indexOf(current) < 0) models = [current].concat(models);
+      sel.innerHTML = models.map(function (m) {
+        return '<option value="' + text(m) + '"' + (m === current ? " selected" : "") + ">" + text(m) + "</option>";
+      }).join("");
+    }
+
+    function renderWordTargets(settings) {
+      var el = document.getElementById("tutor-word-targets");
+      if (!el) return;
+      var maxWords = settings.tutorExplainMaxWords || {};
+      var fraction = Number(settings.tutorStandardFraction) || 0.5;
+      var wpm = Number(settings.wordsPerMinute) || 150;
+      var deepBands = settings.deepDiveBands || ["3-5", "6-8", "9-12"];
+      el.innerHTML = GRADE_BANDS.map(function (b) {
+        var mx = Number(maxWords[b] || 0);
+        var std = Math.round(mx * fraction);
+        var deepOk = deepBands.indexOf(b) >= 0;
+        var mins = (mx / wpm).toFixed(1);
+        var note = deepOk
+          ? ("Standard " + std + " · Deep " + mx + " words · up to ~" + mins + " min")
+          : ("Standard only · plays " + std + " words");
+        return '<div class="word-target-row" style="display:flex;gap:8px;align-items:center;margin:4px 0">' +
+          '<span style="width:44px;font-weight:600">' + text(b) + '</span>' +
+          '<input type="number" min="40" max="4000" step="10" data-band="' + text(b) + '" value="' + mx + '" style="width:90px">' +
+          '<span style="font-size:12px;opacity:.8">' + text(note) + '</span></div>';
+      }).join("");
+    }
+
+    function collectMaxWords() {
+      var out = {};
+      Array.prototype.forEach.call(document.querySelectorAll('#tutor-word-targets input[data-band]'), function (input) {
+        out[input.getAttribute("data-band")] = Number(input.value || 0);
+      });
+      return out;
     }
 
     function checkedShortlistVoices() {
@@ -3443,7 +3491,10 @@
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
+        if (aiSettingsForm.elements.tutorStandardPercent) aiSettingsForm.elements.tutorStandardPercent.value = Math.round((Number(settings.tutorStandardFraction) || 0.5) * 100);
+        renderTtsModelOptions(settings);
         renderVoiceShortlist(settings);
+        renderWordTargets(settings);
       }
       renderMarkup("ai-runtime-rules", [
         ruleMarkup("Math Step Tutor problem cap", "Extension should call the usage limits endpoint before solving another screenshot or typed math problem.", "active", "calculator"),
@@ -3478,8 +3529,11 @@
             mathProblemsPerUserDaily: Number(aiSettingsForm.elements.mathProblemsPerUserDaily.value || 0),
             tutorVoiceMinutesPerUserDaily: Number(aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value || 0),
             tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
+            ttsModel: (document.getElementById("tts-model") || {}).value || undefined,
             ttsAllowedVoices: checkedShortlistVoices(),
-            ttsDefaultVoice: (document.getElementById("tts-default-voice") || {}).value || undefined
+            ttsDefaultVoice: (document.getElementById("tts-default-voice") || {}).value || undefined,
+            tutorStandardFraction: (Number((aiSettingsForm.elements.tutorStandardPercent || {}).value || 0) / 100) || undefined,
+            tutorExplainMaxWords: collectMaxWords()
           })
         });
         setAiSettingsState(clearKey ? "Key cleared" : "Saved", "active");
