@@ -1,0 +1,35 @@
+name: Publish web/ to deploy branch
+
+# Keeps the `deploy` branch's root in sync with the contents of web/.
+# Hostinger's Git deployment tracks the `deploy` branch, so only the
+# marketing site is ever published — never extension/ or portal/ source.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Split web/ and force-push to deploy branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          SPLIT_SHA="$(git subtree split --prefix web main)"
+          echo "web/ subtree resolved to $SPLIT_SHA"
+          git push origin "$SPLIT_SHA:refs/heads/deploy" --force
