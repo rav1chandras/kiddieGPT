@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact — KiddieGPT</title>
+  <meta name="description" content="Contact the KiddieGPT team about family support, billing, privacy, schools, or general questions." />
+  <meta name="theme-color" content="#fffdf5" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@500;600;700;800&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+</head>
+<body class="home-v2 contact-v2">
+  <header class="v2-header">
+    <div class="v2-container v2-nav">
+      <a class="v2-brand" href="index.html" aria-label="KiddieGPT home"><img src="assets/logo.png" alt="" /><span class="v2-brand-copy"><span>KiddieGPT</span><small>Helping young minds learn independently.</small></span></a>
+      <button class="nav-toggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="index.html#how">How it works</a>
+        <a href="index.html#learning">What kids can do</a>
+        <a href="index.html#parents">For parents</a>
+        <a href="pricing.html">Pricing</a>
+        <a class="v2-button v2-button-small" href="https://app.kiddiegpt.com">Open KiddieGPT</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="contact-hero">
+      <div class="v2-container contact-grid">
+        <div class="contact-copy" data-reveal>
+          <span class="v2-label">Talk to a human</span>
+          <h1>How can we <em>help?</em></h1>
+          <p>Questions about your family account, billing, privacy, or bringing KiddieGPT to a school? Send a short note and we’ll get it to the right place.</p>
+          <div class="contact-topics">
+            <article><span>01</span><div><h2>Family support</h2><p>Account setup, learning tools, subscriptions, or troubleshooting.</p></div></article>
+            <article><span>02</span><div><h2>Schools</h2><p>Flexible access, rollout planning, licensing, and invoicing.</p></div></article>
+            <article><span>03</span><div><h2>Privacy</h2><p>Parent data requests, account deletion, or policy questions.</p></div></article>
+          </div>
+        </div>
+
+        <div class="contact-card" data-reveal>
+          <div class="contact-card-head"><span>Send a message</span><p>All fields are required.</p></div>
+          <form class="contact-form" data-contact-form action="https://formspree.io/f/mkodgyek" method="POST" novalidate>
+            <div class="contact-field">
+              <label for="contact-email">Email</label>
+              <input id="contact-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+              <small>We’ll reply to this address.</small>
+            </div>
+
+            <div class="contact-field">
+              <div class="contact-label-row"><label for="contact-subject">Subject</label><span><b data-subject-count>0</b>/30</span></div>
+              <input id="contact-subject" name="subject" type="text" maxlength="30" placeholder="What can we help with?" required />
+            </div>
+
+            <div class="contact-field">
+              <div class="contact-label-row"><label for="contact-body">Message</label><span><b data-body-count>0</b>/150</span></div>
+              <textarea id="contact-body" name="message" maxlength="150" rows="6" placeholder="Share the essentials so we can point you in the right direction." required></textarea>
+            </div>
+
+            <div class="contact-honeypot" aria-hidden="true">
+              <label for="contact-website">Leave this field empty</label>
+              <input id="contact-website" name="_gotcha" type="text" tabindex="-1" autocomplete="off" />
+            </div>
+
+            <div class="contact-captcha">
+              <div><span>Human check</span><strong>What is <b data-captcha-question>3 + 4</b>?</strong></div>
+              <label class="sr-only" for="contact-captcha">Answer to the human-check question</label>
+              <input id="contact-captcha" name="captcha" type="number" inputmode="numeric" autocomplete="off" placeholder="Answer" required />
+            </div>
+
+            <p class="contact-status" data-contact-status role="status" aria-live="polite"></p>
+            <button class="contact-submit" type="submit">Send message <span aria-hidden="true">→</span></button>
+            <p class="contact-note">Your message is submitted securely through Formspree and sent to the KiddieGPT team.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="v2-footer">
+    <div class="v2-container">
+      <div class="v2-footer-top"><a class="v2-brand" href="index.html"><img src="assets/logo.png" alt="" /><span>KiddieGPT</span></a><p>Thoughtful, parent-guided support that helps kids understand, practice, and grow with confidence.</p></div>
+      <div class="v2-footer-bottom"><span>© 2026 KiddieGPT</span><nav><a href="pricing.html">Pricing</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="contact.html" aria-current="page">Contact</a></nav></div>
+    </div>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>
