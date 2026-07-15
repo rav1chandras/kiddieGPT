@@ -1,5 +1,5 @@
 # KiddieGPT marketing site — served from public_html on Hostinger.
-# Hostinger clones the `deploy` branch (root = this folder), so a .git
+# Hostinger clones the `hostinger` branch (root = this folder), so a .git
 # directory ends up alongside these files. Block it and other dotfiles
 # from ever being served.
 
