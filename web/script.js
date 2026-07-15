@@ -215,22 +215,49 @@
 })();
 
 // ── Scroll reveal ─────────────────────────────────────────────────
+// Reveals [data-reveal] elements as they enter the viewport. Uses a
+// plain scroll/resize check rather than IntersectionObserver: the
+// observer's initial callback was intermittently not firing on load,
+// leaving the whole page stuck at opacity:0. A direct rect check runs
+// on load and on scroll, so content can never get stuck hidden.
 (function () {
-  const items = document.querySelectorAll('[data-reveal]');
+  const items = Array.prototype.slice.call(document.querySelectorAll('[data-reveal]'));
   if (!items.length) return;
-  if (!('IntersectionObserver' in window)) {
+
+  // Respect reduced-motion: show everything immediately, no animation.
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     items.forEach((el) => el.classList.add('in'));
     return;
   }
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('in');
-        io.unobserve(entry.target);
-      }
+
+  let pending = items.slice();
+  let ticking = false;
+
+  const check = () => {
+    ticking = false;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    pending = pending.filter((el) => {
+      const r = el.getBoundingClientRect();
+      const inView = r.top < vh - 40 && r.bottom > 0;
+      if (inView) el.classList.add('in');
+      return !inView;
     });
-  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
-  items.forEach((el) => io.observe(el));
+    if (!pending.length) {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(check);
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  window.addEventListener('load', check); // re-check once images settle layout
+  check(); // reveal whatever is already on-screen right away
 })();
 
 // ── Smooth scroll for in-page anchors ─────────────────────────────
