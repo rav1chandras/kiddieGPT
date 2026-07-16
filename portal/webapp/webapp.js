@@ -2263,6 +2263,16 @@
     });
 
     if (cap) cap.addEventListener("input", preview);
+    // Deep-link from the extension when login hits no_account: /?signup=1&email=… lands on Create-account.
+    (function applySignupDeepLink() {
+      try {
+        var qs = new URLSearchParams(window.location.search);
+        var emailParam = String(qs.get("email") || "").trim();
+        if (emailParam && parentLoginForm && parentLoginForm.elements.email) parentLoginForm.elements.email.value = emailParam;
+        if (qs.get("signup") === "1") setParentAuthMode("signup");
+        if (emailParam) validateParentEmail();
+      } catch (e) {}
+    })();
     loadAuthConfig().then(validateParentEmail);
     loadBackendState().then(async function () {
       updatePlanTiles();

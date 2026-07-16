@@ -455,6 +455,15 @@ function emailDomain(email) {
   return normalizeEmail(email).split("@")[1] || "";
 }
 
+// Chrome Web Store reviewer account: the only email that ever gets its sign-in
+// code back in the API response (shown on-screen since the reviewer has no inbox).
+const REVIEW_EMAIL = normalizeEmail(process.env.REVIEW_EMAIL || process.env.PARENT_TEST_EMAIL || "parent.kiddiegpt@gmail.com");
+
+function parentAccountExists(db, email) {
+  return db.users.some((u) => u.email === email && u.role === "parent")
+    || db.families.some((f) => f.email === email);
+}
+
 function isAllowedParentEmail(email) {
   return allowedParentEmailDomains.includes(emailDomain(email));
 }
@@ -2194,6 +2203,10 @@ app.post("/api/auth/verify-otp", (req, res) => {
 app.post("/api/auth/otp/request", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   if (!isAllowedParentEmail(email)) return res.status(400).json({ ok: false, error: parentEmailError(email) });
+  // Login is for existing accounts only; unknown emails are routed to sign-up by the client.
+  if (email !== REVIEW_EMAIL && !parentAccountExists(readDb(), email)) {
+    return res.status(404).json({ ok: false, error: "no_account" });
+  }
   const otp = generateOtp();
   mutateDb((db) => {
     cleanupOtps(db);
@@ -2208,8 +2221,8 @@ app.post("/api/auth/otp/request", async (req, res) => {
   } catch (error) {
     mutateDb((db) => monitor(db, "warning", "auth", "Login OTP email failed", { email, detail: String(error.message || error) }, email));
   }
-  // In mock/dev (no email provider) return the code so the extension can show it.
-  return res.json({ ok: true, mode, ...(mode === "mock" ? { testCode: otp } : {}) });
+  // Only the reviewer account gets its code back in the response (shown on-screen).
+  return res.json({ ok: true, mode, ...(email === REVIEW_EMAIL ? { testCode: otp } : {}) });
 });
 
 app.post("/api/auth/otp/verify", (req, res) => {
@@ -2227,6 +2240,9 @@ app.post("/api/auth/otp/verify", (req, res) => {
     }
     let user = db.users.find((item) => item.email === email && item.role === "parent");
     if (!user) {
+      // Login no longer mints accounts; new users go through /api/auth/signup.
+      // The reviewer account is the only one allowed to be auto-provisioned here.
+      if (email !== REVIEW_EMAIL) return { error: "no_account" };
       const fam = db.families.find((item) => item.email === email);
       user = { id: makeId("usr"), role: "parent", name: fam?.parentName || "Parent", email, familyId: fam?.id || "", emailVerified: true, passwordHash: hashPassword(crypto.randomBytes(18).toString("hex")), createdAt: nowIso() };
       db.users.push(user);
