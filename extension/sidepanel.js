@@ -11,11 +11,11 @@ const panels = {
 
 const legacySettingsViews = new Set(["classroom", "assignments", "insights", "safety", "admin"]);
 
-// Home (dashboard) and Settings stay open so the panel is never a blank login
-// wall — a first-time user (or a store reviewer) can always see the product. The
-// actual tools below require an active parent-portal session; opening one while
-// signed out raises the sign-in gate and keeps the user on Home behind it.
-const GATED_TOOLS = new Set(["pdf", "read", "math", "write", "screenshot", "page"]);
+// Home (dashboard) stays open so the panel is never a blank login wall — a
+// first-time user (or a store reviewer) can always see the product. Everything
+// else (the tools and Settings) requires an active portal session; opening one
+// while signed out raises the sign-in gate and keeps the user on Home behind it.
+const GATED_TOOLS = new Set(["pdf", "read", "math", "write", "screenshot", "page", "settings"]);
 
 const extensionApi = typeof chrome !== "undefined" ? chrome : null;
 const storageFallback = "kiddiegptSettings";
@@ -114,6 +114,20 @@ async function portalSignIn(email, password) {
 
 const OTP_TEST_CODE = "1234";
 const OTP_TEST_TOKEN = "test-otp-token";
+// The single account whose sign-in code is shown on-screen, so a Chrome Web Store
+// reviewer can sign in without inbox access. Everyone else gets their code by email
+// only. NOTE: the portal must also return this code (testCode) for this address.
+const REVIEW_EMAIL = "parent.kiddiegpt@gmail.com";
+function isReviewEmail(email) {
+  return String(email || "").trim().toLowerCase() === REVIEW_EMAIL;
+}
+// Open the portal's sign-up page in a new tab (account creation + plan choice live
+// on the web portal, not in the side panel).
+function openSignupTab(email) {
+  const url = `${portalBaseUrl()}/?signup=1${email ? `&email=${encodeURIComponent(email)}` : ""}`;
+  if (extensionApi?.tabs?.create) extensionApi.tabs.create({ url });
+  else window.open(url, "_blank", "noopener");
+}
 let otpState = { step: "email", email: "", sentCode: "" };
 
 // ---- Model routing (from benchmark results) ----------------------------------
@@ -1609,7 +1623,7 @@ function renderPortalGate(mode, message) {
         <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">Manage subscription</a>
         <button type="button" class="kg-gate-link" id="kg-gate-signout">Use a different account</button>` : ""}
         <p class="kg-gate-status" id="kg-gate-status">${message || ""}</p>
-        ${codeStep && otpState.sentCode ? `<div class="kg-gate-footer"><span>Testing mode — your code is</span><b>${escapeHtml(otpState.sentCode)}</b></div>` : ""}
+        ${codeStep && otpState.sentCode && isReviewEmail(otpState.email) ? `<div class="kg-gate-footer"><span>Review test account — your code is</span><b>${escapeHtml(otpState.sentCode)}</b></div>` : ""}
       </form>
     </div>`;
   const form = el.querySelector("#kg-gate-form");
@@ -1628,6 +1642,12 @@ function renderPortalGate(mode, message) {
         await requestOtp(email);
         renderPortalGate("login", "");
       } catch (error) {
+        // Unknown email: send them to sign-up instead of a dead-end code screen.
+        if (error?.code === "no_account" || error?.status === 404) {
+          status.textContent = "We couldn't find a KiddieGPT account for that email. Opening sign-up so you can create one…";
+          openSignupTab(email);
+          return;
+        }
         status.textContent = friendlyError(error) || "Could not send the code.";
         reportIssue("login_failed", "OTP request failed: " + (friendlyError(error) || "unknown"), { email });
       }
@@ -1643,7 +1663,9 @@ function renderPortalGate(mode, message) {
         await refreshEntitlement();
         renderPortalState();
       } catch (error) {
-        status.textContent = "That code didn't match. Check your email (testing code: 1234).";
+        status.textContent = isReviewEmail(otpState.email)
+          ? "That code didn't match. Use the test code shown above."
+          : "That code didn't match. Check your email for the 6-digit code.";
         reportIssue("login_failed", "OTP verify failed for " + (otpState.email || ""), { email: otpState.email });
       }
     });
