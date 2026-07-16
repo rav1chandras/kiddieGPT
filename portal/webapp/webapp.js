@@ -2452,6 +2452,7 @@
         plans: "Plans",
         "ai-usage": "AI & Usage",
         emails: "Lifecycle",
+        "email-studio": "Emails",
         support: "Support",
         logs: "Logs"
       };
@@ -2464,7 +2465,107 @@
       title.textContent = labels[name] || name.charAt(0).toUpperCase() + name.slice(1).replace("-", " ");
       if (name === "support") loadSupportConversations();
       if (name === "logs") loadLogDigest();
+      if (name === "email-studio") loadEmailStudio();
       renderIcons();
+    }
+
+    // ---- Emails: provider settings + template gallery -------------------
+    var emailTemplatesCache = [];
+    async function loadEmailStudio() {
+      try {
+        var settings = await fetchJson("/api/admin/email-settings");
+        var providerEl = document.getElementById("email-provider-state");
+        if (providerEl) {
+          providerEl.textContent = settings.configured ? ("Connected · " + settings.provider) : "Not configured";
+          providerEl.className = "state-chip " + (settings.configured ? "active" : "warning");
+        }
+        var fromEl = document.getElementById("postmark-from");
+        if (fromEl && !fromEl.value) fromEl.value = settings.fromEmail || "";
+        var tokenEl = document.getElementById("postmark-token");
+        if (tokenEl) tokenEl.placeholder = settings.hasPostmarkToken ? ("Stored: " + settings.maskedPostmarkToken + " — leave blank to keep") : "Enter your Postmark Server API token";
+        var testEl = document.getElementById("email-test-to");
+        if (testEl && !testEl.value) testEl.value = settings.updatedBy && settings.updatedBy.indexOf("@") >= 0 ? settings.updatedBy : "";
+      } catch (error) { /* ignore */ }
+      try {
+        var data = await fetchJson("/api/admin/email-templates");
+        emailTemplatesCache = data.templates || [];
+        renderEmailGallery();
+      } catch (error) {
+        var g = document.getElementById("email-template-gallery");
+        if (g) g.innerHTML = "<div class='empty-state'>Could not load templates.</div>";
+      }
+    }
+
+    function renderEmailGallery() {
+      var gallery = document.getElementById("email-template-gallery");
+      if (!gallery) return;
+      var byStage = {};
+      var order = [];
+      emailTemplatesCache.forEach(function (t) {
+        if (!byStage[t.stage]) { byStage[t.stage] = []; order.push(t.stage); }
+        byStage[t.stage].push(t);
+      });
+      gallery.innerHTML = order.map(function (stage) {
+        var cards = byStage[stage].map(function (t) {
+          return "<div class='email-tpl'>" +
+            "<div class='email-tpl-head'>" +
+              "<div class='email-tpl-meta'><strong>" + text(t.name) + "</strong><small>" + text(t.subject) + "</small></div>" +
+              "<div class='email-tpl-actions'>" +
+                "<button type='button' class='table-action' data-email-preview='" + t.key + "'>Preview</button>" +
+                "<button type='button' class='table-action' data-email-test='" + t.key + "'>Send test</button>" +
+              "</div>" +
+            "</div>" +
+            "<div class='email-tpl-preview' id='email-preview-" + t.key + "' hidden></div>" +
+          "</div>";
+        }).join("");
+        return "<div class='email-stage'><p class='eyebrow'>" + text(stage) + "</p>" + cards + "</div>";
+      }).join("");
+    }
+
+    async function saveEmailSettings(clearToken) {
+      var status = document.getElementById("email-settings-status");
+      var tokenEl = document.getElementById("postmark-token");
+      var fromEl = document.getElementById("postmark-from");
+      if (status) { status.textContent = "Saving…"; status.style.color = "#6a827d"; }
+      try {
+        await fetchJson("/api/admin/email-settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            postmarkToken: clearToken ? "" : (tokenEl ? tokenEl.value.trim() : ""),
+            clearPostmarkToken: Boolean(clearToken),
+            fromEmail: fromEl ? fromEl.value.trim() : ""
+          })
+        });
+        if (tokenEl) tokenEl.value = "";
+        if (status) { status.textContent = clearToken ? "Token cleared." : "Saved."; status.style.color = "#0f6e56"; }
+        loadEmailStudio();
+      } catch (error) {
+        if (status) { status.textContent = (error && error.error) || "Save failed."; status.style.color = "#b23a48"; }
+      }
+    }
+
+    async function sendTemplateTest(key, button) {
+      var status = document.getElementById("email-settings-status");
+      var to = (document.getElementById("email-test-to") || {}).value || "";
+      if (button) { button.disabled = true; button.textContent = "Sending…"; }
+      try {
+        var res = await fetchJson("/api/admin/email-templates/" + encodeURIComponent(key) + "/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: to })
+        });
+        if (status) {
+          status.textContent = res.mode === "mock"
+            ? "Provider not configured — send was simulated (add a Postmark token above)."
+            : "Test sent to " + (res.to || to) + ".";
+          status.style.color = res.mode === "mock" ? "#b7791f" : "#0f6e56";
+        }
+      } catch (error) {
+        if (status) { status.textContent = (error && error.error) || "Test failed."; status.style.color = "#b23a48"; }
+      } finally {
+        if (button) { button.disabled = false; button.textContent = "Send test"; }
+      }
     }
 
     function filteredFamilies() {
@@ -4338,6 +4439,34 @@
     if (runSweepBtn) runSweepBtn.addEventListener("click", runSweepNow);
     var saveRulesBtn = document.getElementById("save-autopilot-rules");
     if (saveRulesBtn) saveRulesBtn.addEventListener("click", saveAutopilotRules);
+    var saveEmailBtn = document.getElementById("save-email-settings");
+    if (saveEmailBtn) saveEmailBtn.addEventListener("click", function () { saveEmailSettings(false); });
+    var clearPostmarkBtn = document.getElementById("clear-postmark-token");
+    if (clearPostmarkBtn) clearPostmarkBtn.addEventListener("click", function () { saveEmailSettings(true); });
+    var emailGalleryEl = document.getElementById("email-template-gallery");
+    if (emailGalleryEl) emailGalleryEl.addEventListener("click", function (event) {
+      var pv = event.target.closest("[data-email-preview]");
+      if (pv) {
+        var key = pv.dataset.emailPreview;
+        var box = document.getElementById("email-preview-" + key);
+        if (!box) return;
+        if (!box.hidden) { box.hidden = true; box.innerHTML = ""; pv.textContent = "Preview"; return; }
+        var tpl = emailTemplatesCache.filter(function (t) { return t.key === key; })[0];
+        if (tpl) {
+          var iframe = document.createElement("iframe");
+          iframe.className = "email-preview-frame";
+          iframe.setAttribute("title", tpl.name + " preview");
+          iframe.srcdoc = tpl.html;
+          box.innerHTML = "";
+          box.appendChild(iframe);
+          box.hidden = false;
+          pv.textContent = "Hide";
+        }
+        return;
+      }
+      var test = event.target.closest("[data-email-test]");
+      if (test) sendTemplateTest(test.dataset.emailTest, test);
+    });
     var applyExceptionBtn = document.getElementById("apply-exception");
     if (applyExceptionBtn) applyExceptionBtn.addEventListener("click", applyException);
     var issueTypeFilter = document.getElementById("issue-type-filter");

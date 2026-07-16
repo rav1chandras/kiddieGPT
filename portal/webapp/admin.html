@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=111">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=113">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -67,6 +67,7 @@
         <button type="button" data-admin-view="plans"><i data-lucide="badge-dollar-sign"></i>Plans</button>
         <button type="button" data-admin-view="ai-usage"><i data-lucide="brain"></i>AI &amp; Usage</button>
         <button type="button" data-admin-view="emails"><i data-lucide="mail"></i>Lifecycle</button>
+        <button type="button" data-admin-view="email-studio"><i data-lucide="send"></i>Emails</button>
         <button type="button" data-admin-view="support"><i data-lucide="messages-square"></i>Support<span class="nav-badge" id="support-nav-badge" hidden>0</span></button>
         <button type="button" data-admin-view="logs"><i data-lucide="list-checks"></i>Logs</button>
       </nav>
@@ -510,6 +511,36 @@
         </div>
       </section>
 
+      <section class="admin-view" data-admin-panel="email-studio">
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Delivery</p><h2>Email provider (Postmark)</h2></div>
+            <span class="state-chip" id="email-provider-state">Not configured</span>
+          </div>
+          <div class="pricing-section-grid">
+            <label>Postmark Server API token
+              <input type="password" id="postmark-token" placeholder="Enter your Postmark Server API token" autocomplete="off">
+              <small id="postmark-token-hint">Stored server-side. Leave blank to keep the current token.</small>
+            </label>
+            <label>From email
+              <input type="email" id="postmark-from" placeholder="hello@kiddiegpt.com" autocomplete="off">
+              <small>A verified sender signature in your Postmark account.</small>
+            </label>
+            <label>Send test emails to
+              <input type="email" id="email-test-to" placeholder="you@example.com" autocomplete="off">
+              <small>Where the "Send test" buttons below deliver.</small>
+            </label>
+            <div class="ai-settings-actions">
+              <button class="button primary" type="button" id="save-email-settings">Save provider</button>
+              <button class="table-action danger" type="button" id="clear-postmark-token">Clear token</button>
+              <span class="support-status" id="email-settings-status"></span>
+            </div>
+          </div>
+        </article>
+
+        <div class="email-template-gallery" id="email-template-gallery"></div>
+      </section>
+
       <section class="admin-view" data-admin-panel="support">
         <div class="support-shell">
           <aside class="support-sidebar">
@@ -634,6 +665,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=111"></script>
+  <script src="/webapp/webapp.js?v=113"></script>
 </body>
 </html>

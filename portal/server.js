@@ -664,6 +664,7 @@ function readDb() {
   db.issues = db.issues || [];
   db.supportMessages = db.supportMessages || [];
   db.captureSessions = db.captureSessions || [];
+  db.emailSettings = db.emailSettings || {};
   if (changed) writeDb(db);
   return db;
 }
@@ -1425,12 +1426,45 @@ async function applySubscriptionCoupon(stripe, subscriptionId, couponId) {
   }
 }
 
+// Email settings (Postmark token + From) can be entered in the admin Emails
+// screen and stored in the DB; those take priority over env vars.
+function defaultEmailSettings() {
+  return { postmarkToken: "", fromEmail: "", messageStream: "outbound", updatedAt: "", updatedBy: "" };
+}
+function normaliseEmailSettings(settings = {}) {
+  const d = defaultEmailSettings();
+  return {
+    ...d,
+    ...settings,
+    postmarkToken: typeof settings.postmarkToken === "string" ? settings.postmarkToken : "",
+    fromEmail: String(settings.fromEmail || ""),
+    messageStream: String(settings.messageStream || "outbound"),
+    updatedAt: settings.updatedAt || "",
+    updatedBy: settings.updatedBy || ""
+  };
+}
+function safeEmailSettings(settings = {}) {
+  const n = normaliseEmailSettings(settings);
+  return {
+    hasPostmarkToken: Boolean(n.postmarkToken),
+    maskedPostmarkToken: maskedSecret(n.postmarkToken),
+    fromEmail: n.fromEmail,
+    updatedAt: n.updatedAt,
+    updatedBy: n.updatedBy
+  };
+}
+function storedEmailSettings() {
+  try { return normaliseEmailSettings(readDb().emailSettings); } catch (e) { return defaultEmailSettings(); }
+}
+function activePostmarkToken() {
+  return storedEmailSettings().postmarkToken || process.env.POSTMARK_SERVER_TOKEN || "";
+}
 function postmarkFromEmail() {
-  return process.env.POSTMARK_FROM_EMAIL || process.env.FROM_EMAIL || "";
+  return storedEmailSettings().fromEmail || process.env.POSTMARK_FROM_EMAIL || process.env.FROM_EMAIL || "";
 }
 
 function postmarkConfigured() {
-  return Boolean(process.env.POSTMARK_SERVER_TOKEN && postmarkFromEmail());
+  return Boolean(activePostmarkToken() && postmarkFromEmail());
 }
 
 function smtpConfigured() {
@@ -1615,14 +1649,14 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 // the capture page downscales photos client-side so real uploads stay well under this.
 app.use(express.json({ limit: "6mb" }));
 
-async function sendEmail({ to, template, message }) {
+async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
   if (!isAllowedParentEmail(recipient)) {
     throw new Error(parentEmailError(recipient));
   }
   const templateName = template || "Welcome parent";
-  const subject = `KiddieGPT test: ${templateName}`;
-  const text = message || `This is a KiddieGPT developer-mode test email for "${templateName}".`;
+  const subject = subjectArg || templateName || "KiddieGPT";
+  const text = message || `KiddieGPT: ${templateName}`;
 
   if (postmarkConfigured()) {
     const response = await fetch("https://api.postmarkapp.com/email", {
@@ -1630,13 +1664,14 @@ async function sendEmail({ to, template, message }) {
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "X-Postmark-Server-Token": process.env.POSTMARK_SERVER_TOKEN
+        "X-Postmark-Server-Token": activePostmarkToken()
       },
       body: JSON.stringify({
         From: postmarkFromEmail(),
         To: recipient,
         Subject: subject,
         TextBody: text,
+        ...(html ? { HtmlBody: html } : {}),
         MessageStream: process.env.POSTMARK_MESSAGE_STREAM || "outbound",
         Tag: templateName.slice(0, 100),
         Metadata: {
@@ -1672,13 +1707,163 @@ async function sendEmail({ to, template, message }) {
     }
   });
   const info = await transporter.sendMail({
-    from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+    from: postmarkFromEmail() || process.env.FROM_EMAIL || process.env.SMTP_USER,
     to: recipient,
     subject,
-    text
+    text,
+    ...(html ? { html } : {})
   });
   return { mode: "smtp", to: recipient, subject, messageId: info.messageId };
 }
+
+// ---- Styled email templates -------------------------------------------------
+// One shared HTML shell (logo + wordmark + chip, title, body/steps, dark CTA,
+// footer) reused by every lifecycle email, so real sends and admin previews
+// share a single source of truth.
+function escHtml(value) {
+  return String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function emailBaseUrl() {
+  return String(process.env.PUBLIC_ORIGIN || "https://app.kiddiegpt.com").replace(/\/+$/, "");
+}
+const EMAIL_SIGNOFF = "— The KiddieGPT Team";
+
+function renderEmailShell(o) {
+  const base = emailBaseUrl();
+  const chip = o.chip ? `<span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#e9f7ef;color:#0f6e56;font-size:12px;font-weight:700">${escHtml(o.chip)}</span>` : "";
+  const code = o.code ? `<div style="margin:6px 0 20px;padding:16px;border:1px dashed #cfe0dc;border-radius:12px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#004f48;font-family:monospace">${escHtml(o.code)}</div>` : "";
+  const stepsRows = (o.steps || []).map((s, i) => `<tr><td style="vertical-align:top;padding:0 12px 16px 0;width:20px;color:#9aa7a4;font-weight:700;font-size:14px">${i + 1}</td><td style="padding:0 0 16px 0"><div style="font-weight:700;color:#16332d;font-size:15px">${escHtml(s.title)}</div><div style="color:#6a827d;font-size:14px;line-height:1.5;margin-top:2px">${escHtml(s.text)}</div></td></tr>`).join("");
+  const steps = stepsRows ? `<table role="presentation" width="100%" style="border-collapse:collapse;margin:6px 0 20px">${stepsRows}</table>` : "";
+  const paras = (o.paragraphs || []).map((p) => `<p style="margin:0 0 14px;color:#33474a;font-size:15px;line-height:1.6">${p}</p>`).join("");
+  const cta = o.ctaText ? `<div style="margin:6px 0 22px"><a href="${escHtml(o.ctaUrl || base)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 22px;border-radius:12px">${escHtml(o.ctaText)} &rarr;</a></div>` : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;background:#f4f6f5;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif">
+<table role="presentation" width="100%" style="border-collapse:collapse;background:#f4f6f5"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6ece9;border-radius:16px;border-collapse:separate">
+<tr><td style="padding:26px 30px 24px">
+<table role="presentation" width="100%" style="border-collapse:collapse"><tr>
+<td style="vertical-align:middle"><img src="${base}/icons/logo-mascot.png" width="32" height="32" alt="" style="vertical-align:middle;border-radius:8px">&nbsp;<span style="font-weight:800;color:#004f48;font-size:16px;vertical-align:middle">KiddieGPT</span>&nbsp;<span style="color:#9aa7a4;font-size:12px;vertical-align:middle">Your learning copilot</span></td>
+<td align="right">${chip}</td></tr></table>
+<h1 style="margin:22px 0 14px;color:#16332d;font-size:24px;font-weight:800">${escHtml(o.title)}</h1>
+${o.greeting ? `<p style="margin:0 0 14px;color:#33474a;font-size:15px;line-height:1.6">${escHtml(o.greeting)}</p>` : ""}
+${paras}${code}${steps}${cta}
+${o.signoff ? `<p style="margin:8px 0 0;color:#6a827d;font-size:14px">${escHtml(o.signoff)}</p>` : ""}
+</td></tr>
+<tr><td style="padding:18px 30px;border-top:1px solid #eef3f1">
+<p style="margin:0;color:#9aa7a4;font-size:12px;line-height:1.5">This email was sent by KiddieGPT. If you weren't expecting it, you can safely ignore it.</p>
+<p style="margin:8px 0 0;color:#9aa7a4;font-size:12px">KiddieGPT &middot; kiddiegpt.com &middot; support@kiddiegpt.com</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
+const EMAIL_SAMPLE = {
+  parentName: "Meena Ravi", childName: "Ava", planName: "Family Monthly", amount: "$19.00",
+  date: "August 14, 2026", nextDate: "August 14, 2027", code: "402913", bonusMonths: 3,
+  discountPercent: 20, email: "meena@example.com",
+  supportReply: "Yes — the Family plan covers up to 3 children. Open the Student tab to add another profile."
+};
+
+const EMAIL_TEMPLATES = [
+  { key: "verify_email", name: "Verify your email", stage: "Account & access", subject: () => "Verify your KiddieGPT email",
+    build: (d) => ({ chip: "Verify", title: "Confirm your email", greeting: `Hi ${d.parentName},`, paragraphs: ["Enter this code in KiddieGPT to finish creating your account. It expires in 10 minutes."], code: d.code }) },
+  { key: "sign_in_code", name: "Sign-in code", stage: "Account & access", subject: () => "Your KiddieGPT sign-in code",
+    build: (d) => ({ chip: "Sign in", title: "Your sign-in code", greeting: `Hi ${d.parentName},`, paragraphs: ["Use this code to sign in. It expires shortly. If you didn't request it, you can ignore this email."], code: d.code }) },
+  { key: "welcome", name: "Welcome / you're all set", stage: "Account & access", subject: () => "You're all set on KiddieGPT",
+    build: (d) => ({ chip: "You're in", title: "You're all set!", greeting: `Hi ${d.parentName},`, paragraphs: ["Welcome to KiddieGPT — your child's calm, safe learning copilot. Here's how to get started:"], steps: [{ title: "Add your child's profile", text: "Set their name, grade, and reading level." }, { title: "Set learning goals", text: "Pick goals and rewards that motivate them." }, { title: "Get the Chrome extension", text: "Install it so your child can start learning." }], ctaText: "Open KiddieGPT", ctaUrl: emailBaseUrl() }) },
+  { key: "password_reset", name: "Password reset code", stage: "Account & access", subject: () => "Reset your KiddieGPT password",
+    build: (d) => ({ chip: "Security", title: "Reset your password", greeting: `Hi ${d.parentName},`, paragraphs: ["Enter this code in KiddieGPT to set a new password. It expires shortly."], code: d.code }) },
+  { key: "password_changed", name: "Password changed", stage: "Account & access", subject: () => "Your KiddieGPT password was changed",
+    build: (d) => ({ chip: "Security", title: "Your password was changed", greeting: `Hi ${d.parentName},`, paragraphs: ["This confirms your KiddieGPT password was just changed. If this wasn't you, reset it right away and contact support."], ctaText: "Review account", ctaUrl: emailBaseUrl() }) },
+  { key: "confirm_new_email", name: "Confirm new email", stage: "Account & access", subject: () => "Confirm your new email",
+    build: (d) => ({ chip: "Security", title: "Confirm your new email", greeting: `Hi ${d.parentName},`, paragraphs: ["Enter this code in KiddieGPT to confirm your new email address."], code: d.code }) },
+
+  { key: "payment_receipt", name: "Payment receipt", stage: "Payments & billing", subject: () => "Your KiddieGPT receipt",
+    build: (d) => ({ chip: "Receipt", title: "Payment received", greeting: `Hi ${d.parentName},`, paragraphs: [`Thanks! We received your payment of <b>${escHtml(d.amount)}</b> for <b>${escHtml(d.planName)}</b> on ${escHtml(d.date)}.`, "Your child's access stays unlocked. Manage billing anytime from the parent portal."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+  { key: "yearly_upgrade", name: "Yearly upgrade confirmed", stage: "Payments & billing", subject: () => "You're on the yearly plan",
+    build: (d) => ({ chip: "Upgraded", title: "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've switched to the yearly plan with <b>${escHtml(String(d.bonusMonths))} bonus months</b>. Your unused days this month carried over — you lost nothing.`, `Your plan renews on ${escHtml(d.nextDate)}.`], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+  { key: "payment_failed", name: "Payment failed", stage: "Payments & billing", subject: () => "Your KiddieGPT payment didn't go through",
+    build: (d) => ({ chip: "Action needed", title: "Your payment didn't go through", greeting: `Hi ${d.parentName},`, paragraphs: [`We couldn't process your payment for <b>${escHtml(d.planName)}</b>. Please update your payment method to keep your child's access.`], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
+  { key: "payment_retry", name: "Payment retry reminder", stage: "Payments & billing", subject: () => "Reminder: update your payment method",
+    build: (d) => ({ chip: "Reminder", title: "Still can't reach your card", greeting: `Hi ${d.parentName},`, paragraphs: ["We tried your payment again and it didn't go through. Update your card soon to avoid losing access."], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
+  { key: "access_paused", name: "Access paused — unpaid", stage: "Payments & billing", subject: () => "Your KiddieGPT access is paused",
+    build: (d) => ({ chip: "Paused", title: "Your access is paused", greeting: `Hi ${d.parentName},`, paragraphs: ["Because the payment is still unpaid, we've paused access for now. Update your payment method to turn everything back on right away."], ctaText: "Restore access", ctaUrl: emailBaseUrl() }) },
+  { key: "renewal_reminder", name: "Renewal reminder", stage: "Payments & billing", subject: () => "Your KiddieGPT plan renews soon",
+    build: (d) => ({ chip: "Heads up", title: "Your plan renews soon", greeting: `Hi ${d.parentName},`, paragraphs: [`A quick heads-up: your <b>${escHtml(d.planName)}</b> renews on ${escHtml(d.nextDate)}. No action needed — we'll charge your card on file.`], ctaText: "Manage plan", ctaUrl: emailBaseUrl() }) },
+
+  { key: "weekly_summary", name: "Weekly progress summary", stage: "Engagement", subject: (d) => `${d.childName}'s week on KiddieGPT`,
+    build: (d) => ({ chip: "Weekly", title: `${d.childName}'s week on KiddieGPT`, greeting: `Hi ${d.parentName},`, paragraphs: [`Here's how ${escHtml(d.childName)} did this week:`], steps: [{ title: "Flashcards & quizzes", text: "Reviewed and practiced across the week." }, { title: "Math problems solved", text: "Worked through problems step by step." }, { title: "Goals in progress", text: "Making steady progress toward rewards." }], ctaText: "See full progress", ctaUrl: emailBaseUrl() }) },
+  { key: "finish_setup", name: "Finish setup nudge", stage: "Engagement", subject: () => "Finish setting up KiddieGPT",
+    build: (d) => ({ chip: "Almost there", title: "Finish setting up KiddieGPT", greeting: `Hi ${d.parentName},`, paragraphs: ["You're one step away. Complete setup so your child can start learning:"], steps: [{ title: "Complete checkout", text: "Pick a plan to unlock the tools." }, { title: "Add the extension", text: "Install KiddieGPT in Chrome." }], ctaText: "Finish setup", ctaUrl: emailBaseUrl() }) },
+  { key: "low_usage", name: "Low-usage rescue", stage: "Engagement", subject: (d) => `We miss ${d.childName}!`,
+    build: (d) => ({ chip: "Check-in", title: `We miss ${d.childName}!`, greeting: `Hi ${d.parentName},`, paragraphs: [`It's been a quiet week — ${escHtml(d.childName)} hasn't used KiddieGPT lately. Try the Tutor or Math tool for a quick 10-minute win.`], ctaText: "Open KiddieGPT", ctaUrl: emailBaseUrl() }) },
+  { key: "goal_completed", name: "Goal completed", stage: "Engagement", subject: (d) => `${d.childName} earned a reward!`,
+    build: (d) => ({ chip: "Reward", title: `${d.childName} earned a reward!`, greeting: `Hi ${d.parentName},`, paragraphs: [`Great news — ${escHtml(d.childName)} just completed a learning goal and earned their reward. Time to celebrate!`], ctaText: "See progress", ctaUrl: emailBaseUrl() }) },
+
+  { key: "cancellation_scheduled", name: "Cancellation scheduled", stage: "Cancellation & winback", subject: () => "Your KiddieGPT plan is set to cancel",
+    build: (d) => ({ chip: "Scheduled", title: "Your plan is set to cancel", greeting: `Hi ${d.parentName},`, paragraphs: [`Your subscription is scheduled to cancel. Your child keeps access until <b>${escHtml(d.nextDate)}</b>. Change your mind anytime before then.`], ctaText: "Keep my plan", ctaUrl: emailBaseUrl() }) },
+  { key: "subscription_ended", name: "Subscription ended", stage: "Cancellation & winback", subject: () => "Your KiddieGPT plan has ended",
+    build: (d) => ({ chip: "Ended", title: "Your plan has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["Your subscription has ended and the extension tools are now locked. Your child's profiles and progress are saved — reactivate anytime to pick up where they left off."], ctaText: "Reactivate", ctaUrl: emailBaseUrl() }) },
+  { key: "winback", name: "Winback offer", stage: "Cancellation & winback", subject: () => "Come back to KiddieGPT",
+    build: (d) => ({ chip: "Come back", title: "We'd love to have you back", greeting: `Hi ${d.parentName},`, paragraphs: [`Ready to give it another go? Reactivate now and get <b>${escHtml(String(d.discountPercent))}% off</b> your next month.`], ctaText: "Reactivate & save", ctaUrl: emailBaseUrl() }) },
+
+  { key: "support_reply", name: "Support reply", stage: "Support & account", subject: () => "Reply from KiddieGPT support",
+    build: (d) => ({ chip: "Support", title: "Reply from KiddieGPT support", greeting: `Hi ${d.parentName},`, paragraphs: [escHtml(d.supportReply), "Just reply to this email if you need anything else."], ctaText: "Open support", ctaUrl: emailBaseUrl() }) },
+  { key: "deletion_requested", name: "Deletion requested", stage: "Support & account", subject: () => "We received your deletion request",
+    build: (d) => ({ chip: "Account", title: "We received your request", greeting: `Hi ${d.parentName},`, paragraphs: ["We've received your account deletion request. Extension access is now locked while we process it. Billing records are kept only as required for support and tax.", "If this was a mistake, contact support and we'll stop the deletion."], ctaText: "Contact support", ctaUrl: emailBaseUrl() }) },
+
+  { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
+    build: (d) => ({ chip: "New", title: "New paid family 🎉", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
+  { key: "op_new_support", name: "New support message (internal)", stage: "Operator", subject: () => "New support message",
+    build: (d) => ({ chip: "Support", title: "New support message", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) sent a new support message. Open the admin console to reply.`], ctaText: "Open support", ctaUrl: `${emailBaseUrl()}/admin.html` }) }
+];
+
+function renderTemplate(key, data) {
+  const t = EMAIL_TEMPLATES.find((x) => x.key === key);
+  if (!t) return null;
+  const d = { ...EMAIL_SAMPLE, ...(data || {}) };
+  const opts = t.build(d);
+  if (!opts.signoff && opts.stage !== "Operator" && t.stage !== "Operator") opts.signoff = EMAIL_SIGNOFF;
+  return { key: t.key, name: t.name, stage: t.stage, subject: t.subject(d), html: renderEmailShell(opts) };
+}
+
+// ---- Admin: email settings + template gallery -------------------------------
+app.get("/api/admin/email-settings", requireAdmin, (req, res) => {
+  res.json({ ...safeEmailSettings(readDb().emailSettings), provider: emailMode(), configured: postmarkConfigured() || smtpConfigured() });
+});
+app.put("/api/admin/email-settings", requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const updated = mutateDb((db) => {
+    const next = normaliseEmailSettings(db.emailSettings);
+    if (Object.prototype.hasOwnProperty.call(body, "postmarkToken")) {
+      const tok = String(body.postmarkToken || "").trim();
+      if (tok) next.postmarkToken = tok;
+    }
+    if (body.clearPostmarkToken) next.postmarkToken = "";
+    if (Object.prototype.hasOwnProperty.call(body, "fromEmail")) next.fromEmail = String(body.fromEmail || "").trim();
+    next.updatedAt = nowIso();
+    next.updatedBy = req.auth?.email || "admin";
+    db.emailSettings = next;
+    audit(db, "email_settings.update", { hasPostmarkToken: Boolean(next.postmarkToken), fromEmail: next.fromEmail }, req.auth?.email || "admin");
+    return safeEmailSettings(db.emailSettings);
+  });
+  res.json({ ...updated, provider: emailMode(), configured: postmarkConfigured() || smtpConfigured() });
+});
+app.get("/api/admin/email-templates", requireAdmin, (req, res) => {
+  res.json({
+    provider: emailMode(),
+    configured: postmarkConfigured() || smtpConfigured(),
+    templates: EMAIL_TEMPLATES.map((t) => renderTemplate(t.key))
+  });
+});
+app.post("/api/admin/email-templates/:key/test", requireAdmin, async (req, res) => {
+  const rendered = renderTemplate(req.params.key);
+  if (!rendered) return res.status(404).json({ error: "unknown_template" });
+  const to = normalizeEmail((req.body && req.body.to) || req.auth?.email || process.env.ADMIN_NOTIFY_EMAIL || "");
+  try {
+    const result = await sendEmail({ to, template: rendered.name, subject: `[Test] ${rendered.subject}`, html: rendered.html, message: `Preview of the "${rendered.name}" email.` });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
 
 app.get("/api/dev/status", (req, res) => {
   const db = readDb();
