@@ -2405,6 +2405,8 @@
     var paymentTo = document.getElementById("payment-to");
     var paymentTableButtons = Array.from(document.querySelectorAll("[data-payment-table]"));
     var paymentTablePanels = Array.from(document.querySelectorAll("[data-payment-table-panel]"));
+    var familyTableButtons = Array.from(document.querySelectorAll("[data-family-table]"));
+    var familyTablePanels = Array.from(document.querySelectorAll("[data-family-table-panel]"));
     var logSearch = document.getElementById("log-search");
     var logTypeFilter = document.getElementById("log-type-filter");
     var exceptionSearch = document.getElementById("exception-search");
@@ -2439,6 +2441,7 @@
     var workspace = document.querySelector(".admin-workspace");
     var expandedPayment = null;
     var activePaymentTable = "payments";
+    var activeFamilyTable = "accounts";
     var selectedExceptionFamilyId = "";
 
     function setAdminView(name) {
@@ -3937,6 +3940,7 @@
       setMetric("payment-failed", money(failedPayments.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
       setMetric("payment-refunded", money(refunded.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
       setMetric("exception-save-count", exceptionFamilies.length);
+      setMetric("payment-toggle-exceptions", exceptionFamilies.length);
       setMetric("exception-credit-total", "$" + Math.round(exceptionCreditTotal / 100));
       setMetric("exception-access-count", accessOverrideCount);
       setMetric("exception-refund-count", families.filter(function (family) {
@@ -3950,6 +3954,14 @@
       setMetric("delete-request-count", pendingDeletes.length);
       setMetric("anonymized-count", anonymizedDeletes.length);
       setMetric("delete-locked-count", pendingDeletes.filter(function (family) { return familyLocked(family); }).length);
+      setMetric("family-toggle-accounts", families.length);
+      setMetric("family-toggle-deletions", pendingDeletes.length);
+      familyTableButtons.forEach(function (button) {
+        button.classList.toggle("active", button.dataset.familyTable === activeFamilyTable);
+      });
+      familyTablePanels.forEach(function (panel) {
+        panel.hidden = panel.dataset.familyTablePanel !== activeFamilyTable;
+      });
       setMetric("next-deleted-email", nextDeletedEmailPreview());
       renderAiSettings();
 
@@ -3962,26 +3974,6 @@
 
       renderMarkup("daily-action-list", actions.length ? actions.slice(0, 5).map(actionItemMarkup).join("") : "<div class='empty-state'>No urgent work. Keep building product.</div>");
       refreshActionQueue(); // override with the real server exceptions queue
-
-      renderMarkup("funnel-list", [
-        { label: "Parent account", value: families.length, icon: "user-round" },
-        { label: "Payment complete", value: families.filter(function (family) { return family.paymentStatus !== "failed"; }).length, icon: "credit-card" },
-        { label: "Child profile", value: families.filter(function (family) { return childrenOf(family).length; }).length, icon: "users-round" },
-        { label: "Extension active", value: active.length, icon: "panel-right-open" }
-      ].map(function (stage, index, list) {
-        var width = list[0].value ? Math.max(8, Math.round((stage.value / list[0].value) * 100)) : 8;
-        return "<div class='funnel-row'><span><i data-lucide='" + stage.icon + "'></i>" + stage.label + "</span><strong>" + stage.value + "</strong><b style='width:" + width + "%'></b></div>";
-      }).join(""));
-
-      renderRows("overview-table", families.slice(0, 6).map(function (family) {
-        return "<tr>" +
-          "<td><strong>" + text(family.parentName) + "</strong><small>" + text(family.email) + "</small></td>" +
-          "<td>" + text(family.studentName) + "<small>" + text(family.grade) + "</small></td>" +
-          "<td>" + text(family.plan || moneyPlan()) + "</td>" +
-          "<td>" + statusChip(family.subscriptionStatus) + "</td>" +
-          "<td>" + nextStep(family) + "</td>" +
-        "</tr>";
-      }));
 
       renderRows("family-table", visible.map(function (family) {
         var rowId = familyRowId(family);
@@ -4300,6 +4292,12 @@
       button.addEventListener("click", function () {
         activePaymentTable = button.dataset.paymentTable || "payments";
         expandedPayment = null;
+        renderAdmin();
+      });
+    });
+    familyTableButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        activeFamilyTable = button.dataset.familyTable || "accounts";
         renderAdmin();
       });
     });

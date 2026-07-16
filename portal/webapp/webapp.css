@@ -4249,17 +4249,6 @@ body[data-page="admin"] {
   box-shadow: 0 12px 28px rgba(23, 37, 84, 0.045);
 }
 
-.alloce-admin .admin-stat-grid article::after {
-  content: "";
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--alloce-primary-soft);
-}
-
 .alloce-admin .admin-stat-grid span {
   color: var(--alloce-muted);
   font-size: 0.76rem;

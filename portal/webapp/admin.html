@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=108">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=111">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -120,101 +120,64 @@
             </div>
           </article>
         </div>
+      </section>
 
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">Autopilot</p><h2>Automation rules</h2></div>
-            <div class="admin-filters">
-              <span class="state-chip" id="autopilot-status">Ready</span>
-              <button class="table-action" type="button" id="run-sweep-now"><i data-lucide="wand-sparkles"></i>Run sweep now</button>
-            </div>
-          </div>
-          <div class="pricing-section-grid">
-            <label>Suspend access after (days)<input type="number" id="rule-suspend-days" min="1" step="1"><small>Unpaid dunning before auto-suspend.</small></label>
-            <label>Win-back after (days)<input type="number" id="rule-winback-days" min="1" step="1"><small>Days post-cancel to email a win-back.</small></label>
-            <label>Convert nudge days<input type="text" id="rule-nudge-days" placeholder="1,3,7"><small>When to nudge unconverted signups.</small></label>
-            <label class="ai-toggle-field"><input type="checkbox" id="rule-weekly-summary"><span>Weekly summary emails</span><small>Send opted-in parents a weekly recap.</small></label>
-            <div class="ai-settings-actions"><button class="button primary" type="button" id="save-autopilot-rules">Save rules</button></div>
-          </div>
-        </article>
+      <section class="admin-view" data-admin-panel="families">
+        <div class="payment-table-toggle" role="tablist" aria-label="Family views">
+          <button class="active" type="button" data-family-table="accounts">Accounts <span id="family-toggle-accounts">0</span></button>
+          <button type="button" data-family-table="deletions">Deletion requests <span id="family-toggle-deletions">0</span></button>
+        </div>
 
-        <div class="founder-two-col">
+        <div data-family-table-panel="accounts">
           <article class="admin-table-card">
             <div class="admin-card-head">
-              <div><p class="eyebrow">Pipeline</p><h2>Parent onboarding funnel</h2></div>
+              <div>
+                <p class="eyebrow">Accounts</p>
+                <h2>Families</h2>
+              </div>
+              <div class="admin-filters">
+                <input id="family-search" type="search" placeholder="Search parent, email, student">
+                <select id="status-filter" aria-label="Filter by status">
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="paused">Paused</option>
+                  <option value="cancel_scheduled">Cancel scheduled</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <label class="locked-filter"><input id="locked-filter" type="checkbox">Locked</label>
+                <label class="locked-filter"><input id="hide-deleted-filter" type="checkbox" checked>Hide deleted</label>
+              </div>
             </div>
-            <div class="funnel-list" id="funnel-list"></div>
-          </article>
-
-          <article class="admin-table-card">
-            <div class="admin-card-head">
-              <div><p class="eyebrow">Recent</p><h2>Latest families</h2></div>
-            </div>
-            <div class="table-wrap compact-table">
+            <div class="table-wrap">
               <table>
-                <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Status</th><th>Next step</th></tr></thead>
-                <tbody id="overview-table"></tbody>
+                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+                <tbody id="family-table"></tbody>
               </table>
             </div>
           </article>
         </div>
-      </section>
 
-      <section class="admin-view" data-admin-panel="families">
-        <div class="admin-stat-grid privacy-kpis">
-          <article><span>Pending deletions</span><strong id="delete-request-count">0</strong><small>Parent-initiated deletions</small></article>
-          <article><span>Anonymized</span><strong id="anonymized-count">0</strong><small>Local PII removed</small></article>
-          <article><span>Locked by request</span><strong id="delete-locked-count">0</strong><small>Access blocked while pending</small></article>
-          <article><span>Next deleted email</span><strong id="next-deleted-email">deleted_user_00001</strong><small>@deleted.local</small></article>
+        <div data-family-table-panel="deletions" hidden>
+          <div class="admin-stat-grid privacy-kpis">
+            <article><span>Pending deletions</span><strong id="delete-request-count">0</strong><small>Parent-initiated deletions</small></article>
+            <article><span>Anonymized</span><strong id="anonymized-count">0</strong><small>Local PII removed</small></article>
+            <article><span>Locked by request</span><strong id="delete-locked-count">0</strong><small>Access blocked while pending</small></article>
+            <article><span>Next deleted email</span><strong id="next-deleted-email">deleted_user_00001</strong><small>@deleted.local</small></article>
+          </div>
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Privacy</p><h2>Account deletion requests</h2></div>
+              <span class="state-chip ready" id="privacy-action-state">Ready</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Request date</th><th>Status</th><th>Billing references</th></tr></thead>
+                <tbody id="deletion-table"></tbody>
+              </table>
+            </div>
+          </article>
         </div>
-
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">Privacy</p><h2>Account deletion requests</h2></div>
-            <span class="state-chip ready" id="privacy-action-state">Ready</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Request date</th><th>Status</th><th>Billing references</th></tr></thead>
-              <tbody id="deletion-table"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div>
-              <p class="eyebrow">Accounts</p>
-              <h2>Families</h2>
-            </div>
-            <div class="admin-filters">
-              <input id="family-search" type="search" placeholder="Search parent, email, student">
-              <select id="status-filter" aria-label="Filter by status">
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="pending">Pending</option>
-                <option value="paused">Paused</option>
-                <option value="cancel_scheduled">Cancel scheduled</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <label class="locked-filter"><input id="locked-filter" type="checkbox">Locked</label>
-              <label class="locked-filter"><input id="hide-deleted-filter" type="checkbox" checked>Hide deleted</label>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
-              <tbody id="family-table"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">Policy</p><h2>Deletion handling checklist</h2></div>
-          </div>
-          <div class="rules-list" id="privacy-rules"></div>
-        </article>
       </section>
 
       <section class="admin-view" data-admin-panel="billing">
@@ -230,6 +193,7 @@
           <button type="button" data-payment-table="cancellations">Cancellation requests <span id="payment-toggle-cancellations">0</span></button>
           <button type="button" data-payment-table="upgrades">Yearly upgrades <span id="payment-toggle-upgrades">0</span></button>
           <button type="button" data-payment-table="cancelled">Cancelled <span id="payment-toggle-cancelled">0</span></button>
+          <button type="button" data-payment-table="exceptions">Exceptions <span id="payment-toggle-exceptions">0</span></button>
         </div>
         <article class="admin-table-card" data-payment-table-panel="payments">
           <div class="admin-card-head">
@@ -307,7 +271,7 @@
           </div>
         </article>
 
-        <article class="admin-table-card">
+        <article class="admin-table-card" data-payment-table-panel="exceptions" hidden>
           <div class="admin-card-head">
             <div><p class="eyebrow">Exceptions</p><h2>Complaint save — next-renewal discount</h2></div>
             <span class="state-chip" id="exception-status">Ready</span>
@@ -499,6 +463,30 @@
       </section>
 
       <section class="admin-view" data-admin-panel="emails">
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Autopilot</p><h2>Automation rules</h2></div>
+            <div class="admin-filters">
+              <span class="state-chip" id="autopilot-status">Ready</span>
+              <button class="table-action" type="button" id="run-sweep-now"><i data-lucide="wand-sparkles"></i>Run sweep now</button>
+            </div>
+          </div>
+          <div class="pricing-section-grid">
+            <label>Suspend access after (days)<input type="number" id="rule-suspend-days" min="1" step="1"><small>Unpaid dunning before auto-suspend.</small></label>
+            <label>Win-back after (days)<input type="number" id="rule-winback-days" min="1" step="1"><small>Days post-cancel to email a win-back.</small></label>
+            <label>Convert nudge days<input type="text" id="rule-nudge-days" placeholder="1,3,7"><small>When to nudge unconverted signups.</small></label>
+            <label class="ai-toggle-field"><input type="checkbox" id="rule-weekly-summary"><span>Weekly summary emails</span><small>Send opted-in parents a weekly recap.</small></label>
+            <div class="ai-settings-actions"><button class="button primary" type="button" id="save-autopilot-rules">Save rules</button></div>
+          </div>
+        </article>
+
+        <article class="admin-table-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Policy</p><h2>Deletion handling checklist</h2></div>
+          </div>
+          <div class="rules-list" id="privacy-rules"></div>
+        </article>
+
         <div class="admin-split">
           <article class="admin-table-card">
             <div class="admin-card-head">
@@ -646,6 +634,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=108"></script>
+  <script src="/webapp/webapp.js?v=111"></script>
 </body>
 </html>
