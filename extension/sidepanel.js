@@ -11,6 +11,12 @@ const panels = {
 
 const legacySettingsViews = new Set(["classroom", "assignments", "insights", "safety", "admin"]);
 
+// Home (dashboard) and Settings stay open so the panel is never a blank login
+// wall — a first-time user (or a store reviewer) can always see the product. The
+// actual tools below require an active parent-portal session; opening one while
+// signed out raises the sign-in gate and keeps the user on Home behind it.
+const GATED_TOOLS = new Set(["pdf", "read", "math", "write", "screenshot", "page"]);
+
 const extensionApi = typeof chrome !== "undefined" ? chrome : null;
 const storageFallback = "kiddiegptSettings";
 
@@ -387,6 +393,8 @@ async function hashPin(pin) {
   return Array.from(new Uint8Array(buffer)).map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 let selectedExplainCapture = null;
+// Which tool the drag-select region capture routes back to ("math" | "explain").
+let regionCaptureTarget = "math";
 let tutorAudioUrl = "";
 let tutorMode = "read";
 let tutorExplainDepth = "standard"; // "standard" | "deep" (Deep Dive; eligible bands only)
@@ -728,7 +736,13 @@ function renderActivityDashboard() {
 
 function showPanel(name) {
   const normalizedName = legacySettingsViews.has(name) ? "settings" : name;
-  const panelName = panels[normalizedName] ? normalizedName : "dashboard";
+  let panelName = panels[normalizedName] ? normalizedName : "dashboard";
+  // Tools need an active session; Home + Settings stay open. If gated, raise the
+  // sign-in gate and land the user on Home behind it.
+  if (GATED_TOOLS.has(panelName) && !portalSession?.entitled) {
+    showPortalGateForTool();
+    panelName = "dashboard";
+  }
   const panelId = panels[panelName];
 
   document.querySelectorAll(".view-panel").forEach(panel => {
@@ -741,7 +755,7 @@ function showPanel(name) {
   if (toolDetails[panelName]) {
     selectTool(panelName);
   }
-  if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); }
+  if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); renderAuthButton(); }
   if (panelName === "dashboard") renderStars();
   if (panelName !== "math") stopPhoneCapture(); // don't keep polling off-screen
 
@@ -1226,8 +1240,17 @@ function renderScreenshot(src) {
   selectedExplainCapture = src;
 
   if (preview.classList.contains("explain-input-box")) {
+    preview.classList.remove("selecting");
     preview.classList.add("captured");
-    preview.innerHTML = `<i>✓</i><div><b>Screenshot captured</b><small>Click Explain to turn the image into a simple explanation.</small></div>`;
+    // Same captured-card layout as the Math tool: icon · text · image thumbnail.
+    preview.innerHTML = `
+      <span class="math-capture-icon">✓</span>
+      <div class="math-capture-text">
+        <b>Screenshot captured</b>
+        <small>Click Explain to turn the image into a simple explanation.</small>
+        <span class="math-capture-tag">Ready — click to recapture</span>
+      </div>
+      <img class="math-capture-thumb" src="${src}" alt="Captured screenshot">`;
   } else {
     preview.innerHTML = `<img src="${src}" alt="Captured visible tab screenshot">`;
   }
@@ -1516,8 +1539,11 @@ function ensureGateStyles() {
     #kg-portal-gate .kg-gate-backdrop{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;
       justify-content:center;padding:20px;background:rgba(0,45,41,.55);backdrop-filter:blur(6px);
       font-family:Inter,Arial,sans-serif;}
-    #kg-portal-gate .kg-gate-card{width:100%;max-width:320px;background:#fff;border-radius:20px;padding:24px;
+    #kg-portal-gate .kg-gate-card{position:relative;width:100%;max-width:320px;background:#fff;border-radius:20px;padding:24px;
       display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 60px rgba(0,0,0,.28);text-align:center;}
+    #kg-portal-gate .kg-gate-close{position:absolute;top:10px;right:12px;width:30px;height:30px;border:none;
+      background:none;color:#6b8079;font-size:24px;line-height:1;cursor:pointer;border-radius:8px;padding:0;}
+    #kg-portal-gate .kg-gate-close:hover{background:#eef4f2;color:#004f48;}
     #kg-portal-gate .kg-gate-logo{width:52px;height:52px;margin:0 auto;}
     #kg-portal-gate h2{margin:0;color:#004f48;font-size:20px;font-weight:800;}
     #kg-portal-gate p{margin:0;color:#3f5a56;font-size:13px;line-height:1.4;}
@@ -1563,20 +1589,22 @@ function renderPortalGate(mode, message) {
   el.innerHTML = `
     <div class="kg-gate-backdrop">
       <form class="kg-gate-card" id="kg-gate-form">
+        <button type="button" class="kg-gate-close" id="kg-gate-close" aria-label="Close and go to Home">×</button>
         <img src="icons/logo-mascot.png" alt="" class="kg-gate-logo">
-        <h2>${inactive ? "Subscription needed" : "Parent sign in"}</h2>
+        <h2>${inactive ? "Subscription needed" : "Account sign in"}</h2>
         <p>${inactive
           ? "This account doesn't have an active KiddieGPT plan yet."
           : codeStep
             ? `Enter the code we sent to <b>${escapeHtml(otpState.email)}</b>.`
-            : "Sign in with your parent email. We'll send you a one-time code."}</p>
+            : "Sign in with your account email. We'll send you a one-time code."}</p>
         ${inactive ? "" : codeStep ? `
         <label>Verification code<input type="text" id="kg-gate-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="1234" required></label>
         <button type="submit" class="kg-gate-primary">Verify code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-resend">Resend code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>` : `
         <label>Email<input type="email" id="kg-gate-email" autocomplete="username" required></label>
-        <button type="submit" class="kg-gate-primary">Send code</button>`}
+        <button type="submit" class="kg-gate-primary">Send code</button>
+        <a class="kg-gate-link kg-gate-signup" href="${base}/?signup=1" target="_blank" rel="noopener">New to KiddieGPT? Create an account</a>`}
         ${inactive ? `
         <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">Manage subscription</a>
         <button type="button" class="kg-gate-link" id="kg-gate-signout">Use a different account</button>` : ""}
@@ -1594,7 +1622,7 @@ function renderPortalGate(mode, message) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const email = el.querySelector("#kg-gate-email").value.trim();
-      if (!email) { status.textContent = "Enter your parent email."; return; }
+      if (!email) { status.textContent = "Enter your account email."; return; }
       status.textContent = "Sending code…";
       try {
         await requestOtp(email);
@@ -1635,20 +1663,40 @@ function renderPortalGate(mode, message) {
       renderPortalGate("login", "");
     });
   }
+  el.querySelector("#kg-gate-close")?.addEventListener("click", dismissGateToHome);
+  el.querySelector(".kg-gate-backdrop")?.addEventListener("click", event => {
+    if (event.target.classList.contains("kg-gate-backdrop")) dismissGateToHome();
+  });
 }
 
 function renderPortalState() {
   if (portalToken && portalSession?.entitled) {
     hidePortalGate();
     renderChildSelect(); // refresh the student dropdown once the session is ready
+    renderAuthButton();
     getUsageLimits().then(applyPortalControls).catch(() => {});
     return;
   }
+  // Signed out or no active plan: don't wall the whole app. Land on Home with no
+  // gate; it is raised only when a gated tool is opened (see showPanel).
+  hidePortalGate();
+  renderAuthButton();
+  showPanel("dashboard");
+}
+
+// Raise the sign-in gate when a tool needs a session the user doesn't have.
+function showPortalGateForTool() {
   if (portalToken && portalSession && !portalSession.entitled) {
     renderPortalGate("inactive", portalSession.locked ? "This account is locked. Contact KiddieGPT support." : "");
-    return;
+  } else {
+    renderPortalGate("login", "");
   }
-  renderPortalGate("login", "");
+}
+
+// The gate no longer blocks the whole app, so it must be dismissable — back to Home.
+function dismissGateToHome() {
+  hidePortalGate();
+  showPanel("dashboard");
 }
 
 async function bootstrapPortal() {
@@ -3207,7 +3255,7 @@ function resetPinResetState() {
 function pinResetHtml() {
   const msg = pinResetState.msg ? `<small class="pin-msg">${escapeHtml(pinResetState.msg)}</small>` : "";
   if (pinResetState.step === "noemail") {
-    return `<div class="pin-reset"><small class="pin-msg">Sign in with the parent email first, then try Forgot PIN again.</small><button class="reveal-link" type="button" data-pin-reset-cancel>Close</button></div>`;
+    return `<div class="pin-reset"><small class="pin-msg">Sign in with the account email first, then try Forgot PIN again.</small><button class="reveal-link" type="button" data-pin-reset-cancel>Close</button></div>`;
   }
   if (pinResetState.step === "code") {
     return `<div class="pin-reset">
@@ -4233,20 +4281,19 @@ function renderExplainPageBox() {
   const box = document.getElementById("explainPageBox");
   if (!box) return;
   box.classList.toggle("selecting", explainPageSelect);
-  box.setAttribute("aria-pressed", String(explainPageSelect));
-  const icon = box.querySelector(".explain-page-icon");
-  const title = box.querySelector(".explain-page-title");
-  const sub = box.querySelector(".explain-page-sub");
-  if (icon) icon.textContent = explainPageSelect ? "✎" : "▤";
-  if (title) title.textContent = explainPageSelect ? "Now highlight text on the page" : "Explain this whole page";
-  if (sub) sub.textContent = explainPageSelect
-    ? "Select what you want explained on the page, then press Explain. Tap again to switch back to the whole page."
-    : "KiddieGPT reads the main text on the page you're viewing. Tap to explain a selection instead.";
-}
-
-function toggleExplainPageSelect() {
-  explainPageSelect = !explainPageSelect;
-  renderExplainPageBox();
+  box.innerHTML = explainPageSelect
+    ? `<span class="math-capture-icon">✎</span>
+       <div>
+         <b class="explain-page-title">Highlight text to explain</b>
+         <small class="explain-page-sub">Select it on the page, then press Explain.</small>
+         <div class="explain-page-action"><button type="button" class="explain-select-btn ghost" data-explain-select="off">Use whole page</button></div>
+       </div>`
+    : `<span class="math-capture-icon">▤</span>
+       <div>
+         <b class="explain-page-title">Explain this whole page</b>
+         <small class="explain-page-sub">Reads the main text on this page.</small>
+         <div class="explain-page-action"><span class="explain-page-hint">Just need a section?</span><button type="button" class="explain-select-btn" data-explain-select="on">Select text</button></div>
+       </div>`;
 }
 
 function initMathTool() {
@@ -4311,7 +4358,7 @@ function initExplainTool() {
   document.querySelector(".explain-input-box[data-action='capture-screenshot']")?.addEventListener("keydown", event => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    captureVisibleTab();
+    captureExplainRegion();
   });
   document.getElementById("explainFollowToggle")?.addEventListener("click", () => {
     const panel = document.getElementById("explainFollowupPanel");
@@ -4330,11 +4377,11 @@ function initExplainTool() {
   });
   const pageBox = document.getElementById("explainPageBox");
   if (pageBox) {
-    pageBox.addEventListener("click", toggleExplainPageSelect);
-    pageBox.addEventListener("keydown", event => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      toggleExplainPageSelect();
+    pageBox.addEventListener("click", event => {
+      const btn = event.target.closest("[data-explain-select]");
+      if (!btn) return;
+      explainPageSelect = btn.dataset.explainSelect === "on";
+      renderExplainPageBox();
     });
     renderExplainPageBox();
   }
@@ -4459,7 +4506,7 @@ async function explainCurrentSource() {
       const vocab = Array.isArray(result.vocabulary) && result.vocabulary.length ? ` Key words: ${result.vocabulary.join(", ")}.` : "";
       observation.textContent = `${result.explanation || "Here is the main idea in simpler words."} ${result.remember || ""}${vocab}`.trim();
     }
-    setScreenshotStatus("AI ready");
+    setScreenshotStatus("Ready");
     bumpActivity("explains", 1);
     awardStars(2);
   } catch (error) {
@@ -4994,10 +5041,23 @@ async function onChildSelectChange(event) {
   renderStars();
 }
 
-async function handleSignOut() {
-  await portalSignOut();
-  renderChildSelect();
-  renderPortalGate("login", "");
+// The settings auth button reflects state: "Sign out" when signed in, "Sign in"
+// when signed out (clicking then opens the sign-in gate).
+function renderAuthButton() {
+  const btn = document.getElementById("signOutButton");
+  if (!btn) return;
+  const signedIn = Boolean(portalToken && portalSession?.entitled);
+  btn.textContent = signedIn ? "Sign out" : "Sign in";
+}
+
+async function handleAuthButton() {
+  if (portalToken && portalSession?.entitled) {
+    await portalSignOut();
+    renderChildSelect();
+    renderAuthButton();
+  } else {
+    showPortalGateForTool();
+  }
 }
 
 // ---- Tutor voice selector (admin-approved list only) ----
@@ -5056,7 +5116,7 @@ function initSettingsTool() {
   document.getElementById("testOpenAIButton")?.addEventListener("click", testOpenAIKey);
   document.getElementById("childSelect")?.addEventListener("change", onChildSelectChange);
   document.getElementById("studentVoiceSelect")?.addEventListener("change", onVoiceSelectChange);
-  document.getElementById("signOutButton")?.addEventListener("click", handleSignOut);
+  document.getElementById("signOutButton")?.addEventListener("click", handleAuthButton);
   document.getElementById("mathAnswerGateToggle")?.addEventListener("change", event => {
     mathAnswerGate = event.target.checked;
     mathAnswersRevealed = false;
@@ -5281,7 +5341,7 @@ function updateMathCaptureCard(state, detail = "") {
   `;
 }
 
-function injectMathSelectionOverlay() {
+function injectSelectionOverlay(labelText) {
   if (document.getElementById("kiddiegpt-math-capture-overlay")) return;
   const overlay = document.createElement("div");
   overlay.id = "kiddiegpt-math-capture-overlay";
@@ -5294,7 +5354,7 @@ function injectMathSelectionOverlay() {
     "font-family:Inter,Arial,sans-serif"
   ].join(";");
   const hint = document.createElement("div");
-  hint.textContent = "Drag around the math problem. Press Esc to cancel.";
+  hint.textContent = "Drag around " + (labelText || "the problem") + ". Press Esc to cancel.";
   hint.style.cssText = [
     "position:fixed",
     "top:16px",
@@ -5392,6 +5452,7 @@ function cropDataUrl(dataUrl, rect) {
 
 async function captureMathProblemRegion() {
   selectedMathFile = null;
+  regionCaptureTarget = "math";
   if (!extensionApi?.tabs?.query || !extensionApi?.scripting?.executeScript) {
     selectedMathCapture = null;
     captureMathVisibleTabFallback("Capturing the visible page instead...");
@@ -5406,7 +5467,8 @@ async function captureMathProblemRegion() {
     }
     extensionApi.scripting.executeScript({
       target: { tabId: tab.id },
-      func: injectMathSelectionOverlay
+      func: injectSelectionOverlay,
+      args: ["the math problem"]
     }, () => {
       if (extensionApi.runtime.lastError) {
         captureMathVisibleTabFallback("Chrome blocked area select, so KiddieGPT is capturing the visible page.");
@@ -5450,6 +5512,53 @@ function finishMathRegionCapture(rect) {
       updateMathCaptureCard("captured", "Selected area saved. Click Solve & Explain when ready.");
     } catch {
       updateMathCaptureCard("unavailable", "Could not crop the selected area. Try again.");
+    }
+  });
+}
+
+// Explain screenshot uses the SAME drag-select-a-region flow as Math (rather than
+// grabbing the whole tab): click the card, drag a box around the diagram/worksheet,
+// and only that crop is sent to Explain.
+function setExplainCaptureSelecting() {
+  const preview = document.getElementById("screenshotPreview");
+  if (!preview) return;
+  preview.classList.remove("captured");
+  preview.classList.add("selecting");
+  preview.innerHTML = `<span class="math-capture-icon">▧</span><div><b>Drag around what to explain</b><small>A box is open on the page. Press Esc to cancel.</small></div>`;
+  setScreenshotStatus("Selecting", "blue");
+}
+
+function captureExplainRegion() {
+  setToolSource("explain", "screenshot");
+  regionCaptureTarget = "explain";
+  if (!extensionApi?.tabs?.query || !extensionApi?.scripting?.executeScript) {
+    captureVisibleTab(); // dev/preview or restricted: fall back to full-tab capture
+    return;
+  }
+  setExplainCaptureSelecting();
+  extensionApi.tabs.query({ active: true, currentWindow: true }, tabs => {
+    const tab = tabs?.[0];
+    if (!tab?.id) { captureVisibleTab(); return; }
+    extensionApi.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: injectSelectionOverlay,
+      args: ["what you want explained"]
+    }, () => {
+      if (extensionApi.runtime.lastError) captureVisibleTab();
+    });
+  });
+}
+
+function finishExplainRegionCapture(rect) {
+  if (!extensionApi?.tabs?.captureVisibleTab) { setScreenshotStatus("Unavailable", "warn"); useSampleScreenshot(); return; }
+  setScreenshotStatus("Capturing", "blue");
+  extensionApi.tabs.captureVisibleTab({ format: "png" }, async dataUrl => {
+    if (extensionApi.runtime.lastError || !dataUrl) { setScreenshotStatus("Use sample", "warn"); useSampleScreenshot(); return; }
+    try {
+      const cropped = await cropDataUrl(dataUrl, rect);
+      renderScreenshot(cropped);
+    } catch {
+      setScreenshotStatus("Try again", "warn");
     }
   });
 }
@@ -5547,7 +5656,7 @@ document.addEventListener("click", event => {
 
   const action = event.target.closest("[data-action]");
   if (action?.dataset.action === "math-capture-region") captureMathProblemRegion();
-  if (action?.dataset.action === "capture-screenshot") captureVisibleTab();
+  if (action?.dataset.action === "capture-screenshot") captureExplainRegion();
   if (action?.dataset.action === "mock-screenshot") useSampleScreenshot();
 
   if (event.target.closest("#pdfChooseButton")) event.preventDefault();
@@ -5561,7 +5670,8 @@ document.addEventListener("click", event => {
 
 extensionApi?.runtime?.onMessage?.addListener((message) => {
   if (message?.type === "KIDDIEGPT_MATH_REGION_SELECTED" && message.rect) {
-    finishMathRegionCapture(message.rect);
+    if (regionCaptureTarget === "explain") finishExplainRegionCapture(message.rect);
+    else finishMathRegionCapture(message.rect);
   }
 });
 

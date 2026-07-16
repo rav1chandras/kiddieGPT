@@ -935,13 +935,27 @@ body{background:#f6f8f5}
     .explain-source-mode[hidden]{display:none}
     .explain-input-card{position:relative;z-index:1}
     .explain-input-box i{font-size:15px}
-    .explain-page-box.selecting i{color:#0f69b5}
+    /* Every Explain card (whole-page, selection, and the screenshot toggle states)
+       stays one fixed size so toggling never resizes the tile. Icons reuse Math's
+       .math-capture-icon tile, so the selecting state is coloured by the shared
+       .math-capture-box.selecting .math-capture-icon rule. */
+    .explain-input-box{height:132px;min-height:132px}
+    /* The active-page card is now informational (action lives in its button), so
+       it should not read as a whole-card button — neutralise the capture hover. */
+    .explain-page-box{cursor:default}
+    .explain-page-box:hover{background:#f4f8ee;border-color:#9ab6ae}
     .explain-page-box.selecting:hover{background:#e8f4ff;border-color:#0f8bf2}
+    .explain-page-action{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:7px}
+    .explain-page-hint{font-size:11px;color:#60747d;line-height:1.35}
+    .explain-select-btn{border:1.5px solid #cfe0b6;background:#eef8e6;color:#215c1e;border-radius:999px;padding:5px 13px;font-size:11px;font-weight:800;cursor:pointer}
+    .explain-select-btn:hover{background:#e2f2d4}
+    .explain-select-btn.ghost{background:#fff;border-color:#ccd8dd;color:#3c5365}
+    .explain-select-btn.ghost:hover{background:#f4f7f8}
     .explain-input-card>.small-button{height:auto;min-height:52px;align-self:stretch;border-radius:13px;min-width:118px}
     .explain-page-card{border:1px solid #dce8df;border-radius:15px;background:rgba(255,255,255,.72);padding:10px;display:grid;gap:10px}
     .explain-result-panel{position:relative;overflow:hidden;background:#fff;border-color:#dce8df}
     .explain-answer-sheet{display:grid;gap:10px}
-    .explain-teacher-note{position:relative;overflow:hidden;border:1px solid #dce8df;border-radius:16px;background:linear-gradient(135deg,#fbfdf8,#eef6f3);padding:16px 16px 18px;border-left:5px solid #004f48}
+    .explain-teacher-note{position:relative;overflow:hidden;border:1px solid #dce8df;border-radius:16px;background:linear-gradient(135deg,#fbfdf8,#eef6f3);padding:16px 16px 18px}
     .explain-teacher-note:after{content:"";position:absolute;right:-28px;bottom:-36px;width:112px;height:112px;border-radius:34px;background:rgba(220,233,106,.22);transform:rotate(14deg)}
     .explain-teacher-note span,.explain-teacher-note p{position:relative;z-index:1}
     .explain-teacher-note span{display:block;font-size:10px;font-weight:900;text-transform:uppercase;color:#719900;margin-bottom:8px}
