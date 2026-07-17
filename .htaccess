@@ -1,0 +1,12 @@
+# KiddieGPT marketing site — served from public_html on Hostinger.
+# Hostinger clones the `hostinger` branch (root = this folder), so a .git
+# directory ends up alongside these files. Block it and other dotfiles
+# from ever being served.
+
+# Deny access to the .git directory and its contents
+RedirectMatch 404 /\.git
+
+# Deny access to any dotfile / dotfolder (e.g. .htaccess itself, .DS_Store)
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
