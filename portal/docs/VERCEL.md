@@ -22,6 +22,7 @@ The portal runs two ways from the same code:
    | Var | Value |
    |-----|-------|
    | `DB_DRIVER` | `postgres` |
+   | `NODEJS_HELPERS` | `0` — **required**, see "Stripe webhook" below |
    | `POSTGRES_URL` | (auto-added by Vercel Postgres) |
    | `CRON_SECRET` | a long random string |
    | `AUTH_TOKEN_SECRET` | a strong secret (not the dev default) |
@@ -53,8 +54,21 @@ The portal runs two ways from the same code:
   across many concurrent serverless invocations it has the same last-writer-wins
   semantics the file DB always had. Fine for launch scale; revisit with per-entity
   tables if write concurrency grows.
-- **Stripe webhook:** it uses `express.raw` for signature verification. Confirm the
-  raw body survives on the first deploy (send a Stripe test event) — no code change
-  expected, just verify.
+- **Stripe webhook — set `NODEJS_HELPERS=0`.** The webhook verifies the Stripe
+  signature against the *raw* body (`express.raw` → `stripe.webhooks.constructEvent`).
+  By default Vercel's Node runtime attaches helper properties to the request,
+  including a lazy `request.body` getter that parses the stream. That getter has no
+  setter, so `express.raw`'s `req.body = <Buffer>` does not stick, and
+  `constructEvent` ends up verifying against a parsed object instead of the original
+  bytes — every webhook 400s. Since the webhook is what marks a subscription active,
+  parents would pay and never be entitled.
+
+  Setting the `NODEJS_HELPERS=0` env var disables those helpers, so the function
+  receives a plain Node `IncomingMessage` and Express behaves exactly as it does
+  under local Docker. Nothing in `server.js` depends on the Vercel helpers: it never
+  reads `req.cookies`, and Express supplies `req.query` and `req.body` itself
+  (`express.json()` is registered *after* the webhook route, so raw stays raw).
+
+  Verify after the first deploy by sending a Stripe test event — expect `200`, not `400`.
 - **Migrating existing data:** to seed prod from a local DB, `INSERT` your
   `data/kiddiegpt-db.json` contents into `app_state (id, data) VALUES (1, …)`.
