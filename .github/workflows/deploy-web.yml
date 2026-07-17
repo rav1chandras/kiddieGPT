@@ -1,22 +1,31 @@
 name: Publish web/ to hostinger branch
 
-# Keeps the `hostinger` branch's root in sync with the contents of web/.
-# Hostinger's Git deployment tracks the `hostinger` branch, so only the
-# marketing site is ever published — never extension/ or portal/ source.
+# Keeps the `hostinger` branch's root byte-identical to the contents of
+# web/. Hostinger's Git deployment tracks the `hostinger` branch, so only
+# the marketing site is ever published — never extension/ or portal/ source.
+#
+# Publishes web/'s tree directly with `git commit-tree` rather than
+# `git subtree split`: split rewrites history commit-by-commit and had
+# silently dropped web/.htaccess from the published branch. Committing the
+# tree guarantees hostinger == main's web/ exactly, every run.
+#
+# Runs on every push to main (not just web/ changes) plus a daily cron, so
+# the branch self-heals if it ever drifts or gets reset. Runs are a no-op
+# when the branch already matches.
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'web/**'
   workflow_dispatch: {}
+  schedule:
+    - cron: '17 6 * * *' # daily self-heal
 
 permissions:
   contents: write
 
 concurrency:
-  group: deploy-web
-  cancel-in-progress: true
+  group: publish-hostinger
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -26,10 +35,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Split web/ and force-push to hostinger branch
+      - name: Publish web/ tree to hostinger branch
         run: |
+          set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          SPLIT_SHA="$(git subtree split --prefix web main)"
-          echo "web/ subtree resolved to $SPLIT_SHA"
-          git push origin "$SPLIT_SHA:refs/heads/hostinger" --force
+
+          # The exact tree of web/ on the commit we just built.
+          TREE="$(git rev-parse HEAD:web)"
+
+          git fetch origin hostinger || true
+          PARENT="$(git rev-parse origin/hostinger 2>/dev/null || true)"
+
+          if [ -n "$PARENT" ] && [ "$(git rev-parse "${PARENT}^{tree}")" = "$TREE" ]; then
+            echo "hostinger already matches web/ ($TREE) — nothing to publish."
+            exit 0
+          fi
+
+          if [ -n "$PARENT" ]; then
+            COMMIT="$(git commit-tree "$TREE" -p "$PARENT" -m "Publish web/ from ${GITHUB_SHA}")"
+          else
+            COMMIT="$(git commit-tree "$TREE" -m "Publish web/ from ${GITHUB_SHA}")"
+          fi
+
+          echo "Publishing tree $TREE as $COMMIT -> hostinger"
+          git push origin "${COMMIT}:refs/heads/hostinger"
