@@ -1266,18 +1266,40 @@
       }
     }
 
+    function refundWindow() {
+      return (parentEntitlement && parentEntitlement.refundWindow) || null;
+    }
+
+    function inRefundWindow() {
+      var w = refundWindow();
+      return Boolean(w && w.eligible);
+    }
+
     function prepareCancellationFlow() {
       var yearly = isYearlySubscription();
-      if (cancelFlowLabel) cancelFlowLabel.textContent = yearly ? "Renewal cancellation" : "Save offer";
-      if (cancelFlowTitle) cancelFlowTitle.textContent = yearly ? "Cancel yearly renewal" : "50% off your next month";
+      var rw = refundWindow();
+      var refundable = inRefundWindow();
+      if (cancelFlowLabel) cancelFlowLabel.textContent = refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
+      if (cancelFlowTitle) {
+        cancelFlowTitle.textContent = refundable
+          ? "Cancel and get a full refund"
+          : yearly ? "Cancel yearly renewal" : "50% off your next month";
+      }
       if (cancelFlowCopy) {
-        cancelFlowCopy.textContent = yearly
-          ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan."
+        // Inside the refund window cancelling refunds the payment in full and
+        // ends access immediately — say so before they confirm, not after.
+        cancelFlowCopy.textContent = refundable
+          ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept."
+          : yearly
+          ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."
           : "We will apply the discount automatically to the next invoice. No code is needed, and all child profiles, goals, rewards, and extension access stay active.";
       }
-      if (acceptDiscount) acceptDiscount.classList.toggle("hidden", yearly);
-      if (confirmCancel) confirmCancel.textContent = yearly ? "Cancel renewal" : "Continue cancellation";
-      if (saveOffer) saveOffer.classList.toggle("yearly-cancel", yearly);
+      // No point offering 50% off a month we are about to refund in full.
+      if (acceptDiscount) acceptDiscount.classList.toggle("hidden", yearly || refundable);
+      // Inside the window the plan itself ends (refunded); outside, only the
+      // renewal stops and access runs to the period end.
+      if (confirmCancel) confirmCancel.textContent = refundable ? "Cancel plan" : "Cancel renewal";
+      if (saveOffer) saveOffer.classList.toggle("yearly-cancel", yearly || refundable);
     }
 
     function setPaidPlan(key, title, detail) {
@@ -2103,6 +2125,24 @@
         });
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Unable to schedule cancellation");
+        if (result.refunded) {
+          // Cancelled inside the refund window: refunded in full, access over.
+          cancelFlow.classList.add("hidden");
+          subscriptionMain.classList.remove("hidden");
+          // Refresh entitlement first — it repaints the generic unpaid copy, so
+          // the refund wording has to be applied after it, not before.
+          await syncSubscriptionFromEntitlement().catch(function () {});
+          setUnpaidSubscription(
+            "Refunded and cancelled",
+            result.message || "Your payment was refunded in full and extension access has ended.",
+            "Refunded"
+          );
+          if (currentPackageNote) {
+            currentPackageNote.textContent = "Cancelled within the refund window. Your payment was refunded in full and extension access has ended.";
+          }
+          preview();
+          return;
+        }
         paid = true;
         cancellationScheduled = true;
         cancellationAccessUntil = result.cancelAccessUntil || "";

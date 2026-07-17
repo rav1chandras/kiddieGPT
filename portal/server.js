@@ -674,6 +674,7 @@ function readDb() {
   db.supportMessages = db.supportMessages || [];
   db.captureSessions = db.captureSessions || [];
   db.emailSettings = db.emailSettings || {};
+  db.mockCheckouts = db.mockCheckouts || [];
   if (changed) writeDb(db);
   return db;
 }
@@ -1211,6 +1212,29 @@ function cancellationStillActive(family) {
   return Number.isFinite(accessUntil) && accessUntil > Date.now();
 }
 
+// Refund policy (monthly and yearly alike): cancelling within REFUND_WINDOW_DAYS
+// of the most recent payment is a full refund and access ends immediately.
+// After that there is no refund — access runs to the end of the paid period and
+// simply does not renew. The window re-opens on every payment (each renewal).
+const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 3));
+
+function refundWindowFor(family) {
+  const paidAt = family?.lastPaymentAt || family?.createdAt || "";
+  const paidMs = paidAt ? new Date(paidAt).getTime() : NaN;
+  if (!Number.isFinite(paidMs)) {
+    return { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 };
+  }
+  const endsMs = paidMs + REFUND_WINDOW_DAYS * 86400000;
+  const msLeft = endsMs - Date.now();
+  return {
+    eligible: msLeft > 0,
+    windowDays: REFUND_WINDOW_DAYS,
+    paidAt,
+    endsAt: new Date(endsMs).toISOString(),
+    daysLeft: Math.max(0, Math.ceil(msLeft / 86400000))
+  };
+}
+
 function markCancellationScheduled(family, subscription, reason = "") {
   if (!family) return family;
   const accessUntil = unixToIso(subscription?.current_period_end || subscription?.cancel_at || 0) || family.cancelAccessUntil || family.cancellationAccessUntil || "";
@@ -1228,6 +1252,18 @@ function markCancellationScheduled(family, subscription, reason = "") {
   return family;
 }
 
+// A confirmed monthly->yearly upgrade must be retired once the subscription it
+// belongs to ends, or a new one supersedes it. Left "scheduled",
+// hasConfirmedYearlyUpgrade() stays true forever and normaliseFamily() keeps
+// forcing plan back to "Family Yearly" and stripeSubscriptionId back to the
+// dead subscription — which silently breaks re-enrolment.
+function retireYearlyUpgrade(family, at = nowIso()) {
+  if (family?.yearlyUpgrade && family.yearlyUpgrade.status === "scheduled") {
+    family.yearlyUpgrade = { ...family.yearlyUpgrade, status: "ended", endedAt: at };
+  }
+  return family;
+}
+
 function markSubscriptionEndedNow(family, reason = "", subscriptionId = "") {
   if (!family) return family;
   const endedAt = nowIso();
@@ -1241,6 +1277,7 @@ function markSubscriptionEndedNow(family, reason = "", subscriptionId = "") {
   family.cancelAccessUntil = endedAt;
   family.cancellationAccessUntil = endedAt;
   family.cancellationSubscriptionId = subscriptionId || effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "";
+  retireYearlyUpgrade(family, endedAt);
   return family;
 }
 
@@ -1263,6 +1300,24 @@ async function scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId) {
     await stripe.subscriptionSchedules.release(scheduleId);
   }
   return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}
+
+// Resolve a stored payment reference (cs_/in_/pi_/ch_) into Stripe refund params.
+// Returns null when the payment has no refundable PaymentIntent/Charge yet.
+async function stripeRefundParamsFor(stripe, paymentId, amountCents) {
+  let resolvedPaymentId = String(paymentId || "");
+  if (resolvedPaymentId.startsWith("cs_")) {
+    const session = await stripe.checkout.sessions.retrieve(resolvedPaymentId, { expand: ["subscription.latest_invoice.payment_intent", "payment_intent"] });
+    resolvedPaymentId = await checkoutSessionPaymentIntentId(stripe, session);
+  } else if (resolvedPaymentId.startsWith("in_")) {
+    const invoice = await stripe.invoices.retrieve(resolvedPaymentId, { expand: ["payment_intent"] });
+    resolvedPaymentId = stripeId(invoice.payment_intent);
+  }
+  const params = { amount: amountCents ? Number(amountCents) : undefined };
+  if (resolvedPaymentId.startsWith("pi_")) params.payment_intent = resolvedPaymentId;
+  else if (resolvedPaymentId.startsWith("ch_")) params.charge = resolvedPaymentId;
+  else return null;
+  return { params, resolvedPaymentId };
 }
 
 async function cancelStripeSubscriptionsNow(stripe, family) {
@@ -1589,6 +1644,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     }
 
     if (event.type === "checkout.session.completed") {
+      // A fresh Checkout supersedes any earlier yearly upgrade; retire it first
+      // so normaliseFamily() does not overwrite the new plan/subscription id.
+      retireYearlyUpgrade(family);
       family.subscriptionStatus = "active";
       family.paymentStatus = "paid";
       family.plan = metadata.planName || family.pendingPlanName || family.plan;
@@ -1635,9 +1693,16 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
     if (refundWebhook) {
-      family.paymentStatus = "refunded";
+      // Only a FULL refund ends the subscription. A partial/goodwill refund
+      // (e.g. issued from the Stripe Dashboard) must leave access intact.
+      const refunded = Number(webhookObject.amount_refunded ?? object.amount_refunded ?? 0);
+      const charged = Number(webhookObject.amount ?? object.amount ?? 0);
+      const fullRefund = !charged || refunded >= charged;
+      family.paymentStatus = fullRefund ? "refunded" : "partial_refunded";
       family.refundedAt = nowIso();
-      markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      if (fullRefund) {
+        markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      }
     }
     if (event.type.includes("checkout.session") || event.type.includes("invoice") || event.type.includes("payment_intent") || event.type.includes("charge")) {
       recordStripePayment(db, event, object, family);
@@ -3833,6 +3898,9 @@ app.get("/api/entitlements/me", (req, res) => {
     cancelAccessUntil: family.cancelAccessUntil || family.cancellationAccessUntil || "",
     cancellationStatus: family.cancellationStatus || "",
     cancelReason: family.cancelReason || "",
+    // Lets the portal tell the parent what cancelling will actually do before
+    // they confirm: full refund + access ends now, or access to the period end.
+    refundWindow: refundWindowFor(family),
     stripeSubscriptionId: effectiveFamilySubscriptionId(family),
     yearlyUpgrade: family.yearlyUpgrade ? {
       status: family.yearlyUpgrade.status || "",
@@ -3909,10 +3977,27 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     : null;
 
   if (!process.env.STRIPE_SECRET_KEY) {
+    // Demo checkout: record the session so confirm-checkout-session can activate
+    // the family the way the Stripe webhook does in production. Without this the
+    // parent bounces back to "Choose a family plan" and can never enrol.
+    const mockSessionId = "cs_mock_" + crypto.randomBytes(9).toString("hex");
+    mutateDb((db) => {
+      db.mockCheckouts.unshift({
+        sessionId: mockSessionId,
+        familyId: checkoutFamilyId || "",
+        email: parentEmail || "",
+        planName: planName || "",
+        createdAt: nowIso()
+      });
+      db.mockCheckouts = db.mockCheckouts.slice(0, 50);
+      audit(db, "stripe.checkout.mock_create", { sessionId: mockSessionId, familyId: checkoutFamilyId, parentEmail, planName: planName || "" });
+    });
     return res.json({
       mode: "mock",
-      sessionId: "cs_test_kiddiegpt_mock",
-      url: successUrl || "/index.html?stripe=success&session_id=cs_test_kiddiegpt_mock",
+      sessionId: mockSessionId,
+      url: successUrl
+        ? String(successUrl).replace("{CHECKOUT_SESSION_ID}", mockSessionId)
+        : `/index.html?stripe=success&session_id=${mockSessionId}`,
       message: "Stripe secret key is not configured. Demo checkout was simulated.",
       promotion: checkoutPromotion
     });
@@ -3986,7 +4071,41 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
   const sessionId = String(req.body?.sessionId || "").trim();
   if (!sessionId) return res.status(400).json({ error: "Missing Stripe Checkout Session ID." });
   if (!process.env.STRIPE_SECRET_KEY) {
-    return res.json({ mode: "mock", active: false, message: "Stripe secret key is not configured." });
+    // Mirror the webhook's checkout.session.completed side-effects so the demo
+    // flow can actually enrol (and re-enrol after a cancellation/refund).
+    const activated = mutateDb((db) => {
+      const pending = db.mockCheckouts.find((item) => item.sessionId === sessionId);
+      const email = normalizeEmail(pending?.email || req.body?.parentEmail || req.body?.email || "");
+      const family = db.families.find((item) =>
+        (pending?.familyId && item.id === pending.familyId) || (email && item.email === email)
+      );
+      if (!family) return null;
+      family.subscriptionStatus = "active";
+      family.paymentStatus = "paid";
+      family.plan = pending?.planName || family.pendingPlanName || family.plan;
+      delete family.pendingPlanName;
+      family.stripeCustomerId = family.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
+      family.stripeSubscriptionId = "sub_mock_" + crypto.randomBytes(6).toString("hex");
+      family.stripePaymentId = "pi_mock_" + crypto.randomBytes(6).toString("hex");
+      family.lastPaymentAt = nowIso();
+      // Starting a new subscription clears any prior cancellation/refund state.
+      family.cancellationRequested = false;
+      family.cancellationStatus = "";
+      family.cancelAtPeriodEnd = false;
+      family.cancelReason = "";
+      family.cancelAccessUntil = "";
+      family.cancellationAccessUntil = "";
+      family.cancelledAt = "";
+      delete family.refundedAt;
+      retireYearlyUpgrade(family);
+      db.mockCheckouts = db.mockCheckouts.filter((item) => item.sessionId !== sessionId);
+      audit(db, "stripe.checkout.mock_confirm", { sessionId, familyId: family.id, email: family.email, plan: family.plan });
+      return family;
+    });
+    if (!activated) {
+      return res.json({ mode: "mock", active: false, message: "Demo checkout session not found." });
+    }
+    return res.json({ mode: "mock", active: true, plan: activated.plan, message: "Demo checkout was simulated." });
   }
 
   try {
@@ -4245,6 +4364,53 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     return res.status(400).json({ error: "Only active subscriptions can be scheduled for cancellation." });
   }
 
+  // Inside the refund window this is a full refund + immediate end, not a
+  // scheduled cancellation. Outside it, fall through to cancel-at-period-end.
+  const refundWindow = refundWindowFor(existingFamily);
+  if (refundWindow.eligible && existingFamily.subscriptionStatus === "active") {
+    const mockRefund = !process.env.STRIPE_SECRET_KEY
+      || !existingFamily.stripePaymentId
+      || String(existingFamily.stripePaymentId).startsWith("pi_mock");
+    let refundId = "re_mock_kiddiegpt";
+    let refundAmount = 0;
+    if (!mockRefund) {
+      try {
+        const stripe = stripeClient();
+        const resolved = await stripeRefundParamsFor(stripe, existingFamily.stripePaymentId);
+        if (!resolved) throw new Error("No refundable PaymentIntent for this payment.");
+        const refund = await stripe.refunds.create(resolved.params);
+        refundId = refund.id;
+        refundAmount = Number(refund.amount || 0);
+        await cancelStripeSubscriptionsNow(stripe, existingFamily);
+      } catch (error) {
+        mutateDb((db) => monitor(db, "error", "stripe", "Refund-window cancellation failed", { email, detail: error.message }, email));
+        return res.status(500).json({ error: "Unable to refund and cancel with Stripe. Contact support." });
+      }
+    }
+    const updated = mutateDb((db) => {
+      const family = db.families.find((item) => item.email === email);
+      if (!family) return null;
+      family.paymentStatus = "refunded";
+      family.refundedAt = nowIso();
+      family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
+      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: "refund_window", createdAt: nowIso() });
+      markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt }, email);
+      monitor(db, "info", "billing", "Cancelled inside refund window — full refund issued", { email, refundId, windowDays: refundWindow.windowDays }, email);
+      return family;
+    });
+    return res.json({
+      mode: mockRefund ? "mock" : "stripe",
+      refunded: true,
+      refundId,
+      familyId: updated?.id || existingFamily.id,
+      status: updated?.subscriptionStatus || "cancelled",
+      cancelAccessUntil: updated?.cancelAccessUntil || "",
+      refundWindow,
+      message: `Cancelled within the ${refundWindow.windowDays}-day refund window. Your payment has been refunded in full and access has ended.`
+    });
+  }
+
   if (!process.env.STRIPE_SECRET_KEY || !existingFamily.stripeSubscriptionId || existingFamily.stripeSubscriptionId.startsWith("sub_mock")) {
     // End of the CURRENT period: use the known period end, else anchor on the
     // billing start (last payment / account creation) + interval and roll
@@ -4270,6 +4436,8 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       familyId: updated?.id || existingFamily.id,
       status: updated?.subscriptionStatus || "cancel_scheduled",
       cancelAccessUntil: updated?.cancelAccessUntil || "",
+      refunded: false,
+      refundWindow,
       message: `Cancellation is scheduled. Extension access remains active until ${updated?.cancelAccessUntil || "the end of the paid period"}.`
     });
   }
@@ -4289,6 +4457,8 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       subscriptionId: subscription.id,
       status: updated?.subscriptionStatus || "cancel_scheduled",
       cancelAccessUntil: updated?.cancelAccessUntil || "",
+      refunded: false,
+      refundWindow,
       message: `Cancellation is scheduled. Extension access remains active until ${updated?.cancelAccessUntil || "the end of the paid period"}.`
     });
   } catch (error) {
@@ -4725,26 +4895,12 @@ app.post("/api/stripe/refund", requireAdmin, async (req, res) => {
 
   try {
     const stripe = stripeClient();
-    let resolvedPaymentId = String(paymentIntentId);
-    const refundParams = {
-      amount: amountCents ? Number(amountCents) : undefined
-    };
-    if (resolvedPaymentId.startsWith("cs_")) {
-      const session = await stripe.checkout.sessions.retrieve(resolvedPaymentId, { expand: ["subscription.latest_invoice.payment_intent", "payment_intent"] });
-      resolvedPaymentId = await checkoutSessionPaymentIntentId(stripe, session);
-    } else if (resolvedPaymentId.startsWith("in_")) {
-      const invoice = await stripe.invoices.retrieve(resolvedPaymentId, { expand: ["payment_intent"] });
-      resolvedPaymentId = stripeId(invoice.payment_intent);
-    }
-    if (resolvedPaymentId.startsWith("pi_")) {
-      refundParams.payment_intent = resolvedPaymentId;
-    } else if (resolvedPaymentId.startsWith("ch_")) {
-      refundParams.charge = resolvedPaymentId;
-    } else {
+    const resolved = await stripeRefundParamsFor(stripe, paymentIntentId, amountCents);
+    if (!resolved) {
       return res.status(400).json({ error: "This payment does not have a refundable Stripe PaymentIntent yet. Refresh the payment from Stripe and try again." });
     }
-
-    const refund = await stripe.refunds.create(refundParams);
+    const resolvedPaymentId = resolved.resolvedPaymentId;
+    const refund = await stripe.refunds.create(resolved.params);
     const preRefundDb = readDb();
     const preSourcePayment = preRefundDb.payments.find((payment) => payment.paymentId === paymentIntentId || payment.paymentId === resolvedPaymentId);
     const preFamily = preRefundDb.families.find((item) =>
