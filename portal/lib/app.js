@@ -7,8 +7,13 @@ const nodemailer = require("nodemailer");
 
 const app = express();
 const port = process.env.PORT || 80;
-const publicDir = __dirname;
-const dataDir = process.env.DATA_DIR || path.join(__dirname, "data");
+// This module lives in lib/, so the project root (which holds webapp/ and data/)
+// is one level up. It must stay out of the project root: Vercel auto-detects a
+// root-level .js entrypoint and rejects this module for exporting an object
+// rather than a handler ("The default export must be a function or server").
+const projectRoot = path.join(__dirname, "..");
+const publicDir = projectRoot;
+const dataDir = process.env.DATA_DIR || path.join(projectRoot, "data");
 const dbPath = process.env.DATA_PATH || path.join(dataDir, "kiddiegpt-db.json");
 const tokenSecret = process.env.AUTH_TOKEN_SECRET || "dev_kiddiegpt_change_me";
 const tokenTtlMs = Number(process.env.AUTH_TOKEN_TTL_HOURS || 24) * 60 * 60 * 1000;

@@ -1,15 +1,15 @@
 // Vercel serverless entry — wraps the existing Express app.
 //
-// Local Docker keeps running app.js directly (long-lived process, file DB).
+// Local Docker keeps running lib/app.js directly (long-lived process, file DB).
 //
-// The Express app MUST NOT live in a file named server.{js,cjs,mjs,ts,...} at the
-// project root: Vercel auto-detects that name as a Node server entrypoint and
-// rejects it ("The default export must be a function or server") because the
-// module exports an object, not a handler. Hence app.js.
+// The Express app MUST live OUTSIDE the project root (hence lib/app.js): Vercel
+// auto-detects a root-level .js entrypoint and rejects it with "The default
+// export must be a function or server", because that module exports an object
+// rather than a handler. This file is the only entrypoint Vercel should see.
 // On Vercel every request invokes this handler: we ensure persistence is loaded
 // once (cold start), delegate to the Express app, then flush any pending
 // Postgres write before the function suspends.
-const { app, initPersistence, flushPending } = require("../app");
+const { app, initPersistence, flushPending } = require("../lib/app");
 
 let ready = null;
 
