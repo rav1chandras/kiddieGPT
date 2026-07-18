@@ -1577,15 +1577,30 @@ function markWebhookProcessed(db, eventId, type) {
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   const stripe = stripeClient();
   let event;
-  try {
-    if (stripe && process.env.STRIPE_WEBHOOK_SECRET) {
-      event = stripe.webhooks.constructEvent(req.body, req.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET);
-    } else {
-      event = JSON.parse(req.body.toString("utf8") || "{}");
+  if (stripe) {
+    // Live Stripe: signature verification is mandatory. If the webhook secret
+    // is missing we must FAIL CLOSED — the endpoint is public, so accepting an
+    // unsigned body would let anyone forge "checkout.session.completed" and mint
+    // free subscriptions. Never fall through to the trust-the-payload branch.
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      mutateDb((db) => monitor(db, "error", "stripe", "Webhook rejected: STRIPE_WEBHOOK_SECRET not set while Stripe is live", {}));
+      return res.status(500).json({ error: "Webhook signing secret is not configured." });
     }
-  } catch (error) {
-    mutateDb((db) => monitor(db, "error", "stripe", "Invalid Stripe webhook payload", { detail: error.message }));
-    return res.status(400).json({ error: "Invalid Stripe webhook signature or payload." });
+    try {
+      event = stripe.webhooks.constructEvent(req.body, req.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (error) {
+      mutateDb((db) => monitor(db, "error", "stripe", "Invalid Stripe webhook signature", { detail: error.message }));
+      return res.status(400).json({ error: "Invalid Stripe webhook signature." });
+    }
+  } else {
+    // Mock/dev only: no STRIPE_SECRET_KEY at all, so there is no signature to
+    // verify. Never reached in production (production always has a Stripe key).
+    try {
+      event = JSON.parse(req.body.toString("utf8") || "{}");
+    } catch (error) {
+      mutateDb((db) => monitor(db, "error", "stripe", "Invalid Stripe webhook payload", { detail: error.message }));
+      return res.status(400).json({ error: "Invalid Stripe webhook payload." });
+    }
   }
 
   // Idempotency: Stripe retries deliver the same event.id. Skip if already
