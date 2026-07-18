@@ -2483,7 +2483,43 @@ async function generateTutorVoiceV2() {
   }
 }
 
+// ---- Adult / off-limits site gate -------------------------------------------
+// KiddieGPT is a K-8/K-12 tool, so it refuses to read a page that is clearly not
+// schoolwork BEFORE any text or screenshot leaves the device. This is a cheap
+// first gate, not real protection: a URL list cannot classify the long tail. The
+// real net is server-side moderation of the extracted text (/api/ai/moderations).
+const BLOCKED_HOST_PATTERNS = [
+  /(^|\.)pornhub\./i, /(^|\.)xvideos\./i, /(^|\.)xnxx\./i, /(^|\.)xhamster\./i,
+  /(^|\.)redtube\./i, /(^|\.)youporn\./i, /(^|\.)spankbang\./i, /(^|\.)brazzers\./i,
+  /(^|\.)onlyfans\./i, /(^|\.)chaturbate\./i, /(^|\.)stripchat\./i, /(^|\.)fansly\./i,
+  /(^|\.)adultfriendfinder\./i, /(^|\.)nhentai\./i, /(^|\.)rule34\./i, /(^|\.)e-hentai\./i,
+  /(^|\.)literotica\./i, /(^|\.)bet365\./i, /(^|\.)stake\.com$/i, /(^|\.)draftkings\./i,
+  /\.xxx$/i, /\.adult$/i, /\.porn$/i, /\.sex$/i, /\.cam$/i
+];
+// Matched against the hostname only — never the path/query, so a school article
+// that merely mentions one of these words is not blocked.
+const BLOCKED_HOST_WORDS = /(^|[.-])(porn|xxx|hentai|escort|camgirl|nudes?|erotic|fetish|milf|nsfw)([.-]|$)/i;
+
+function isBlockedSiteUrl(url) {
+  let host = "";
+  try { host = new URL(String(url || "")).hostname; } catch { return false; }
+  if (!host) return false;
+  return BLOCKED_HOST_PATTERNS.some(re => re.test(host)) || BLOCKED_HOST_WORDS.test(host);
+}
+
+// True when the tab we are about to capture is off-limits. Used by the direct
+// captureVisibleTab paths, which never query the tab URL on their own.
+function activeTabIsBlocked() {
+  return new Promise(resolve => {
+    if (!extensionApi?.tabs?.query) { resolve(false); return; }
+    extensionApi.tabs.query({ active: true, currentWindow: true }, tabs => {
+      resolve(isBlockedSiteUrl(tabs?.[0]?.url || ""));
+    });
+  });
+}
+
 function activeTabIssueMessage(reason) {
+  if (reason === "blocked") return "KiddieGPT only helps with schoolwork, so it won't read this page. Open a learning page and try again.";
   if (reason === "noselection") return "Highlight some text on the page first, then press Explain — or tap the card to explain the whole page.";
   if (reason === "pdf") return "This tab is a PDF. Download it, then add it as a Local file so KiddieGPT can read it properly.";
   if (reason === "empty") return "KiddieGPT couldn't find readable text on this tab. Open a page with an article or story, or add a Local file.";
@@ -2506,6 +2542,11 @@ function getActiveTabContext(opts = {}) {
       const url = tab?.url || "";
       if (!tab?.id || !url || /^chrome:|^edge:|^about:/i.test(url)) {
         resolve({ title: tab?.title || "Active tab", url, text: "", usable: false, reason: "restricted" });
+        return;
+      }
+      // Refuse before injecting or reading anything — no page text leaves the device.
+      if (isBlockedSiteUrl(url)) {
+        resolve({ title: "", url: "", text: "", usable: false, reason: "blocked" });
         return;
       }
       if (/\.pdf($|[?#])/i.test(url) || /^file:/i.test(url)) {
@@ -5494,6 +5535,10 @@ async function captureMathProblemRegion() {
       captureMathVisibleTabFallback("Capturing the visible page instead...");
       return;
     }
+    if (isBlockedSiteUrl(tab.url)) {
+      updateMathCaptureCard("unavailable", activeTabIssueMessage("blocked"));
+      return;
+    }
     extensionApi.scripting.executeScript({
       target: { tabId: tab.id },
       func: injectSelectionOverlay,
@@ -5506,10 +5551,14 @@ async function captureMathProblemRegion() {
   });
 }
 
-function captureMathVisibleTabFallback(message = "Capturing the visible page for math...") {
+async function captureMathVisibleTabFallback(message = "Capturing the visible page for math...") {
   selectedMathFile = null;
   if (!extensionApi?.tabs?.captureVisibleTab) {
     updateMathCaptureCard("unavailable", "Capture is available after installing KiddieGPT as a Chrome extension.");
+    return;
+  }
+  if (await activeTabIsBlocked()) {
+    updateMathCaptureCard("unavailable", activeTabIssueMessage("blocked"));
     return;
   }
   updateMathCaptureCard("selecting", message);
@@ -5557,6 +5606,19 @@ function setExplainCaptureSelecting() {
   setScreenshotStatus("Selecting", "blue");
 }
 
+// Off-limits page: refuse without capturing, and make sure nothing stale is kept.
+function showExplainBlocked() {
+  selectedExplainCapture = null;
+  const preview = document.getElementById("screenshotPreview");
+  if (preview) {
+    preview.classList.remove("selecting", "captured");
+    preview.innerHTML = `<span class="math-capture-icon">!</span><div><b>Not a schoolwork page</b><small>${escapeHtml(activeTabIssueMessage("blocked"))}</small></div>`;
+  }
+  const observation = document.getElementById("screenshotObservation");
+  if (observation) observation.textContent = activeTabIssueMessage("blocked");
+  setScreenshotStatus("Blocked", "warn");
+}
+
 function captureExplainRegion() {
   setToolSource("explain", "screenshot");
   regionCaptureTarget = "explain";
@@ -5568,6 +5630,7 @@ function captureExplainRegion() {
   extensionApi.tabs.query({ active: true, currentWindow: true }, tabs => {
     const tab = tabs?.[0];
     if (!tab?.id) { captureVisibleTab(); return; }
+    if (isBlockedSiteUrl(tab.url)) { showExplainBlocked(); return; }
     extensionApi.scripting.executeScript({
       target: { tabId: tab.id },
       func: injectSelectionOverlay,
@@ -5592,10 +5655,11 @@ function finishExplainRegionCapture(rect) {
   });
 }
 
-function captureVisibleTab() {
+async function captureVisibleTab() {
   showPanel("screenshot");
   setToolSource("explain", "screenshot");
   setScreenshotStatus("Capturing", "blue");
+  if (await activeTabIsBlocked()) { showExplainBlocked(); return; }
 
   if (!extensionApi?.tabs?.captureVisibleTab) {
     setScreenshotStatus("Unavailable", "warn");
