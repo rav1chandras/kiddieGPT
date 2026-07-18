@@ -5,5 +5,10 @@
       "path": "/api/cron/sweep",
       "schedule": "0 3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "server.js": {
+      "includeFiles": "{webapp,icons}/**"
+    }
+  }
 }
