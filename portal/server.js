@@ -5291,7 +5291,11 @@ app.use(express.static(publicDir, {
   }
 }));
 
-ensureDb();
+// NOTE: do not initialise persistence at module load. Requiring this module must
+// stay side-effect free: on Vercel the filesystem is read-only, so a top-level
+// ensureDb() crashed the function with EROFS before DB_DRIVER was ever consulted.
+// Both entry points initialise explicitly instead — startServer() locally and
+// api/index.js on Vercel, each via initPersistence(), which picks file vs postgres.
 
 // ---- Autopilot engine ------------------------------------------------------
 function defaultAutopilotRules() {
