@@ -27,9 +27,13 @@ const storageFallback = "kiddiegptSettings";
 const PORTAL_TOKEN_KEY = "kiddiegptPortalToken";
 const PORTAL_EMAIL_KEY = "kiddiegptPortalEmail";
 const PORTAL_CHILD_KEY = "kiddiegptPortalChildId";
+// Deployed portal host — the ONE place to change when the custom domain
+// (app.kiddiegpt.com) is attached. Local dev overrides it via local-settings.js
+// (portalBaseUrl), which must never ship in the Web Store build.
+const PORTAL_BASE_URL = "https://kiddiegpt1.vercel.app";
 function portalBaseUrl() {
   const override = (globalThis.KIDDIEGPT_LOCAL_SETTINGS || {}).portalBaseUrl;
-  return String(override || "https://app.kiddiegpt.com").replace(/\/+$/, "");
+  return String(override || PORTAL_BASE_URL).replace(/\/+$/, "");
 }
 let portalToken = "";
 let portalSession = null; // { email, entitled, status, plan, familyId, childId, children, locked }

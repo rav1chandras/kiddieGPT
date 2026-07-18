@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "KiddieGPT",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Smart help. Clear answers. Better learning for kids.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "scripting", "sidePanel"],
-  "host_permissions": ["<all_urls>", "https://app.kiddiegpt.com/*", "https://api.openai.com/*"],
+  "host_permissions": ["<all_urls>", "https://kiddiegpt1.vercel.app/*", "https://app.kiddiegpt.com/*", "https://api.openai.com/*"],
   "action": {
     "default_title": "Open KiddieGPT",
     "default_icon": {
