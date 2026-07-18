@@ -1,14 +1,14 @@
 // Single entrypoint for both local Docker and Vercel.
 //
 // Vercel's Node runtime looks for a root-level entrypoint (app|index|server).*
-// and captures the HTTP server created here — listen() must be called during
-// module startup, so it is called synchronously below rather than after any
-// await. Local Docker runs this same file via `npm start`.
+// that imports express, and captures the HTTP server it starts — listen() must
+// run during module startup, so it is called synchronously below rather than
+// after any await. Local Docker runs this same file via `npm start`.
 //
 // The Express app itself lives in lib/app.js, deliberately OUTSIDE the project
 // root: that module exports an object, and Vercel would reject it as an
 // entrypoint ("The default export must be a function or server").
-const http = require("http");
+const express = require("express");
 const { app, initPersistence, flushPending, runLifecycleSweep } = require("./lib/app");
 
 const port = Number(process.env.PORT || 3000);
@@ -21,21 +21,24 @@ const SWEEP_INTERVAL_MINUTES = Number(process.env.SWEEP_INTERVAL_MINUTES || 360)
 const ready = initPersistence();
 ready.catch((error) => console.error("Persistence init failed:", error.message));
 
-const server = http.createServer((req, res) => {
+const server = express();
+
+// Registered before the app is mounted, so every request waits for persistence.
+server.use((req, res, next) => {
   ready.then(
     () => {
       // Vercel may suspend the instance once a response finishes, so make sure
       // any queued Postgres write has landed first. No-op for the file driver.
       res.on("finish", () => { flushPending().catch(() => {}); });
-      app(req, res);
+      next();
     },
     (error) => {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: `Server not ready: ${error.message}` }));
+      res.status(500).json({ error: `Server not ready: ${error.message}` });
     }
   );
 });
+
+server.use(app);
 
 server.listen(port, () => {
   console.log(`KiddieGPT portal listening on ${port}`);
