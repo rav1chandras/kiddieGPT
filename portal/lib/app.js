@@ -3339,6 +3339,34 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   }
 });
 
+// Content safety for the extension, which screens both student input and model
+// output through here before showing anything.
+//
+// Deliberately returns 503 — not 200 { flagged: false } — when the check cannot
+// run. The extension fails CLOSED on a non-OK response, so collapsing an outage
+// into "clean" would silently let unscreened text through, which is the opposite
+// of what a kids product wants. Moderation does not count against usage caps: a
+// safety check should never be rationed.
+app.post("/api/ai/moderations", requireParent, async (req, res) => {
+  const input = String(req.body?.input || "").trim();
+  if (!input) return res.json({ flagged: false, categories: [] });
+  const db = readDb();
+  const settings = normaliseAiSettings(db.aiSettings);
+  const family = parentFamilyForIdentity(db, req.auth);
+  if (!settings.openaiApiKey) return res.status(503).json({ error: "ai_not_configured" });
+  if (!isFamilyEntitled(family)) return res.status(402).json({ error: "subscription_inactive" });
+  try {
+    const { flagged, categories } = await moderationCheck(settings.openaiApiKey, input);
+    if (flagged) {
+      mutateDb((store) => monitor(store, "warning", "safety", "Moderation flagged content", { email: family?.email || "", categories }, family?.email || ""));
+    }
+    return res.json({ flagged, categories });
+  } catch (error) {
+    mutateDb((store) => monitor(store, "error", "safety", "Moderation check failed", { detail: String(error.message || error) }, req.auth.email));
+    return res.status(503).json({ error: "moderation_unavailable" });
+  }
+});
+
 // ---- QR phone-capture --------------------------------------------------------
 // A student photographs a physical-book math problem with their phone; the portal
 // transcribes the image -> text (vision only, no solving) and hands the text to
@@ -3370,16 +3398,30 @@ function safeParseJson(raw) {
   const text = String(raw).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try { return JSON.parse(text); } catch { return null; }
 }
+// Throws if the check could not be performed. Callers that must fail CLOSED
+// (POST /api/ai/moderations) have to tell "checked and clean" apart from "could
+// not check" — moderationFlagged() below deliberately collapses that distinction.
+async function moderationCheck(apiKey, text) {
+  if (!apiKey) throw new Error("moderation_not_configured");
+  const r = await fetch("https://api.openai.com/v1/moderations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: "omni-moderation-latest", input: String(text).slice(0, 4000) })
+  });
+  if (!r.ok) throw new Error(`moderation_upstream_${r.status}`);
+  const d = await r.json().catch(() => ({}));
+  const result = d.results && d.results[0];
+  if (!result) throw new Error("moderation_malformed_response");
+  return {
+    flagged: Boolean(result.flagged),
+    categories: Object.keys(result.categories || {}).filter((key) => result.categories[key])
+  };
+}
+
 async function moderationFlagged(apiKey, text) {
   if (!apiKey || !text) return false;
   try {
-    const r = await fetch("https://api.openai.com/v1/moderations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: "omni-moderation-latest", input: String(text).slice(0, 4000) })
-    });
-    const d = await r.json().catch(() => ({}));
-    return Boolean(d.results && d.results[0] && d.results[0].flagged);
+    return (await moderationCheck(apiKey, text)).flagged;
   } catch { return false; } // fail-open: don't block a kid's math on a moderation outage
 }
 
