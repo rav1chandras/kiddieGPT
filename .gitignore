@@ -30,3 +30,6 @@ node_modules/
 .DS_Store
 .claude/
 *.log
+
+# Extension build output (Web Store zips)
+extension/dist/
