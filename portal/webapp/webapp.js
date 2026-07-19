@@ -2441,7 +2441,10 @@
     var search = document.getElementById("family-search");
     var statusFilter = document.getElementById("status-filter");
     var lockedFilter = document.getElementById("locked-filter");
-    var hideDeletedFilter = document.getElementById("hide-deleted-filter");
+    var maxAiFilter = document.getElementById("max-ai-filter");
+    var paidDateFilter = document.getElementById("paid-date-filter");
+    var deletedDateFilter = document.getElementById("deleted-date-filter");
+    var trialForm = document.getElementById("trial-form");
     var paymentSearch = document.getElementById("payment-search");
     var paymentStatusFilter = document.getElementById("payment-status-filter");
     var paymentPlanFilter = document.getElementById("payment-plan-filter");
@@ -2622,14 +2625,18 @@
       var query = search.value.trim().toLowerCase();
       var status = statusFilter.value;
       var lockedOnly = lockedFilter ? lockedFilter.checked : false;
-      var hideDeleted = hideDeletedFilter ? hideDeletedFilter.checked : false;
+      var maxAiOnly = maxAiFilter ? maxAiFilter.checked : false;
+      var paidWindow = paidDateFilter ? paidDateFilter.value : "all";
       return readFamilies().filter(function (family) {
+        // Deleted accounts live on the Deleted tab and never appear here.
+        if (familyDeleted(family)) return false;
         var haystack = [family.parentName, family.email, family.studentName, family.grade, family.readingLevel, familyLoginType(family)].join(" ").toLowerCase();
         var matchesQuery = !query || haystack.indexOf(query) >= 0;
         var matchesStatus = status === "all" || family.subscriptionStatus === status;
         var matchesLocked = !lockedOnly || familyLocked(family);
-        var matchesDeleted = !hideDeleted || !familyDeleted(family);
-        return matchesQuery && matchesStatus && matchesLocked && matchesDeleted;
+        var matchesMaxAi = !maxAiOnly || familyMaxedAi(family);
+        var matchesPaid = withinDateWindow(familyPaidAt(family), paidWindow);
+        return matchesQuery && matchesStatus && matchesLocked && matchesMaxAi && matchesPaid;
       });
     }
 
@@ -3159,7 +3166,38 @@
     }
 
     function familyLoginType(family) {
-      return family.loginType || "Parent";
+      // Name the credential actually used. "Parent" was the old catch-all.
+      var type = family.loginType || "";
+      if (type === "Google") return "Google";
+      if (type === "Deleted") return "Deleted";
+      return "Email";
+    }
+
+    // Accounts that have tripped the account-level AI token ceiling.
+    function familyMaxedAi(family) {
+      return Number((family.abuse || {}).capHits || 0) > 0;
+    }
+
+    // Shortcut date windows shared by the paid-date and deleted-date filters.
+    function withinDateWindow(value, mode) {
+      if (!mode || mode === "all") return true;
+      var time = value ? new Date(value).getTime() : 0;
+      if (!time || !Number.isFinite(time)) return false;
+      var now = new Date();
+      if (mode === "ytd") return time >= new Date(now.getFullYear(), 0, 1).getTime();
+      if (mode === "week") {
+        var start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - start.getDay());
+        return time >= start.getTime();
+      }
+      var days = Number(mode) || 0;
+      return days ? time >= Date.now() - days * 86400000 : true;
+    }
+
+    // Date a family last paid — what the paid-date shortcut filters on.
+    function familyPaidAt(family) {
+      return family.lastPaymentAt || family.trialStartedAt || family.createdAt || "";
     }
 
     function familyById(familyId) {
@@ -4120,6 +4158,9 @@
       var deleteQueue = deletionRequests(families);
       var pendingDeletes = deleteQueue.filter(function (family) { return deletionStatus(family) === "requested"; });
       var anonymizedDeletes = deleteQueue.filter(function (family) { return deletionStatus(family) === "anonymized"; });
+      var trialFamilies = families.filter(function (family) {
+        return family.subscriptionStatus === "trial" || family.trialStartedAt;
+      });
       var actions = adminActions(families);
       var activationCount = families.filter(function (family) {
         return family.subscriptionStatus === "active" && childrenOf(family).length > 0;
@@ -4152,18 +4193,15 @@
       setMetric("log-email-count", emailLogsCache.length);
       setMetric("monitor-count", monitorEventsCache.length);
       setMetric("monitor-error-count", monitorEventsCache.filter(function (event) { return event.severity === "error"; }).length + " errors");
-      setMetric("delete-request-count", pendingDeletes.length);
-      setMetric("anonymized-count", anonymizedDeletes.length);
-      setMetric("delete-locked-count", pendingDeletes.filter(function (family) { return familyLocked(family); }).length);
       setMetric("family-toggle-accounts", families.length);
       setMetric("family-toggle-deletions", pendingDeletes.length);
+      setMetric("family-toggle-trials", trialFamilies.length);
       familyTableButtons.forEach(function (button) {
         button.classList.toggle("active", button.dataset.familyTable === activeFamilyTable);
       });
       familyTablePanels.forEach(function (panel) {
         panel.hidden = panel.dataset.familyTablePanel !== activeFamilyTable;
       });
-      setMetric("next-deleted-email", nextDeletedEmailPreview());
       renderAiSettings();
 
       var healthChip = document.getElementById("business-health-chip");
@@ -4205,6 +4243,9 @@
           "<td>" + studentCount + "</td>" +
           "<td>" + planType + "</td>" +
           "<td>" + statusChip(locked ? "locked" : family.subscriptionStatus) + "</td>" +
+          "<td>" + (familyMaxedAi(family)
+            ? "<span class='state-chip warning'>Maxed &times;" + Number((family.abuse || {}).capHits || 0) + "</span>"
+            : "<span class='muted-cell'>—</span>") + "</td>" +
           "<td>" + text(familyNextRenewal(family)) + "</td>" +
           "<td>" + text(shortDate(family.createdAt)) + "</td>" +
           "<td>" + rowDateTime(family.lastLoginAt) + "</td>" +
@@ -4214,7 +4255,7 @@
             "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-user-subscription-toggle data-family-id='" + rowId + "' data-subscription-action='" + (subscriptionActive ? "end" : "start") + "'" + (deleted ? " disabled" : "") + ">" + (subscriptionActive ? "Pause" : "Start") + "</button>" +
           "</div></td>" +
         "</tr>" +
-        "<tr class='family-detail-row' data-family-detail='" + rowId + "' hidden><td colspan='12'>" + detail + "</td></tr>";
+        "<tr class='family-detail-row' data-family-detail='" + rowId + "' hidden><td colspan='13'>" + detail + "</td></tr>";
       }));
 
       populateExceptionFamilies();
@@ -4372,7 +4413,7 @@
         return "<tr><td><strong>" + text(family.parentName) + "</strong><small>" + text(family.email) + "</small></td><td>" + reason + "</td><td>" + offer + "</td><td>" + statusChip(family.subscriptionStatus) + "</td><td><button type='button' class='table-action' data-retention-email='" + familyRowId(family) + "'>Send save</button></td></tr>";
       }));
 
-      renderRows("deletion-table", deleteQueue.length ? deleteQueue.map(function (family) {
+      renderRows("deletion-table", pendingDeletes.length ? pendingDeletes.map(function (family) {
         var rowId = familyRowId(family);
         var child = childrenOf(family)[0] || family;
         var status = deletionStatus(family);
@@ -4389,7 +4430,35 @@
           "<td>" + statusChip(status) + (familyLocked(family) ? "<small>Access locked</small>" : "<small>Lock before processing</small>") + "</td>" +
           "<td>" + billingRefs + "</td>" +
         "</tr>";
-      }) : ["<tr><td colspan='6'><div class='empty-state'>No deletion requests yet.</div></td></tr>"]);
+      }) : ["<tr><td colspan='6'><div class='empty-state'>No active deletion requests.</div></td></tr>"]);
+
+      // Completed deletions, filtered by when they were anonymized.
+      var deletedWindow = deletedDateFilter ? deletedDateFilter.value : "all";
+      var deletedRows = anonymizedDeletes.filter(function (family) {
+        return withinDateWindow(family.anonymizedAt || family.deletionCompletedAt, deletedWindow);
+      });
+      renderRows("deleted-table", deletedRows.length ? deletedRows.map(function (family) {
+        var billingRefs = [family.stripeCustomerId, family.stripeSubscriptionId].filter(Boolean).map(escapeHtml).join("<small></small>") || "-";
+        return "<tr>" +
+          "<td>" + escapeHtml(text(family.email || family.deletedEmail)) + "</td>" +
+          "<td>" + escapeHtml(text(family.plan || moneyPlan())) + "</td>" +
+          "<td>" + rowDateTime(family.deletionRequestedAt) + "</td>" +
+          "<td>" + rowDateTime(family.anonymizedAt || family.deletionCompletedAt) + "</td>" +
+          "<td>" + billingRefs + "</td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='5'><div class='empty-state'>No deleted accounts in this period.</div></td></tr>"]);
+
+      renderRows("trial-table", trialFamilies.length ? trialFamilies.map(function (family) {
+        var live = family.subscriptionStatus === "trial" && new Date(family.trialEndsAt || 0).getTime() > Date.now();
+        return "<tr>" +
+          "<td>" + escapeHtml(text(family.parentName)) + "</td>" +
+          "<td>" + escapeHtml(text(family.email)) + "</td>" +
+          "<td>" + (Number(family.trialDays) || 0) + " days</td>" +
+          "<td>" + rowDateTime(family.trialStartedAt) + "</td>" +
+          "<td>" + rowDateTime(family.trialEndsAt) + "</td>" +
+          "<td>" + statusChip(live ? "active" : family.subscriptionStatus) + "</td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='6'><div class='empty-state'>No trial accounts yet.</div></td></tr>"]);
 
       renderMarkup("privacy-rules", [
         ruleMarkup("Lock account first", "Parent deletion request locks extension access immediately while admin reviews billing.", "active", "lock"),
@@ -4469,7 +4538,41 @@
     search.addEventListener("input", renderAdmin);
     statusFilter.addEventListener("change", renderAdmin);
     if (lockedFilter) lockedFilter.addEventListener("change", renderAdmin);
-    if (hideDeletedFilter) hideDeletedFilter.addEventListener("change", renderAdmin);
+    if (trialForm) {
+      trialForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        var state = document.getElementById("trial-form-state");
+        var setState = function (label, cls) {
+          if (!state) return;
+          state.textContent = label;
+          state.className = "state-chip " + (cls || "ready");
+        };
+        setState("Starting", "warning");
+        try {
+          var response = await apiFetch("/api/admin/trials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: trialForm.elements.name.value.trim(),
+              email: trialForm.elements.email.value.trim(),
+              days: Number(trialForm.elements.days.value)
+            })
+          });
+          var result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not start the trial.");
+          trialForm.reset();
+          setState("Trial started", "ok");
+          await loadBackendState();
+          renderAdmin();
+        } catch (error) {
+          setState(error.message || "Could not start", "error");
+        }
+      });
+    }
+
+    if (maxAiFilter) maxAiFilter.addEventListener("change", renderAdmin);
+    if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
+    if (deletedDateFilter) deletedDateFilter.addEventListener("change", renderAdmin);
     if (paymentSearch) paymentSearch.addEventListener("input", renderAdmin);
     if (paymentStatusFilter) paymentStatusFilter.addEventListener("change", renderAdmin);
     if (paymentPlanFilter) paymentPlanFilter.addEventListener("change", renderAdmin);

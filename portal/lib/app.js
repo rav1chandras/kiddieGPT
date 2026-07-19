@@ -731,7 +731,13 @@ function normaliseFamily(family) {
   next.id = next.id || makeId("fam");
   next.parentName = next.parentName || "Parent";
   next.email = String(next.email || "").toLowerCase();
-  next.loginType = next.loginType || "Parent";
+  // Login type is shown to the operator, so it names the credential actually
+  // used: "Google" for OAuth, "Email" for password/OTP. "Parent" was the old
+  // catch-all and carries no information — fold it into Email.
+  next.loginType = next.loginType && next.loginType !== "Parent" ? next.loginType : "Email";
+  next.trialEndsAt = next.trialEndsAt || "";
+  next.trialDays = Math.max(0, Number(next.trialDays) || 0);
+  next.trialStartedAt = next.trialStartedAt || "";
   next.plan = next.plan || "Family Monthly";
   next.subscriptionStatus = next.subscriptionStatus || "pending";
   next.paymentStatus = next.paymentStatus || (next.subscriptionStatus === "active" ? "paid" : "pending");
@@ -1897,6 +1903,14 @@ function escHtml(value) {
 function emailBaseUrl() {
   return String(process.env.PUBLIC_ORIGIN || "https://app.kiddiegpt.com").replace(/\/+$/, "");
 }
+// Templates receive ISO timestamps from live sends but friendly strings from the
+// preview sample, so render ISO readably and pass anything else through.
+function emailDate(value) {
+  const text = String(value || "");
+  const time = Date.parse(text);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(text) || Number.isNaN(time)) return text;
+  return new Date(time).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+}
 const EMAIL_SIGNOFF = "— The KiddieGPT Team";
 
 function renderEmailShell(o) {
@@ -1928,7 +1942,7 @@ ${o.signoff ? `<p style="margin:8px 0 0;color:#6a827d;font-size:14px">${escHtml(
 const EMAIL_SAMPLE = {
   parentName: "Meena Ravi", childName: "Ava", planName: "Family Monthly", amount: "$19.00",
   date: "August 14, 2026", nextDate: "August 14, 2027", code: "402913", bonusMonths: 3,
-  discountPercent: 20, email: "meena@example.com",
+  discountPercent: 20, email: "meena@example.com", trialDays: 14, trialEndsAt: "August 28, 2026",
   supportReply: "Yes — the Family plan covers up to 3 children. Open the Student tab to add another profile."
 };
 
@@ -1980,6 +1994,12 @@ const EMAIL_TEMPLATES = [
   { key: "deletion_requested", name: "Deletion requested", stage: "Support & account", subject: () => "We received your deletion request",
     build: (d) => ({ chip: "Account", title: "We received your request", greeting: `Hi ${d.parentName},`, paragraphs: ["We've received your account deletion request. Extension access is now locked while we process it. Billing records are kept only as required for support and tax.", "If this was a mistake, contact support and we'll stop the deletion."], ctaText: "Contact support", ctaUrl: emailBaseUrl() }) },
 
+  { key: "trial_started", name: "Free trial started", stage: "Free trial", subject: (d) => `Your ${d.trialDays}-day KiddieGPT trial is live`,
+    build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b> — no card needed.`, "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
+  { key: "trial_ending", name: "Free trial ending soon", stage: "Free trial", subject: () => "Your KiddieGPT trial ends soon",
+    build: (d) => ({ chip: "Ending soon", title: "Your trial ends in a few days", greeting: `Hi ${d.parentName},`, paragraphs: [`Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>. Pick a plan to keep your child's tools unlocked — their profiles and progress stay exactly as they are.`], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
+  { key: "trial_ended", name: "Free trial ended", stage: "Free trial", subject: () => "Your KiddieGPT trial has ended",
+    build: (d) => ({ chip: "Ended", title: "Your free trial has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["The extension tools are locked for now. Your child's profiles, goals, and progress are saved — choose a plan anytime to pick up where they left off."], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
     build: (d) => ({ chip: "New", title: "New paid family 🎉", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
   { key: "op_new_support", name: "New support message (internal)", stage: "Operator", subject: () => "New support message",
@@ -2678,6 +2698,66 @@ app.get("/api/admin/state", requireAdmin, (req, res) => {
   res.json({ families: db.families, pricing: db.pricing, deletedUserSequence: Number(db.deletedUserSequence || 0), payments: db.payments.slice(0, 100), auditLogs: db.auditLogs.slice(0, 300), emailLogs: db.emailLogs.slice(0, 100), monitorEvents: (db.monitorEvents || []).slice(0, 100) });
 });
 
+// ---- Free trials ------------------------------------------------------------
+// Operator-granted trial: creates (or converts) a family that is entitled until
+// trialEndsAt, with no card on file. The nightly sweep expires it; entitlement
+// also checks the timestamp directly so access ends on time regardless.
+const TRIAL_DAY_OPTIONS = [7, 14];
+
+app.post("/api/admin/trials", requireAdmin, async (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  const email = normalizeEmail(req.body?.email);
+  const days = TRIAL_DAY_OPTIONS.includes(Number(req.body?.days)) ? Number(req.body.days) : 0;
+  if (!name) return res.status(400).json({ error: "Name is required." });
+  if (!isAllowedParentEmail(email)) return res.status(400).json({ error: parentEmailError(email) });
+  if (!days) return res.status(400).json({ error: `Trial length must be one of: ${TRIAL_DAY_OPTIONS.join(", ")} days.` });
+
+  const startedAt = nowIso();
+  const endsAt = new Date(Date.now() + days * 86400000).toISOString();
+  const result = mutateDb((db) => {
+    const existing = db.families.find((item) => item.email === email);
+    if (existing && !existing.anonymizedAt) {
+      // Never silently downgrade a paying customer into a trial.
+      if (existing.subscriptionStatus === "active") return { error: "That account already has an active subscription." };
+      if (trialStillActive(existing)) return { error: "That account is already on a trial." };
+    }
+    const family = existing && !existing.anonymizedAt ? existing : normaliseFamily({ parentName: name, email, loginType: "Email" });
+    family.parentName = name || family.parentName;
+    family.plan = "Free Trial";
+    family.subscriptionStatus = "trial";
+    family.paymentStatus = "trial";
+    family.accountLocked = false;
+    family.trialStartedAt = startedAt;
+    family.trialEndsAt = endsAt;
+    family.trialDays = days;
+    if (!existing || existing.anonymizedAt) db.families.unshift(family);
+    if (!db.users.some((item) => item.email === email && item.role === "parent")) {
+      db.users.push({
+        id: makeId("usr"),
+        role: "parent",
+        name,
+        email,
+        familyId: family.id,
+        emailVerified: true,
+        passwordHash: hashPassword(crypto.randomBytes(18).toString("hex")),
+        createdAt: startedAt
+      });
+    }
+    audit(db, "trial.create", { familyId: family.id, email, days, endsAt }, req.auth?.email);
+    monitor(db, "info", "billing", "Free trial granted", { email, days, endsAt }, email);
+    return { family };
+  });
+  if (result.error) return res.status(409).json({ error: result.error });
+
+  const tpl = renderTemplate("trial_started", { parentName: name, trialDays: days, trialEndsAt: endsAt });
+  try {
+    await sendEmail({ to: email, template: "Trial started", subject: tpl.subject, html: tpl.html, message: tpl.text });
+  } catch (error) {
+    mutateDb((db) => monitor(db, "warning", "email", "Trial start email failed", { email, detail: String(error.message || error) }, email));
+  }
+  return res.json({ ok: true, familyId: result.family.id, email, days, trialEndsAt: endsAt });
+});
+
 // Dismiss abuse alerts. Marks signals reviewed rather than deleting them: the
 // counters stay for history, and a family only re-flags on a NEW signal.
 // Pass { familyId } to clear one account, omit it to clear all flagged ones.
@@ -3338,9 +3418,18 @@ app.get("/api/admin/logs/digest", requireAdmin, async (req, res) => {
 });
 
 // ---- AI proxy (portal holds the OpenAI key; extension never sees it) --------
+// A free trial entitles the family until trialEndsAt. The nightly sweep flips
+// expired trials to "expired", but entitlement is checked against the timestamp
+// too so access ends on time even if the sweep has not run yet.
+function trialStillActive(family) {
+  if (family?.subscriptionStatus !== "trial") return false;
+  const endsAt = new Date(family.trialEndsAt || 0).getTime();
+  return Number.isFinite(endsAt) && endsAt > Date.now();
+}
+
 function isFamilyEntitled(family) {
   if (!family || family.accountLocked) return false;
-  return family.subscriptionStatus === "active" || cancellationStillActive(family) || hasActiveOverride(family);
+  return family.subscriptionStatus === "active" || cancellationStillActive(family) || trialStillActive(family) || hasActiveOverride(family);
 }
 
 app.post("/api/ai/responses", requireParent, async (req, res) => {
@@ -4071,7 +4160,9 @@ app.get("/api/entitlements/me", (req, res) => {
     return res.status(404).json({ active: false, reason: "family_not_found" });
   }
   const overrideActive = hasActiveOverride(family);
-  const active = (family.subscriptionStatus === "active" || cancellationStillActive(family) || overrideActive) && !family.accountLocked;
+  // Single source of truth — this used to re-implement the rule inline and drifted
+  // (it missed free trials, so a trialling family reported active: false).
+  const active = isFamilyEntitled(family);
   // Admin-controlled tutor voice policy — the extension builds its student voice
   // picker (shortlist + default) from these fields on the session.
   const voiceSettings = normaliseAiSettings(readDb().aiSettings);
@@ -5524,6 +5615,10 @@ function winbackMessage() {
   return "We'd love to have your family back on KiddieGPT. Reactivate any time to restore your child's tools — their profiles and goals are still saved.";
 }
 
+function trialEndedMessage(family) {
+  return renderTemplate("trial_ended", { parentName: family?.parentName || "there", trialEndsAt: family?.trialEndsAt || "" }).text;
+}
+
 function weeklySummaryMessage(family) {
   const lines = (Array.isArray(family.children) ? family.children : []).map((child) => {
     const week = usageWindow(child, 7);
@@ -5628,8 +5723,22 @@ async function runLifecycleSweep(trigger = "cron") {
     let nudged = 0;
     let winbacks = 0;
     let summaries = 0;
+    let trialsEnded = 0;
     (db.families || []).forEach((family) => {
       if (family.anonymizedAt || family.deletionRequestedAt) return;
+
+      // --- Free trial expiry ---
+      // Trials end themselves: no card is on file, so there is nothing to charge
+      // and the account simply loses access.
+      if (family.subscriptionStatus === "trial" && family.trialEndsAt && new Date(family.trialEndsAt).getTime() <= now) {
+        family.subscriptionStatus = "expired";
+        family.paymentStatus = "unpaid";
+        family.trialEndedAt = nowIso();
+        trialsEnded += 1;
+        audit(db, "trial.expired", { familyId: family.id, email: family.email }, "autopilot");
+        queueEmail(family, "Trial ended", trialEndedMessage(family));
+        return;
+      }
 
       // --- Dunning ---
       if (family.dunning && family.dunning.failedAt) {
@@ -5698,7 +5807,7 @@ async function runLifecycleSweep(trigger = "cron") {
       }
     });
     monitor(db, "info", "autopilot", "Lifecycle sweep ran", { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries });
-    return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, emailsQueued: emailsToSend.length };
+    return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, trialsEnded, emailsQueued: emailsToSend.length };
   });
   for (const item of emailsToSend) {
     await sendLifecycleEmail(item.family, item.template, item.message);

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=121">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=122">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -130,7 +130,8 @@
       <section class="admin-view" data-admin-panel="families">
         <div class="payment-table-toggle" role="tablist" aria-label="Family views">
           <button class="active" type="button" data-family-table="accounts">Accounts <span id="family-toggle-accounts">0</span></button>
-          <button type="button" data-family-table="deletions">Deletion requests <span id="family-toggle-deletions">0</span></button>
+          <button type="button" data-family-table="deletions">Deleted <span id="family-toggle-deletions">0</span></button>
+          <button type="button" data-family-table="trials">Free Trial <span id="family-toggle-trials">0</span></button>
         </div>
 
         <div data-family-table-panel="accounts">
@@ -150,13 +151,20 @@
                   <option value="cancel_scheduled">Cancel scheduled</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
+                <select id="paid-date-filter" aria-label="Filter by paid date">
+                  <option value="all">All paid dates</option>
+                  <option value="week">This week</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="60">Last 60 days</option>
+                  <option value="ytd">Year to date</option>
+                </select>
                 <label class="locked-filter"><input id="locked-filter" type="checkbox">Locked</label>
-                <label class="locked-filter"><input id="hide-deleted-filter" type="checkbox" checked>Hide deleted</label>
+                <label class="locked-filter"><input id="max-ai-filter" type="checkbox">Max AI usage accounts</label>
               </div>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>AI limit</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
               </table>
             </div>
@@ -164,21 +172,77 @@
         </div>
 
         <div data-family-table-panel="deletions" hidden>
-          <div class="admin-stat-grid privacy-kpis">
-            <article><span>Pending deletions</span><strong id="delete-request-count">0</strong><small>Parent-initiated deletions</small></article>
-            <article><span>Anonymized</span><strong id="anonymized-count">0</strong><small>Local PII removed</small></article>
-            <article><span>Locked by request</span><strong id="delete-locked-count">0</strong><small>Access blocked while pending</small></article>
-            <article><span>Next deleted email</span><strong id="next-deleted-email">deleted_user_00001</strong><small>@deleted.local</small></article>
-          </div>
           <article class="admin-table-card">
             <div class="admin-card-head">
-              <div><p class="eyebrow">Privacy</p><h2>Account deletion requests</h2></div>
+              <div><p class="eyebrow">Privacy</p><h2>Active deletion requests</h2></div>
               <span class="state-chip ready" id="privacy-action-state">Ready</span>
             </div>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>Parent</th><th>Student</th><th>Plan</th><th>Request date</th><th>Status</th><th>Billing references</th></tr></thead>
                 <tbody id="deletion-table"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Privacy</p><h2>Deleted accounts</h2></div>
+              <div class="admin-filters">
+                <select id="deleted-date-filter" aria-label="Filter by deleted date">
+                  <option value="all">All deleted dates</option>
+                  <option value="week">This week</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="60">Last 60 days</option>
+                  <option value="ytd">Year to date</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Anonymized email</th><th>Plan</th><th>Requested</th><th>Deleted</th><th>Billing references</th></tr></thead>
+                <tbody id="deleted-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div data-family-table-panel="trials" hidden>
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Free trial</p><h2>Grant a trial</h2></div>
+              <span class="state-chip ready" id="trial-form-state">Ready</span>
+            </div>
+            <form class="pricing-section-grid" id="trial-form">
+              <label>Parent name
+                <input type="text" name="name" placeholder="Parent full name" required>
+                <small>Shown in the welcome email.</small>
+              </label>
+              <label>Email
+                <input type="email" name="email" placeholder="parent@gmail.com" required>
+                <small>Must be a permitted parent email domain.</small>
+              </label>
+              <label>Trial length
+                <select name="days">
+                  <option value="7">7 days</option>
+                  <option value="14" selected>14 days</option>
+                </select>
+                <small>Access ends automatically — no card is taken.</small>
+              </label>
+              <div class="pricing-actions">
+                <button class="button primary" type="submit">Start trial</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Free trial</p><h2>Trial accounts</h2></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Length</th><th>Started</th><th>Ends</th><th>Status</th></tr></thead>
+                <tbody id="trial-table"></tbody>
               </table>
             </div>
           </article>
@@ -650,6 +714,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=121"></script>
+  <script src="/webapp/webapp.js?v=122"></script>
 </body>
 </html>
