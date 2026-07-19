@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=122">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=124">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -150,6 +150,9 @@
                   <option value="paused">Paused</option>
                   <option value="cancel_scheduled">Cancel scheduled</option>
                   <option value="cancelled">Cancelled</option>
+                  <option value="trial">Trial</option>
+                  <option value="expired">Expired</option>
+                  <option value="past_due">Past due</option>
                 </select>
                 <select id="paid-date-filter" aria-label="Filter by paid date">
                   <option value="all">All paid dates</option>
@@ -241,7 +244,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Length</th><th>Started</th><th>Ends</th><th>Status</th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Length</th><th>Started</th><th>Ends</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody id="trial-table"></tbody>
               </table>
             </div>
@@ -714,6 +717,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=122"></script>
+  <script src="/webapp/webapp.js?v=124"></script>
 </body>
 </html>

@@ -2758,6 +2758,31 @@ app.post("/api/admin/trials", requireAdmin, async (req, res) => {
   return res.json({ ok: true, familyId: result.family.id, email, days, trialEndsAt: endsAt });
 });
 
+// Remove a trial account outright. Trials have no billing history to preserve,
+// so this is a hard delete rather than the anonymise path real customers get.
+// Guarded: refuses anything that has ever paid, so a converted trial is safe.
+app.delete("/api/admin/trials/:familyId", requireAdmin, (req, res) => {
+  const familyId = String(req.params.familyId || "");
+  const result = mutateDb((db) => {
+    const family = (db.families || []).find((item) => item.id === familyId);
+    if (!family) return { error: "not_found" };
+    if (!family.trialStartedAt) return { error: "Not a trial account." };
+    if (family.subscriptionStatus === "active" || family.lastPaymentAt || family.stripeSubscriptionId) {
+      return { error: "That account has billing history — cancel or anonymize it instead." };
+    }
+    const email = family.email;
+    db.families = db.families.filter((item) => item.id !== familyId);
+    db.users = (db.users || []).filter((item) => item.email !== email || item.role !== "parent");
+    db.sessions = (db.sessions || []).filter((item) => item.email !== email);
+    audit(db, "trial.delete", { familyId, email }, req.auth?.email);
+    monitor(db, "info", "account", "Trial account deleted", { email }, req.auth?.email);
+    return { email };
+  });
+  if (result.error === "not_found") return res.status(404).json({ error: "Trial account not found." });
+  if (result.error) return res.status(409).json({ error: result.error });
+  res.json({ ok: true, email: result.email });
+});
+
 // Dismiss abuse alerts. Marks signals reviewed rather than deleting them: the
 // counters stay for history, and a family only re-flags on a NEW signal.
 // Pass { familyId } to clear one account, omit it to clear all flagged ones.

@@ -3173,6 +3173,15 @@
       return "Email";
     }
 
+    // Subscription column: a trial shows its length rather than a billing interval.
+    function familySubscriptionLabel(family) {
+      if (family.subscriptionStatus === "trial" || (family.trialStartedAt && !family.lastPaymentAt)) {
+        var days = Number(family.trialDays) || 0;
+        return days ? days + " days" : "Trial";
+      }
+      return String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Yearly" : "Monthly";
+    }
+
     // Accounts that have tripped the account-level AI token ceiling.
     function familyMaxedAi(family) {
       return Number((family.abuse || {}).capHits || 0) > 0;
@@ -3454,10 +3463,71 @@
       return seconds ? rowDateTime(new Date(seconds * 1000).toISOString()) : "-";
     }
 
+    // ---- Sortable tables ------------------------------------------------------
+    // Every admin table renders through renderRows(), so sorting is wired once
+    // here rather than per table. Sort state is kept per tbody id and re-applied
+    // after each render, otherwise any refresh would silently reset the order.
+    var tableSortState = {};
+
+    // Compare cells as numbers or dates where they look like one, else text — so
+    // "Maxed ×2", "$38" and "7/19/26" sort sensibly instead of alphabetically.
+    function sortCellValue(cell) {
+      var raw = (cell.textContent || "").trim();
+      if (!raw || raw === "—" || raw === "-") return { type: "empty", value: "" };
+      var numeric = raw.replace(/[$,%×x]/gi, "").replace(/,/g, "").trim();
+      if (numeric && !isNaN(Number(numeric))) return { type: "number", value: Number(numeric) };
+      var parsed = Date.parse(raw);
+      if (!isNaN(parsed) && /\d/.test(raw) && /[\/\-:]/.test(raw)) return { type: "number", value: parsed };
+      return { type: "text", value: raw.toLowerCase() };
+    }
+
+    function applyTableSort(bodyId) {
+      var state = tableSortState[bodyId];
+      var body = document.getElementById(bodyId);
+      if (!state || !body || !body.children.length) return;
+      if (body.querySelector(".empty-state")) return;
+      // Keep each expandable row glued to its detail row.
+      var groups = [];
+      Array.prototype.forEach.call(body.children, function (row) {
+        if (row.classList.contains("family-detail-row") && groups.length) groups[groups.length - 1].push(row);
+        else groups.push([row]);
+      });
+      if (groups.length < 2) return;
+      groups.sort(function (a, b) {
+        var cellA = a[0].children[state.index];
+        var cellB = b[0].children[state.index];
+        if (!cellA || !cellB) return 0;
+        var va = sortCellValue(cellA);
+        var vb = sortCellValue(cellB);
+        // Blanks sit at the bottom whichever way the column is sorted.
+        if (va.type === "empty" && vb.type === "empty") return 0;
+        if (va.type === "empty") return 1;
+        if (vb.type === "empty") return -1;
+        var result = va.value < vb.value ? -1 : va.value > vb.value ? 1 : 0;
+        return state.dir === "asc" ? result : -result;
+      });
+      var fragment = document.createDocumentFragment();
+      groups.forEach(function (group) { group.forEach(function (row) { fragment.appendChild(row); }); });
+      body.appendChild(fragment);
+    }
+
+    function markSortedHeader(bodyId) {
+      var body = document.getElementById(bodyId);
+      var table = body && body.closest ? body.closest("table") : null;
+      if (!table) return;
+      var state = tableSortState[bodyId];
+      Array.prototype.forEach.call(table.querySelectorAll("thead th"), function (th, index) {
+        th.classList.remove("sorted-asc", "sorted-desc");
+        if (state && index === state.index) th.classList.add(state.dir === "asc" ? "sorted-asc" : "sorted-desc");
+      });
+    }
+
     function renderRows(id, rows) {
       var body = document.getElementById(id);
       if (!body) return;
       body.innerHTML = rows.join("");
+      applyTableSort(id);
+      markSortedHeader(id);
     }
 
     function writeDevOutput(title, payload) {
@@ -4234,7 +4304,7 @@
               "</div>";
             }).join("") + "</div>"
           : "<div class='family-detail-empty'>No student profiles yet.</div>";
-        var planType = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Yearly" : "Monthly";
+        var planType = familySubscriptionLabel(family);
         return "<tr class='family-row' data-family-expand='" + rowId + "'>" +
           "<td class='expand-cell'><i data-lucide='chevron-right'></i></td>" +
           "<td>" + text(family.parentName) + "</td>" +
@@ -4457,8 +4527,9 @@
           "<td>" + rowDateTime(family.trialStartedAt) + "</td>" +
           "<td>" + rowDateTime(family.trialEndsAt) + "</td>" +
           "<td>" + statusChip(live ? "active" : family.subscriptionStatus) + "</td>" +
+          "<td><div class='row-actions'><button type='button' class='table-action danger' data-trial-delete='" + escapeHtml(family.id) + "'>Delete</button></div></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='6'><div class='empty-state'>No trial accounts yet.</div></td></tr>"]);
+      }) : ["<tr><td colspan='7'><div class='empty-state'>No trial accounts yet.</div></td></tr>"]);
 
       renderMarkup("privacy-rules", [
         ruleMarkup("Lock account first", "Parent deletion request locks extension access immediately while admin reviews billing.", "active", "lock"),
@@ -4569,6 +4640,49 @@
         }
       });
     }
+
+    // One delegated listener covers every admin table, including any added later.
+    document.addEventListener("click", function (event) {
+      var th = event.target.closest ? event.target.closest("thead th") : null;
+      if (!th) return;
+      var table = th.closest("table");
+      var body = table && table.querySelector("tbody[id]");
+      if (!body) return;
+      // The expand chevron column has no content to sort by.
+      if (!th.textContent.trim()) return;
+      var index = Array.prototype.indexOf.call(th.parentElement.children, th);
+      var current = tableSortState[body.id];
+      tableSortState[body.id] = {
+        index: index,
+        dir: current && current.index === index && current.dir === "asc" ? "desc" : "asc"
+      };
+      applyTableSort(body.id);
+      markSortedHeader(body.id);
+    });
+
+    document.addEventListener("click", async function (event) {
+      var button = event.target.closest ? event.target.closest("[data-trial-delete]") : null;
+      if (!button) return;
+      var familyId = button.dataset.trialDelete;
+      var row = button.closest("tr");
+      var email = row ? (row.children[1] || {}).textContent : "";
+      if (!window.confirm("Delete the trial account for " + (email || "this parent") + "? This cannot be undone.")) return;
+      button.disabled = true;
+      try {
+        var response = await apiFetch("/api/admin/trials/" + encodeURIComponent(familyId), { method: "DELETE" });
+        var result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not delete the trial.");
+        await loadBackendState();
+        renderAdmin();
+      } catch (error) {
+        button.disabled = false;
+        var state = document.getElementById("trial-form-state");
+        if (state) {
+          state.textContent = error.message || "Could not delete";
+          state.className = "state-chip error";
+        }
+      }
+    });
 
     if (maxAiFilter) maxAiFilter.addEventListener("change", renderAdmin);
     if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
