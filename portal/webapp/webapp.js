@@ -4283,19 +4283,6 @@
       populateExceptionFamilies();
       refreshExceptionComposer();
 
-      var toolCounts = {};
-      families.forEach(function (family, index) {
-        var tool = favoriteTool(family, index);
-        toolCounts[tool] = (toolCounts[tool] || 0) + childrenOf(family).length;
-      });
-      renderMarkup("tool-usage-grid", Object.keys(toolCounts).map(function (tool) {
-        return "<div class='tool-usage-card'><span>" + tool + "</span><strong>" + toolCounts[tool] + "</strong><small>student profiles</small></div>";
-      }).join(""));
-
-      renderMarkup("student-risk-list", riskFamilies.length ? riskFamilies.slice(0, 5).map(function (family) {
-        return actionItemMarkup({ priority: familyHealth(family).score < 45 ? "High" : "Medium", icon: "circle-alert", title: family.studentName + " needs a nudge", detail: nextStep(family) + " for " + family.parentName + ".", action: "Nudge", familyId: familyRowId(family) });
-      }).join("") : "<div class='empty-state'>No student risk detected.</div>");
-
       renderRows("usage-table", families.flatMap(function (family, familyIndex) {
         return childrenOf(family).map(function (child, index) {
           var today = usageToday(child);
