@@ -6172,3 +6172,26 @@ body[data-page="admin"] .admin-table-card thead th.sorted-desc::after {
   border-top: 5px solid currentColor;
   opacity: 0.85;
 }
+
+/* ---- Card-upfront free trial ---------------------------------------------- */
+.trial-pitch {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #cfe8dd;
+  border-radius: 12px;
+  background: #f2fbf7;
+  color: #235c50;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.trial-pitch strong { color: #00584f; }
+body[data-page="admin"] .muted-note {
+  color: #6a827d;
+  font-size: 12px;
+  font-weight: 600;
+}
+body[data-page="admin"] .state-chip.trialing {
+  background: #eef4ff;
+  color: #234a8a;
+}

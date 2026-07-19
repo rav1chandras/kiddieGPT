@@ -1306,6 +1306,51 @@ function cancellationStillActive(family) {
 // simply does not renew. The window re-opens on every payment (each renewal).
 const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 3));
 
+// ---- Stripe card-upfront free trial ----------------------------------------
+// Self-serve signups get a card-upfront trial: Stripe collects the card at
+// Checkout, bills nothing for TRIAL_PERIOD_DAYS, then charges automatically
+// unless the parent cancels. Distinct from the admin-granted no-card trial,
+// which carries subscriptionStatus "trial"; a Stripe trial is "trialing", so
+// the local sweep that expires no-card trials never touches one Stripe owns.
+const TRIAL_PERIOD_DAYS = Math.max(0, Number(process.env.TRIAL_PERIOD_DAYS || 7));
+
+// Map a Stripe subscription status onto ours. Stripe is the source of truth for
+// anything it bills, so this is a direct translation rather than a judgement.
+function statusFromStripeSubscription(stripeStatus) {
+  switch (String(stripeStatus || "")) {
+    case "trialing": return "trialing";
+    case "active": return "active";
+    case "past_due": return "past_due";
+    case "unpaid": return "past_due";
+    case "canceled": return "cancelled";
+    case "incomplete_expired": return "cancelled";
+    default: return "";
+  }
+}
+
+// A Stripe trial entitles the family until trial_end. Access during the trial is
+// the whole point, so this counts as entitled.
+function stripeTrialActive(family) {
+  if (family?.subscriptionStatus !== "trialing") return false;
+  const endsAt = new Date(family.trialEndsAt || 0).getTime();
+  // No end date recorded yet (webhook race) — trust the trialing status.
+  if (!Number.isFinite(endsAt) || !endsAt) return true;
+  return endsAt > Date.now();
+}
+
+// The trial is only for genuinely new subscriptions. A family that has paid
+// before, or already has a live Stripe subscription, is reactivating or
+// upgrading and must not get another free week.
+function eligibleForTrial(family) {
+  if (!TRIAL_PERIOD_DAYS) return false;
+  if (!family) return true;
+  if (family.lastPaymentAt) return false;
+  if (family.stripeSubscriptionId) return false;
+  if (family.trialUsedAt) return false;
+  if (["paid", "refunded", "partial_refunded"].includes(family.paymentStatus)) return false;
+  return true;
+}
+
 function refundWindowFor(family) {
   const paidAt = family?.lastPaymentAt || family?.createdAt || "";
   const paidMs = paidAt ? new Date(paidAt).getTime() : NaN;
@@ -1327,7 +1372,12 @@ function markCancellationScheduled(family, subscription, reason = "") {
   if (!family) return family;
   const accessUntil = unixToIso(subscription?.current_period_end || subscription?.cancel_at || 0) || family.cancelAccessUntil || family.cancellationAccessUntil || "";
   family.subscriptionStatus = "cancel_scheduled";
-  family.paymentStatus = family.paymentStatus === "failed" ? "failed" : "paid";
+  // Do not invent a payment. Cancelling during a trial charges nothing, so
+  // forcing "paid" here would both lose the trial state and drop the family into
+  // the paying book (and revenue) for money that was never collected.
+  family.paymentStatus = family.paymentStatus === "failed" ? "failed"
+    : family.paymentStatus === "trial" ? "trial"
+    : "paid";
   family.cancellationRequested = true;
   family.cancellationStatus = "scheduled";
   family.cancelAtPeriodEnd = true;
@@ -1705,6 +1755,23 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     webhookCancellationResult = await cancelStripeSubscriptionsNow(stripe, family);
   }
 
+  // checkout.session.completed carries only a subscription id, but whether that
+  // subscription is trialing decides whether we may mark the family paid.
+  // Resolve it here (async) so the synchronous mutateDb below can just read it.
+  let subscriptionObject = null;
+  if (event.type === "checkout.session.completed") {
+    const embedded = webhookObject.subscription;
+    if (embedded && typeof embedded === "object") {
+      subscriptionObject = embedded;
+    } else if (embedded && stripe && process.env.STRIPE_SECRET_KEY) {
+      try {
+        subscriptionObject = await stripe.subscriptions.retrieve(String(embedded));
+      } catch (error) {
+        mutateDb((db) => monitor(db, "warning", "stripe", "Could not resolve subscription for checkout session", { detail: error.message }));
+      }
+    }
+  }
+
   mutateDb((db) => {
     markWebhookProcessed(db, event.id, event.type);
     const object = webhookObject;
@@ -1750,13 +1817,43 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       // A fresh Checkout supersedes any earlier yearly upgrade; retire it first
       // so normaliseFamily() does not overwrite the new plan/subscription id.
       retireYearlyUpgrade(family);
-      family.subscriptionStatus = "active";
-      family.paymentStatus = "paid";
+      // Checkout completing means the card was collected, NOT that money moved.
+      // On a trial nothing is charged until trial_end, so marking paid here would
+      // report revenue that does not exist and put the family in the paying book.
+      // Only invoice.payment_succeeded marks paid.
+      const trialing = subscriptionObject
+        ? subscriptionObject.status === "trialing"
+        : Boolean(object.trial_end);
+      if (trialing) {
+        family.subscriptionStatus = "trialing";
+        family.paymentStatus = "trial";
+        family.trialUsedAt = family.trialUsedAt || nowIso();
+        const trialEnd = unixToIso(subscriptionObject?.trial_end || object.trial_end || 0);
+        if (trialEnd) family.trialEndsAt = trialEnd;
+      } else {
+        family.subscriptionStatus = "active";
+        family.paymentStatus = family.paymentStatus === "paid" ? "paid" : "pending";
+      }
       family.plan = metadata.planName || family.pendingPlanName || family.plan;
       delete family.pendingPlanName;
       family.stripeCustomerId = stripeId(object.customer) || family.stripeCustomerId;
       family.stripeSubscriptionId = stripeId(object.subscription) || family.stripeSubscriptionId;
       family.lastLoginAt = family.lastLoginAt || nowIso();
+    }
+
+    // Subscription lifecycle: Stripe owns these transitions (trialing -> active
+    // when the first invoice is paid, -> past_due on failure, -> cancelled), so
+    // mirror its status rather than inferring one.
+    if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const mapped = statusFromStripeSubscription(object.status);
+      if (object.trial_end) family.trialEndsAt = unixToIso(object.trial_end) || family.trialEndsAt;
+      if (object.status === "trialing") {
+        family.paymentStatus = "trial";
+        family.trialUsedAt = family.trialUsedAt || nowIso();
+      }
+      if (mapped && !object.cancel_at_period_end && event.type !== "customer.subscription.deleted") {
+        family.subscriptionStatus = mapped;
+      }
     }
     if (event.type === "invoice.payment_failed") {
       family.paymentStatus = "failed";
@@ -1785,7 +1882,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       if (object.cancel_at_period_end) {
         markCancellationScheduled(family, object);
       } else {
-        family.subscriptionStatus = object.status === "active" ? "active" : family.subscriptionStatus;
+        // Status itself is set above from statusFromStripeSubscription(), which
+        // also covers trialing/past_due — this branch only clears the
+        // cancellation flags once the subscription is genuinely active again.
         if (family.subscriptionStatus === "active") {
           family.cancellationRequested = false;
           family.cancellationStatus = "";
@@ -3454,7 +3553,7 @@ function trialStillActive(family) {
 
 function isFamilyEntitled(family) {
   if (!family || family.accountLocked) return false;
-  return family.subscriptionStatus === "active" || cancellationStillActive(family) || trialStillActive(family) || hasActiveOverride(family);
+  return family.subscriptionStatus === "active" || cancellationStillActive(family) || trialStillActive(family) || stripeTrialActive(family) || hasActiveOverride(family);
 }
 
 app.post("/api/ai/responses", requireParent, async (req, res) => {
@@ -4224,6 +4323,20 @@ app.get("/api/entitlements/me", (req, res) => {
     // Lets the portal tell the parent what cancelling will actually do before
     // they confirm: full refund + access ends now, or access to the period end.
     refundWindow: refundWindowFor(family),
+    // Card-upfront Stripe trial: the portal shows the end date and when billing
+    // starts; the extension only needs `active`, which already covers trialing.
+    trial: {
+      // Still reported while a cancelled trial runs out its term: the status has
+      // moved to cancel_scheduled, but the family is in a trial until trial_end
+      // and must keep seeing "you will not be charged" rather than billing copy.
+      status: (family.subscriptionStatus === "trialing" ||
+               (family.paymentStatus === "trial" && !family.lastPaymentAt && new Date(family.trialEndsAt || 0).getTime() > Date.now()))
+        ? "trialing"
+        : family.subscriptionStatus === "trial" ? "trial" : "",
+      endsAt: family.trialEndsAt || "",
+      days: Number(family.trialDays) || TRIAL_PERIOD_DAYS,
+      cardOnFile: Boolean(family.stripeSubscriptionId)
+    },
     stripeSubscriptionId: effectiveFamilySubscriptionId(family),
     yearlyUpgrade: family.yearlyUpgrade ? {
       status: family.yearlyUpgrade.status || "",
@@ -4299,6 +4412,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     ? readDb().families.find((item) => item.id === checkoutFamilyId || item.email === String(parentEmail).toLowerCase())
     : null;
 
+  // A yearly upgrade is not a new subscription; neither is a reactivation.
+  const trialEligible = !req.body?.yearlyUpgrade && eligibleForTrial(checkoutFamily);
+
   if (!process.env.STRIPE_SECRET_KEY) {
     // Demo checkout: record the session so confirm-checkout-session can activate
     // the family the way the Stripe webhook does in production. Without this the
@@ -4322,7 +4438,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         ? String(successUrl).replace("{CHECKOUT_SESSION_ID}", mockSessionId)
         : `/index.html?stripe=success&session_id=${mockSessionId}`,
       message: "Stripe secret key is not configured. Demo checkout was simulated.",
-      promotion: checkoutPromotion
+      promotion: checkoutPromotion,
+      trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0
     });
   }
 
@@ -4372,7 +4489,13 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
           familyId: checkoutFamilyId || "",
           parentEmail: parentEmail || "",
           promoCode: checkoutPromotion?.code || ""
-        }
+        },
+        // Card-upfront trial: Stripe still collects the card at Checkout (the
+        // default for subscription mode — payment_method_collection is
+        // deliberately left alone so it is NOT "if_required"), bills nothing for
+        // the trial, then charges automatically unless the parent cancels.
+        // Applies to monthly and yearly alike; skipped for upgrades/reactivations.
+        ...(trialEligible ? { trial_period_days: TRIAL_PERIOD_DAYS } : {})
       }
     };
     if (couponId) {
@@ -4382,7 +4505,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
     const session = await stripe.checkout.sessions.create(sessionPayload);
     mutateDb((db) => audit(db, "stripe.checkout.create", { sessionId: session.id, familyId: checkoutFamilyId, parentEmail, promoCode: checkoutPromotion?.code || "" }));
-    return res.json({ mode: "stripe", sessionId: session.id, url: session.url, promotion: checkoutPromotion });
+    return res.json({ mode: "stripe", sessionId: session.id, url: session.url, promotion: checkoutPromotion, trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0 });
   } catch (error) {
     const safeError = checkoutStripeError(error, effectivePriceId);
     mutateDb((db) => monitor(db, "error", "stripe", "Stripe Checkout creation failed", { parentEmail, planName, priceId: effectivePriceId, detail: error.message, code: error.code || "", requestId: error.requestId || "" }, parentEmail));
@@ -4683,13 +4806,17 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
 
   const existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) return res.status(404).json({ error: "Family account not found." });
-  if (existingFamily.subscriptionStatus !== "active" && existingFamily.subscriptionStatus !== "cancel_scheduled") {
+  if (!["active", "cancel_scheduled", "trialing"].includes(existingFamily.subscriptionStatus)) {
     return res.status(400).json({ error: "Only active subscriptions can be scheduled for cancellation." });
   }
 
   // Inside the refund window this is a full refund + immediate end, not a
   // scheduled cancellation. Outside it, fall through to cancel-at-period-end.
-  const refundWindow = refundWindowFor(existingFamily);
+  // A trial has not been charged, so there is nothing to refund — cancelling
+  // during one simply stops it at trial_end.
+  const refundWindow = existingFamily.subscriptionStatus === "trialing"
+    ? { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 }
+    : refundWindowFor(existingFamily);
   if (refundWindow.eligible && existingFamily.subscriptionStatus === "active") {
     const mockRefund = !process.env.STRIPE_SECRET_KEY
       || !existingFamily.stripePaymentId
@@ -4740,7 +4867,12 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     // forward to the next boundary — not simply "now + one interval".
     const isYearly = String(existingFamily.plan || "").toLowerCase().includes("year");
     let mockPeriodEnd;
-    if (existingFamily.currentPeriodEnd) {
+    if (existingFamily.subscriptionStatus === "trialing" && existingFamily.trialEndsAt) {
+      // During a trial the current period ends at trial_end, not one billing
+      // interval away — otherwise cancelling mid-trial would hand out a free
+      // extra month. (Real Stripe reports this correctly in current_period_end.)
+      mockPeriodEnd = new Date(existingFamily.trialEndsAt);
+    } else if (existingFamily.currentPeriodEnd) {
       mockPeriodEnd = new Date(existingFamily.currentPeriodEnd);
     } else {
       mockPeriodEnd = new Date(existingFamily.lastPaymentAt || existingFamily.createdAt || Date.now());
@@ -4761,6 +4893,10 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       cancelAccessUntil: updated?.cancelAccessUntil || "",
       refunded: false,
       refundWindow,
+      // Cancelling during a trial just stops it at trial_end — the portal shows
+      // "trial ends on X" instead of refund or save-offer messaging.
+      trialing: existingFamily.subscriptionStatus === "trialing",
+      trialEndsAt: existingFamily.trialEndsAt || "",
       message: `Cancellation is scheduled. Extension access remains active until ${updated?.cancelAccessUntil || "the end of the paid period"}.`
     });
   }
@@ -4782,6 +4918,10 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       cancelAccessUntil: updated?.cancelAccessUntil || "",
       refunded: false,
       refundWindow,
+      // Cancelling during a trial just stops it at trial_end — the portal shows
+      // "trial ends on X" instead of refund or save-offer messaging.
+      trialing: existingFamily.subscriptionStatus === "trialing",
+      trialEndsAt: existingFamily.trialEndsAt || "",
       message: `Cancellation is scheduled. Extension access remains active until ${updated?.cancelAccessUntil || "the end of the paid period"}.`
     });
   } catch (error) {

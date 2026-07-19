@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=127">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=130">
 </head>
 <body data-page="parent" class="parent-locked">
   <section class="parent-auth-gate" id="parent-auth-gate">
@@ -280,6 +280,10 @@
               <small data-plan-note="yearly">Save compared with monthly billing.</small>
             </label>
           </div>
+          <p class="trial-pitch" id="trial-pitch" hidden>
+            <strong>Start with a 7-day free trial.</strong>
+            Your card is charged after the trial unless you cancel.
+          </p>
           <div class="subscription-actions">
             <button class="button primary" type="button" id="mock-stripe">Open Stripe checkout</button>
           </div>
@@ -512,6 +516,6 @@
     </div>
   </div>
 
-  <script src="/webapp/webapp.js?v=127"></script>
+  <script src="/webapp/webapp.js?v=130"></script>
 </body>
 </html>

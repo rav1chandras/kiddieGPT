@@ -1198,7 +1198,19 @@
       return planByKey(activePlanKey);
     }
 
+    // Show the trial promise only to someone who can still get one: no plan yet
+    // and no prior payment. A reactivating or upgrading parent must not be told
+    // they get another free week.
+    function renderTrialPitch() {
+      var pitch = document.getElementById("trial-pitch");
+      if (!pitch) return;
+      var trial = trialInfo();
+      var alreadyUsed = Boolean(trial && trial.cardOnFile) || paid;
+      pitch.hidden = alreadyUsed;
+    }
+
     function updatePlanTiles() {
+      renderTrialPitch();
       var pricing = readPricing();
       planInputs.forEach(function (input) {
         var key = input.value;
@@ -1266,6 +1278,21 @@
       }
     }
 
+    // Card-upfront Stripe trial state, straight from /api/entitlements/me.
+    function trialInfo() {
+      return (parentEntitlement && parentEntitlement.trial) || null;
+    }
+
+    function onStripeTrial() {
+      var trial = trialInfo();
+      return Boolean(trial && trial.status === "trialing");
+    }
+
+    function trialEndsText() {
+      var trial = trialInfo();
+      return trial && trial.endsAt ? parentDate(trial.endsAt) : "";
+    }
+
     function refundWindow() {
       return (parentEntitlement && parentEntitlement.refundWindow) || null;
     }
@@ -1279,6 +1306,20 @@
       var yearly = isYearlySubscription();
       var rw = refundWindow();
       var refundable = inRefundWindow();
+      var trialing = onStripeTrial();
+      // Nothing has been charged on a trial, so neither the refund wording nor
+      // the 50% save offer applies — just say when the trial ends.
+      if (trialing) {
+        if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
+        if (cancelFlowTitle) cancelFlowTitle.textContent = "End your free trial";
+        if (cancelFlowCopy) {
+          cancelFlowCopy.textContent = "Your trial ends on " + trialEndsText() + " and you will not be charged. Your child keeps access until then, and all profiles and progress are saved.";
+        }
+        if (acceptDiscount) acceptDiscount.classList.add("hidden");
+        if (confirmCancel) confirmCancel.textContent = "End trial";
+        if (saveOffer) saveOffer.classList.add("yearly-cancel");
+        return;
+      }
       if (cancelFlowLabel) cancelFlowLabel.textContent = refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
       if (cancelFlowTitle) {
         cancelFlowTitle.textContent = refundable
@@ -1346,15 +1387,33 @@
           cancellationAccessUntil = entitlement.cancelAccessUntil || "";
           yearlyUpgradeInfo = entitlement.yearlyUpgrade || null;
           yearlyUpgradeScheduled = Boolean(yearlyUpgradeInfo && yearlyUpgradeInfo.status === "scheduled");
-          setPaidPlan(
-            key,
-            cancellationScheduled ? "Cancellation scheduled" : yearlyUpgradeScheduled ? "Yearly upgrade confirmed" : "Subscription active",
-            cancellationScheduled
-              ? "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then."
-              : yearlyUpgradeScheduled
-              ? yearlyUpgradeDetailText(yearlyUpgradeInfo)
-              : (entitlement.plan || activePlan().name) + " is active for this family."
-          );
+          var trialing = onStripeTrial();
+          var trialEnds = trialEndsText();
+          var planName = entitlement.plan || activePlan().name;
+          // During a trial the parent needs the end date and when billing starts
+          // — a bare "Subscription active" hides the fact a charge is coming.
+          var title = cancellationScheduled
+            ? (trialing ? "Trial ending" : "Cancellation scheduled")
+            : trialing ? "Free trial active"
+            : yearlyUpgradeScheduled ? "Yearly upgrade confirmed"
+            : "Subscription active";
+          var detail;
+          if (cancellationScheduled && trialing) {
+            detail = "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil || trialEnds) + ". Access continues until then, and you will not be charged.";
+          } else if (cancellationScheduled) {
+            detail = "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then.";
+          } else if (trialing) {
+            detail = planName + " · your child has access during the trial. Billing starts on " + trialEnds + " unless cancelled.";
+          } else if (yearlyUpgradeScheduled) {
+            detail = yearlyUpgradeDetailText(yearlyUpgradeInfo);
+          } else {
+            detail = planName + " is active for this family.";
+          }
+          setPaidPlan(key, title, detail);
+          if (trialing && paymentState) {
+            paymentState.textContent = "Trial ends " + trialEnds;
+            paymentState.className = "state-chip warning";
+          }
         } else {
           setUnpaidSubscription(
             entitlement.reason === "locked" ? "Account locked" : "Choose a family plan",
@@ -2125,6 +2184,22 @@
         });
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Unable to schedule cancellation");
+        if (result.trialing) {
+          cancellationScheduled = true;
+          cancellationAccessUntil = result.cancelAccessUntil || result.trialEndsAt || "";
+          cancelFlow.classList.add("hidden");
+          subscriptionMain.classList.remove("hidden");
+          paymentState.textContent = "Trial ends " + parentDate(cancellationAccessUntil);
+          paymentState.className = "state-chip warning";
+          completionTitle.textContent = "Trial ending";
+          completionText.textContent = "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil) + ". Access continues until then, and you will not be charged.";
+          if (currentPackageNote) {
+            currentPackageNote.textContent = "Trial ends " + parentDate(cancellationAccessUntil) + " — no charge.";
+          }
+          await syncSubscriptionFromEntitlement().catch(function () {});
+          preview();
+          return;
+        }
         if (result.refunded) {
           // Cancelled inside the refund window: refunded in full, access over.
           cancelFlow.classList.add("hidden");
@@ -3151,6 +3226,10 @@
 
     // Subscription column: a trial shows its length rather than a billing interval.
     function familySubscriptionLabel(family) {
+      if (family.subscriptionStatus === "trialing") {
+        var interval = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Yearly" : "Monthly";
+        return interval + " (trial)";
+      }
       if (family.subscriptionStatus === "trial" || (family.trialStartedAt && !family.lastPaymentAt)) {
         var days = Number(family.trialDays) || 0;
         return days ? days + " days" : "Trial";
@@ -4204,8 +4283,15 @@
       var deleteQueue = deletionRequests(families);
       var pendingDeletes = deleteQueue.filter(function (family) { return deletionStatus(family) === "requested"; });
       var anonymizedDeletes = deleteQueue.filter(function (family) { return deletionStatus(family) === "anonymized"; });
+      // Both kinds of trial live here: admin-granted no-card trials ("trial")
+      // and self-serve card-upfront Stripe trials ("trialing"). Neither has been
+      // charged, so neither appears in Accounts — without this a Stripe trial
+      // would be invisible in the console entirely.
       var trialFamilies = families.filter(function (family) {
-        return family.subscriptionStatus === "trial" || family.trialStartedAt;
+        return family.subscriptionStatus === "trial" ||
+          family.subscriptionStatus === "trialing" ||
+          family.trialStartedAt ||   // admin-granted trial history
+          family.trialUsedAt;        // Stripe trial history (survives cancel_scheduled)
       });
       var actions = adminActions(families);
       var activationCount = families.filter(function (family) {
@@ -4499,15 +4585,29 @@
       }) : ["<tr><td colspan='5'><div class='empty-state'>No deleted accounts in this period.</div></td></tr>"]);
 
       renderRows("trial-table", trialFamilies.length ? trialFamilies.map(function (family) {
-        var live = family.subscriptionStatus === "trial" && new Date(family.trialEndsAt || 0).getTime() > Date.now();
+        // Anything Stripe owns — including a cancelled trial still running out
+        // its term — must not offer local delete: removing the family here would
+        // leave a live Stripe subscription that still bills the customer.
+        var stripeTrial = family.subscriptionStatus === "trialing" || Boolean(family.stripeSubscriptionId) || Boolean(family.trialUsedAt);
+        var live = (family.subscriptionStatus === "trial" || stripeTrial) && new Date(family.trialEndsAt || 0).getTime() > Date.now();
+        // A Stripe trial has no trialDays/trialStartedAt of its own — it is
+        // defined by the subscription, so derive the length from the dates and
+        // label it as card-on-file to distinguish it from an admin comp.
+        var days = Number(family.trialDays) || 0;
+        if (!days && stripeTrial && family.trialEndsAt) {
+          var startMs = new Date(family.trialUsedAt || family.createdAt || Date.now()).getTime();
+          days = Math.max(1, Math.round((new Date(family.trialEndsAt).getTime() - startMs) / 86400000));
+        }
         return "<tr>" +
           "<td>" + escapeHtml(text(family.parentName)) + "</td>" +
           "<td>" + escapeHtml(text(family.email)) + "</td>" +
-          "<td>" + (Number(family.trialDays) || 0) + " days</td>" +
-          "<td>" + rowDateTime(family.trialStartedAt) + "</td>" +
+          "<td>" + (days ? days + " days" : "—") + (stripeTrial ? " <small>card on file</small>" : "") + "</td>" +
+          "<td>" + rowDateTime(family.trialStartedAt || family.trialUsedAt) + "</td>" +
           "<td>" + rowDateTime(family.trialEndsAt) + "</td>" +
-          "<td>" + statusChip(live ? "active" : family.subscriptionStatus) + "</td>" +
-          "<td><div class='row-actions'><button type='button' class='table-action danger' data-trial-delete='" + escapeHtml(family.id) + "'>Delete</button></div></td>" +
+          "<td>" + statusChip(live && !stripeTrial ? "active" : family.subscriptionStatus) + "</td>" +
+          "<td><div class='row-actions'>" +
+            (stripeTrial ? "<span class='muted-note'>Stripe</span>" : "<button type='button' class='table-action danger' data-trial-delete='" + escapeHtml(family.id) + "'>Delete</button>") +
+          "</div></td>" +
         "</tr>";
       }) : ["<tr><td colspan='7'><div class='empty-state'>No trial accounts yet.</div></td></tr>"]);
 
