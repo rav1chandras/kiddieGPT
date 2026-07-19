@@ -2630,6 +2630,10 @@
       return readFamilies().filter(function (family) {
         // Deleted accounts live on the Deleted tab and never appear here.
         if (familyDeleted(family)) return false;
+        // Accounts is the paying book: a family appears once it has actually been
+        // charged. Trials (never charged) live on the Free Trial tab until they
+        // convert, and pending signups are not customers yet.
+        if (!hasEverPaid(family)) return false;
         var haystack = [family.parentName, family.email, family.studentName, family.grade, family.readingLevel, familyLoginType(family)].join(" ").toLowerCase();
         var matchesQuery = !query || haystack.indexOf(query) >= 0;
         var matchesStatus = status === "all" || family.subscriptionStatus === status;
@@ -2637,6 +2641,18 @@
         var matchesMaxAi = !maxAiOnly || familyMaxedAi(family);
         var matchesPaid = withinDateWindow(familyPaidAt(family), paidWindow);
         return matchesQuery && matchesStatus && matchesLocked && matchesMaxAi && matchesPaid;
+      });
+    }
+
+    // Has this family ever actually been charged? A trial has paymentStatus
+    // "trial" (then "unpaid" once it expires) and a pending signup "pending", so
+    // neither counts. A refund still counts — money changed hands both ways.
+    function hasEverPaid(family) {
+      if (!family) return false;
+      if (family.lastPaymentAt) return true;
+      if (["paid", "refunded", "partial_refunded"].indexOf(family.paymentStatus) >= 0) return true;
+      return paymentsCache.some(function (payment) {
+        return objectMatchesFamily(payment, family) && Number(payment.amountCents || 0) > 0;
       });
     }
 
@@ -2662,23 +2678,6 @@
     function stripeUnixIso(value) {
       var seconds = Number(value || 0);
       return seconds ? new Date(seconds * 1000).toISOString() : "";
-    }
-
-    function filteredPayments(families) {
-      var query = paymentSearch ? paymentSearch.value.trim().toLowerCase() : "";
-      var status = paymentStatusFilter ? paymentStatusFilter.value : "all";
-      var planFilter = paymentPlanFilter ? paymentPlanFilter.value : "all";
-      return families.filter(function (family) {
-        var source = paymentSourceForFamily(family);
-        var paymentId = source.paymentId;
-        var plan = family.plan || moneyPlan();
-        var haystack = [family.parentName, family.email, family.studentName, plan, paymentId].join(" ").toLowerCase();
-        var matchesQuery = !query || haystack.indexOf(query) >= 0;
-        var matchesStatus = status === "all" || source.status === status || family.subscriptionStatus === status;
-        var matchesPlan = planFilter === "all" || plan === planFilter;
-        var matchesDate = dateInRange(source.payment?.createdAt || family.lastPaymentAt || family.updatedAt || family.createdAt, paymentFrom, paymentTo);
-        return matchesQuery && matchesStatus && matchesPlan && matchesDate;
-      });
     }
 
     function filteredExceptions(families) {
@@ -2792,17 +2791,6 @@
         .sort(function (a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); })[0] || null;
     }
 
-    function paymentSourceForFamily(family) {
-      var payment = latestPaymentForFamily(family);
-      var plan = family.plan || moneyPlan();
-      return {
-        payment: payment,
-        paymentId: payment?.paymentId || stripePaymentId(family),
-        amountCents: Number(payment?.amountCents || family.lastPaymentAmountCents || planAmountCents(plan)),
-        status: payment?.status || paymentStatus(family)
-      };
-    }
-
     function familyForPayment(payment, families) {
       return families.find(function (family) {
         return (payment.familyId && family.id === payment.familyId) ||
@@ -2822,24 +2810,12 @@
       var query = paymentSearch ? paymentSearch.value.trim().toLowerCase() : "";
       var status = paymentStatusFilter ? paymentStatusFilter.value : "all";
       var planFilter = paymentPlanFilter ? paymentPlanFilter.value : "all";
+      // Only real payments. This used to synthesise a row per family whenever
+      // there were no payment records, inventing a "pi_mock_..." reference and
+      // using the plan's list price as the amount — so trials and pending
+      // signups appeared as charges that never happened. Billing now shows an
+      // empty state until Stripe actually writes a payment.
       var records = paymentsCache.filter(function (payment) { return Number(payment.amountCents || 0) > 0; });
-      if (!records.length) {
-        return filteredPayments(families).map(function (family) {
-          var source = paymentSourceForFamily(family);
-          return {
-            family: family,
-            payment: source.payment || {
-              id: "fallback_" + familyRowId(family),
-              paymentId: source.paymentId,
-              amountCents: source.amountCents,
-              status: source.status,
-              createdAt: family.lastPaymentAt || family.createdAt || new Date().toISOString(),
-              subscriptionId: family.stripeSubscriptionId || ""
-            },
-            plan: family.plan || moneyPlan()
-          };
-        });
-      }
       return records.map(function (payment) {
         var family = familyForPayment(payment, families);
         return {
@@ -4263,7 +4239,11 @@
       setMetric("log-email-count", emailLogsCache.length);
       setMetric("monitor-count", monitorEventsCache.length);
       setMetric("monitor-error-count", monitorEventsCache.filter(function (event) { return event.severity === "error"; }).length + " errors");
-      setMetric("family-toggle-accounts", families.length);
+      // Count what the Accounts tab actually lists — paying, non-deleted families
+      // — not every family record, or the badge contradicts the table.
+      setMetric("family-toggle-accounts", families.filter(function (family) {
+        return !familyDeleted(family) && hasEverPaid(family);
+      }).length);
       setMetric("family-toggle-deletions", pendingDeletes.length);
       setMetric("family-toggle-trials", trialFamilies.length);
       familyTableButtons.forEach(function (button) {
@@ -4425,7 +4405,7 @@
           return [row, paymentDetailRow(family, expandedPayment.action, paymentId, amountCents)];
         }
         return [row];
-      }));
+      }).concat(paymentRows.length ? [] : ["<tr><td colspan='7'><div class='empty-state'>No payments yet. Real Stripe charges appear here once they are collected.</div></td></tr>"]));
 
       renderRows("exception-table", filteredExceptions(families).map(function (family) {
         var rowId = familyRowId(family);
