@@ -1250,7 +1250,11 @@
       if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
-        currentPackageNote.textContent = yearlyUpgradeScheduled
+        currentPackageNote.textContent = onStripeTrial()
+          ? (cancellationScheduled
+            ? "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil || trialEndsText()) + ". Access continues until then, and you will not be charged."
+            : "Your child has access during the trial. Billing starts on " + trialEndsText() + " unless cancelled.")
+          : yearlyUpgradeScheduled
           ? yearlyUpgradeDetailText(yearlyUpgradeInfo)
           : cancellationScheduled
           ? "Cancellation scheduled: your child keeps extension access until " + parentDate(cancellationAccessUntil) + "."
@@ -1261,20 +1265,27 @@
           : "Your yearly package is active. Child profiles and extension access stay unlocked.";
       }
       if (upgradeYearly) {
-        upgradeYearly.classList.toggle("hidden", !paid || plan.key !== "monthly" || cancellationScheduled || yearlyUpgradeScheduled);
+        // No upsell mid-trial: the parent has not been charged for the plan they
+        // are on yet, so asking them to switch plans is premature.
+        upgradeYearly.classList.toggle("hidden", !paid || plan.key !== "monthly" || cancellationScheduled || yearlyUpgradeScheduled || onStripeTrial());
         upgradeYearly.textContent = "Upgrade to yearly";
         renderUpgradeOffer();
       }
       renderRailPromo();
       if (paid) {
-        paymentState.textContent = yearlyUpgradeScheduled
+        var chipTrialing = onStripeTrial();
+        paymentState.textContent = chipTrialing
+          ? (cancellationScheduled ? "Trial ends " + parentDate(cancellationAccessUntil || trialEndsText()) : "Free trial · ends " + trialEndsText())
+          : yearlyUpgradeScheduled
           ? "Yearly upgrade confirmed"
           : cancellationScheduled
           ? "Cancels " + parentDate(cancellationAccessUntil)
           : retentionOfferAccepted
           ? "50% off next invoice"
           : plan.name + " active";
-        paymentState.className = "state-chip ok";
+        // "trialing" shares the green active treatment — a trial is an entitled
+        // state, and the label carries the distinction.
+        paymentState.className = "state-chip " + (chipTrialing ? "trialing" : "ok");
       }
     }
 
@@ -1980,18 +1991,27 @@
       var pricing = readPricing();
       var members = Number((pricing[plan.key] || pricing.monthly || {}).familyMemberCount || 3);
       var facts = [];
+      var trialingNow = onStripeTrial();
       facts.push({
-        icon: cancellationScheduled ? "clock" : "check-circle",
+        icon: cancellationScheduled || trialingNow ? "clock" : "check-circle",
         text: cancellationScheduled
-          ? "Cancels " + parentDate(cancellationAccessUntil)
+          ? (trialingNow ? "Trial ends " + parentDate(cancellationAccessUntil || trialEndsText()) : "Cancels " + parentDate(cancellationAccessUntil))
+          : trialingNow
+          ? "Free trial · ends " + trialEndsText()
           : yearlyUpgradeScheduled
           ? "Yearly upgrade confirmed"
           : "Active subscription"
       });
+      // During a trial the meaningful date is when billing starts, which the
+      // fact above already states — a "renews monthly" line would imply a charge
+      // cycle that has not begun yet.
+      if (trialingNow) {
+        facts.push({ icon: "credit-card", text: "Billing starts " + trialEndsText() });
+      }
       var renewalIso = yearlyUpgradeScheduled && yearlyUpgradeInfo && yearlyUpgradeInfo.yearlyNextRenewalAt
         ? new Date(Number(yearlyUpgradeInfo.yearlyNextRenewalAt) * 1000).toISOString()
         : parentRenewalAt;
-      if (renewalIso && !cancellationScheduled) {
+      if (renewalIso && !cancellationScheduled && !trialingNow) {
         facts.push({ icon: "calendar", text: (plan.key === "monthly" ? "Renews monthly · next on " : "Renews ") + parentDate(renewalIso) });
       }
       facts.push({ icon: "users-round", text: "Up to " + members + " family members" });
@@ -2005,7 +2025,7 @@
     function renderRailPromo() {
       var el = document.getElementById("rail-yearly-promo");
       if (!el) return;
-      var show = paid && activePlanKey === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled;
+      var show = paid && activePlanKey === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled && !onStripeTrial();
       el.classList.toggle("hidden", !show);
       if (!show) return;
       var o = yearlyUpgradeOffer();

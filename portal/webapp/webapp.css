@@ -6174,24 +6174,36 @@ body[data-page="admin"] .admin-table-card thead th.sorted-desc::after {
 }
 
 /* ---- Card-upfront free trial ---------------------------------------------- */
+/* Uses the existing green theme tokens rather than new colours: a trial is a
+   positive, active state, so it reads like the other "good" chips. */
 .trial-pitch {
   margin: 0 0 14px;
   padding: 12px 14px;
-  border: 1px solid #cfe8dd;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green-2);
   border-radius: 12px;
-  background: #f2fbf7;
-  color: #235c50;
+  background: #e8f7f3;
+  color: var(--green);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
 }
-.trial-pitch strong { color: #00584f; }
+.trial-pitch strong {
+  color: var(--green);
+  font-weight: 800;
+}
 body[data-page="admin"] .muted-note {
-  color: #6a827d;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
 }
-body[data-page="admin"] .state-chip.trialing {
-  background: #eef4ff;
-  color: #234a8a;
+/* Trialing is an entitled state, so it shares the green "active" treatment;
+   the label alone distinguishes it from a paying subscription. */
+.state-chip.trialing {
+  color: var(--green);
+  background: #e8f7f3;
+}
+.alloce-admin .state-chip.trialing {
+  background: var(--alloce-green-soft);
+  color: var(--alloce-green);
 }
