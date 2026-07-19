@@ -318,6 +318,10 @@ function defaultAiSettings() {
     openaiModel: process.env.OPENAI_MODEL || "gpt-5.6-luna",
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
+    // Account-wide daily token ceiling across every child and every tool. The
+    // per-child math/voice caps only bound those two tools, so writing and
+    // follow-up chat were previously unlimited. 0 = no ceiling.
+    tokensPerFamilyDaily: 60000,
     tutorVoiceEnabled: true,
     ttsModel: TTS_MODEL,
     ttsDefaultVoice: "marin",
@@ -342,6 +346,7 @@ function normaliseAiSettings(settings = {}) {
     openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-5.6-luna"),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
+    tokensPerFamilyDaily: Math.max(0, Number(settings.tokensPerFamilyDaily ?? defaults.tokensPerFamilyDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
     // Speech model is admin-configurable, validated against SUPPORTED_TTS_MODELS.
     ttsModel: normaliseTtsModel(settings.ttsModel),
@@ -369,6 +374,7 @@ function safeAiSettings(settings = {}) {
     openaiModel: normalised.openaiModel,
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
+    tokensPerFamilyDaily: normalised.tokensPerFamilyDaily,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
     ttsModel: normalised.ttsModel,
     supportedTtsModels: SUPPORTED_TTS_MODELS,
@@ -853,6 +859,10 @@ function recordChildUsage(family, { childId, tool, mathProblems = 0, voiceSecond
   usage.totals.tools = usage.totals.tools || {};
   const day = usageDayKey(at ? new Date(at) : new Date());
   const bucket = usage.daily[day] || { mathProblems: 0, voiceSeconds: 0, tokens: 0, tools: {} };
+  // An existing bucket written before `tools` was tracked (or by a partial write)
+  // has no tools map, and bucket.tools[tool] below would throw — failing the whole
+  // AI call with a 502 after OpenAI had already been paid for.
+  bucket.tools = bucket.tools || {};
   const math = Math.max(0, Number(mathProblems) || 0);
   const voice = Math.max(0, Number(voiceSeconds) || 0);
   const tok = Math.max(0, Number(tokens) || 0);
@@ -882,6 +892,25 @@ function usageRemaining(family, settings, childId) {
     mathProblems: Math.max(0, limits.mathProblemsPerUserDaily - (Number(bucket.mathProblems) || 0)),
     voiceMinutes: Math.max(0, voiceCapMinutes - Math.floor((Number(bucket.voiceSeconds) || 0) / 60))
   };
+}
+
+// Tokens the whole account has spent today, summed across every child.
+function familyTokensToday(family) {
+  const day = usageDayKey();
+  return (family?.children || []).reduce((sum, child) => {
+    const bucket = ((child.usage || {}).daily || {})[day] || {};
+    return sum + (Number(bucket.tokens) || 0);
+  }, 0);
+}
+
+// Account-wide daily token ceiling. Unlike the per-child math/voice caps this
+// covers every tool — including writing and follow-up chat, which had no limit
+// at all — and every child, so adding children cannot multiply the spend.
+// A cap of 0 means unlimited.
+function familyTokenBudget(family, settings) {
+  const cap = Math.max(0, Number(settings.tokensPerFamilyDaily) || 0);
+  const used = familyTokensToday(family);
+  return { cap, used, remaining: cap ? Math.max(0, cap - used) : Infinity, exhausted: cap > 0 && used >= cap };
 }
 
 // Sum a child's usage across the trailing `days` window (default 7).
@@ -2676,6 +2705,9 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceMinutesPerUserDaily")) {
       next.tutorVoiceMinutesPerUserDaily = Math.max(0, Number(body.tutorVoiceMinutesPerUserDaily) || 0);
     }
+    if (Object.prototype.hasOwnProperty.call(body, "tokensPerFamilyDaily")) {
+      next.tokensPerFamilyDaily = Math.max(0, Number(body.tokensPerFamilyDaily) || 0);
+    }
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
     }
@@ -2728,6 +2760,16 @@ app.get("/api/ai/usage-limits", requireParent, (req, res) => {
     mathProblemsPerUserDaily: limits.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: limits.tutorVoiceMinutesPerUserDaily,
     tutorVoiceEnabled: limits.tutorVoiceEnabled,
+    // Account-wide daily token ceiling (all children, all tools). cap 0 = unlimited.
+    accountTokens: (() => {
+      const budget = familyTokenBudget(family, settings);
+      return {
+        cap: budget.cap,
+        used: budget.used,
+        remaining: budget.remaining === Infinity ? null : budget.remaining,
+        exhausted: budget.exhausted
+      };
+    })(),
     requireSteps: limits.requireSteps,
     controls: limits.controls,
     aiConfigured: Boolean(settings.openaiApiKey),
@@ -3273,6 +3315,12 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   if (isMath && usageRemaining(family, settings, body.childId).mathProblems <= 0) {
     return res.status(429).json({ error: "cap_reached", scope: "math" });
   }
+  // Account-wide ceiling, checked for EVERY tool. The per-child math cap above
+  // left writing and follow-up chat unbounded.
+  const budget = familyTokenBudget(family, settings);
+  if (budget.exhausted) {
+    return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: budget.cap, used: budget.used });
+  }
   // Bound the prompt server-side. `instructions` is client-supplied too, so it
   // counts against the same budget — capping only `input` would just move an
   // injection into the other field.
@@ -3341,6 +3389,10 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   if (!effectiveLimits(settings, family).tutorVoiceEnabled) return res.status(403).json({ error: "voice_disabled" });
   if (usageRemaining(family, settings, body.childId).voiceMinutes <= 0) {
     return res.status(429).json({ error: "cap_reached", scope: "voice" });
+  }
+  const speechBudget = familyTokenBudget(family, settings);
+  if (speechBudget.exhausted) {
+    return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: speechBudget.cap, used: speechBudget.used });
   }
   const text = String(body.text || "").trim();
   if (!text) return res.status(400).json({ error: "empty_text" });

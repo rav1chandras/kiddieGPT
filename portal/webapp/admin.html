@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=117">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=118">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -383,6 +383,10 @@
               <input type="number" name="tutorVoiceMinutesPerUserDaily" min="0" step="1" required>
               <small>Daily cap for spoken explanations.</small>
             </label>
+            <label>Account token ceiling per day
+              <input type="number" name="tokensPerFamilyDaily" min="0" step="1000" required>
+              <small>Whole-account daily limit across every child and every tool — including writing and follow-up chat, which the per-child caps do not cover. 0 = unlimited.</small>
+            </label>
             <label class="ai-toggle-field">
               <input type="checkbox" name="tutorVoiceEnabled" checked>
               <span>Tutor voice enabled</span>
@@ -665,6 +669,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=117"></script>
+  <script src="/webapp/webapp.js?v=118"></script>
 </body>
 </html>

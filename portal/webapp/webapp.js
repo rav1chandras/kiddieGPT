@@ -3531,6 +3531,7 @@
         maskedOpenAIKey: "",
         mathProblemsPerUserDaily: 20,
         tutorVoiceMinutesPerUserDaily: 10,
+        tokensPerFamilyDaily: 60000,
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
         supportedTtsModels: ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
@@ -3644,6 +3645,7 @@
         if (aiSettingsForm.elements.openaiModel) aiSettingsForm.elements.openaiModel.value = settings.openaiModel || "gpt-5.6-luna";
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
+        if (aiSettingsForm.elements.tokensPerFamilyDaily) aiSettingsForm.elements.tokensPerFamilyDaily.value = Number(settings.tokensPerFamilyDaily || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
         if (aiSettingsForm.elements.tutorStandardPercent) aiSettingsForm.elements.tutorStandardPercent.value = Math.round((Number(settings.tutorStandardFraction) || 0.5) * 100);
         renderTtsModelOptions(settings);
@@ -3682,6 +3684,7 @@
             openaiModel: aiSettingsForm.elements.openaiModel ? aiSettingsForm.elements.openaiModel.value.trim() : undefined,
             mathProblemsPerUserDaily: Number(aiSettingsForm.elements.mathProblemsPerUserDaily.value || 0),
             tutorVoiceMinutesPerUserDaily: Number(aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value || 0),
+            tokensPerFamilyDaily: aiSettingsForm.elements.tokensPerFamilyDaily ? Number(aiSettingsForm.elements.tokensPerFamilyDaily.value || 0) : undefined,
             tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
             ttsModel: (document.getElementById("tts-model") || {}).value || undefined,
             ttsAllowedVoices: checkedShortlistVoices(),
