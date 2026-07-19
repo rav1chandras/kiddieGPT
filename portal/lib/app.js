@@ -2183,11 +2183,41 @@ app.get("/api/dev/status", (req, res) => {
   });
 });
 
+// One-click demo logins carry a shared password, so they must never reach a real
+// deployment — anyone could click straight into an account. Off by default on
+// Vercel or with a live Stripe key; DEMO_LOGINS forces it either way.
+function demoLoginsEnabled() {
+  if (process.env.DEMO_LOGINS === "true") return true;
+  if (process.env.DEMO_LOGINS === "false") return false;
+  if (process.env.VERCEL) return false;
+  if (String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live")) return false;
+  return true;
+}
+
+// Seeded fixtures covering each subscription state, surfaced as login tiles so
+// they can be switched between without retyping credentials.
+const DEMO_LOGIN_ACCOUNTS = [
+  { email: "trial.active@gmail.com", label: "Trial active", note: "Free trial running", icon: "clock" },
+  { email: "paid.monthly@gmail.com", label: "Monthly paid", note: "Active subscription", icon: "credit-card" },
+  { email: "paid.yearly@gmail.com", label: "Yearly paid", note: "Active subscription", icon: "badge-dollar-sign" },
+  { email: "trial.ended@gmail.com", label: "Trial ended", note: "Access expired", icon: "clock-alert" }
+];
+
 app.get("/api/auth/config", (req, res) => {
+  const demoEnabled = demoLoginsEnabled();
+  const db = demoEnabled ? readDb() : null;
   res.json({
     allowedParentEmailDomains,
     googleClientId: process.env.GOOGLE_CLIENT_ID || "",
-    googleConfigured: Boolean(process.env.GOOGLE_CLIENT_ID)
+    googleConfigured: Boolean(process.env.GOOGLE_CLIENT_ID),
+    demoLogins: demoEnabled,
+    // Only advertise fixtures that actually exist, so the tiles cannot offer a
+    // login that will fail.
+    demoAccounts: demoEnabled
+      ? DEMO_LOGIN_ACCOUNTS
+          .filter((account) => (db.families || []).some((family) => family.email === account.email))
+          .map((account) => ({ ...account, password: process.env.PARENT_TEST_PASSWORD || "kiddiegpt123" }))
+      : []
   });
 });
 

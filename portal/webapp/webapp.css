@@ -6207,3 +6207,18 @@ body[data-page="admin"] .muted-note {
   background: var(--alloce-green-soft);
   color: var(--alloce-green);
 }
+
+/* Demo login tiles: the <em> carries the account's subscription state so the
+   right fixture is pickable at a glance. Dev-only — the server omits these
+   entirely in a real deployment. */
+.auth-demo-tile em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+.auth-demo-tile strong {
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}

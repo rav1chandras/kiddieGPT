@@ -968,7 +968,16 @@
         });
       });
 
-      if (parentDemoLogin) {
+      document.addEventListener("click", function (event) {
+      var tile = event.target.closest ? event.target.closest("[data-demo-email]") : null;
+      if (!tile || !parentLoginForm) return;
+      setParentAuthMode("login");
+      parentLoginForm.elements.email.value = tile.dataset.demoEmail;
+      parentLoginForm.elements.password.value = tile.dataset.demoPassword || "";
+      parentLoginForm.requestSubmit();
+    });
+
+    if (parentDemoLogin) {
         parentDemoLogin.addEventListener("click", function () {
           setParentAuthMode("login");
           parentLoginForm.elements.email.value = "parent.kiddiegpt@gmail.com";
@@ -1059,6 +1068,50 @@
       return true;
     }
 
+    // Demo login tiles, driven entirely by /api/auth/config: the server decides
+    // whether they exist at all, so a real deployment never renders one-click
+    // logins. Built with DOM APIs rather than innerHTML — escapeHtml() lives in
+    // the admin scope and is not reachable here.
+    function renderDemoLogins(config) {
+      var grid = document.querySelector(".auth-demo-grid");
+      if (!grid) return;
+      if (!config.demoLogins) { grid.remove(); return; }
+      var accounts = Array.isArray(config.demoAccounts) ? config.demoAccounts : [];
+      if (!accounts.length) return;
+      grid.textContent = "";
+      accounts.forEach(function (account) {
+        var tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "auth-demo-tile";
+        tile.dataset.demoEmail = account.email;
+        tile.dataset.demoPassword = account.password || "";
+        var icon = document.createElement("i");
+        icon.setAttribute("data-lucide", account.icon || "user-round");
+        var label = document.createElement("span");
+        label.textContent = account.label || "Demo";
+        var email = document.createElement("strong");
+        email.textContent = account.email;
+        var note = document.createElement("em");
+        note.textContent = account.note || "";
+        tile.append(icon, label, email, note);
+        grid.appendChild(tile);
+      });
+      var admin = document.createElement("a");
+      admin.className = "auth-demo-tile";
+      admin.href = "/admin.html";
+      var adminIcon = document.createElement("i");
+      adminIcon.setAttribute("data-lucide", "layout-dashboard");
+      var adminLabel = document.createElement("span");
+      adminLabel.textContent = "Admin console";
+      var adminEmail = document.createElement("strong");
+      adminEmail.textContent = "admin@kiddiegpt.demo";
+      var adminNote = document.createElement("em");
+      adminNote.textContent = "Operator view";
+      admin.append(adminIcon, adminLabel, adminEmail, adminNote);
+      grid.appendChild(admin);
+      renderIcons();
+    }
+
     async function loadAuthConfig() {
       try {
         var response = await fetch("/api/auth/config");
@@ -1067,6 +1120,7 @@
           allowedParentEmailDomains = config.allowedParentEmailDomains;
         }
         googleClientId = config.googleClientId || "";
+        renderDemoLogins(config);
       } catch (error) {
         googleClientId = "";
       }
