@@ -7,28 +7,41 @@ code; if the code changes, re-check before resubmitting.
 
 ## 1. "Notes for reviewers" (Privacy tab → Justifications → Notes)
 
-> KiddieGPT is a homework-help side panel for K‑8/K‑12 students. Most tools require a
-> parent account, so please use the review account below — no email inbox access is
-> needed, because the sign-in code is displayed on screen for this account only.
+> KiddieGPT is a homework-help side panel for K‑8/K‑12 students. The tools require a
+> parent account, so please use the review account below. No email inbox access is
+> needed: for this account only, the sign-in code is displayed on screen.
+>
+> TEST ACCOUNT
+>   Email: parent.kiddiegpt@gmail.com
+>   (no password — sign-in is a one-time code, shown on screen for this account)
 >
 > HOW TO TEST
-> 1. Open any normal web page (e.g. a Wikipedia article).
-> 2. Click the KiddieGPT toolbar icon to open the side panel. The Home screen loads
->    without signing in.
+> 1. Open a normal content page, e.g. https://en.wikipedia.org/wiki/Water_cycle
+> 2. Click the KiddieGPT toolbar icon. The side panel opens on Home — no sign-in
+>    required to look around.
 > 3. Click "Math" in the right-hand nav. A sign-in dialog appears.
-> 4. Enter: parent.kiddiegpt@gmail.com  → click "Send code".
-> 5. The 6-digit code is shown on screen for this review account. Enter it → "Verify".
-> 6. You now have an active test subscription. Try:
->    • Math → paste "2x^2 - 5x - 3 = 0" → "Solve & Explain" (step-by-step solution;
->      the final answer stays hidden behind "Reveal answer" by design).
->    • Explain → "Active page" → "Explain" (kid-simple explanation of the page).
+> 4. Enter parent.kiddiegpt@gmail.com and click "Send code".
+> 5. The 6-digit code appears on screen for this review account. Enter it, click
+>    "Verify". You now have an active test subscription.
+> 6. Math: paste  2x^2 - 5x - 3 = 0  and click "Solve & Explain". You get a
+>    step-by-step solution. The final answer stays blurred behind a "Reveal answer"
+>    button — that is intentional, so students work the steps first.
+> 7. Explain: click "Explain" in the nav, keep "Active page", click the "Explain"
+>    button. You get a kid-level explanation of the Wikipedia page.
 >
-> NOTES
-> • The sign-in code is shown on screen ONLY for parent.kiddiegpt@gmail.com. All other
->   users receive their code by email.
-> • Account creation and billing happen on our website, not in the extension; the
+> NOTES FOR REVIEW
+> • The on-screen code is shown ONLY for parent.kiddiegpt@gmail.com. Every other user
+>   receives the code by email.
+> • Home is the only screen available signed-out; all tools and Settings require the
+>   parent account.
+> • Account creation and billing happen on our website, not in the extension. The
 >   "Create an account" link opens it in a new tab.
-> • The extension has no ads and no third-party analytics.
+> • Safety: the panel refuses to read adult/gambling sites. To verify, open such a
+>   site and click Explain — it declines without sending anything ("KiddieGPT only
+>   helps with schoolwork").
+> • Broad host access is used only to read the page the student is actively on, and
+>   only after they click a tool. Nothing is read or captured in the background.
+> • No ads and no third-party analytics.
 
 ---
 
