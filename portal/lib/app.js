@@ -1346,7 +1346,11 @@ function eligibleForTrial(family) {
   if (!family) return true;
   if (family.lastPaymentAt) return false;
   if (family.stripeSubscriptionId) return false;
-  if (family.trialUsedAt) return false;
+  // One free trial per account, of EITHER kind. An admin-granted no-card trial
+  // (trialStartedAt) counts just as much as a Stripe one (trialUsedAt) —
+  // otherwise a comped family gets a second free week at checkout. The admin can
+  // still grant another by hand from the console; this only governs self-serve.
+  if (family.trialUsedAt || family.trialStartedAt || family.trialEndedAt) return false;
   if (["paid", "refunded", "partial_refunded"].includes(family.paymentStatus)) return false;
   return true;
 }
@@ -4329,13 +4333,26 @@ app.get("/api/entitlements/me", (req, res) => {
       // Still reported while a cancelled trial runs out its term: the status has
       // moved to cancel_scheduled, but the family is in a trial until trial_end
       // and must keep seeing "you will not be charged" rather than billing copy.
-      status: (family.subscriptionStatus === "trialing" ||
-               (family.paymentStatus === "trial" && !family.lastPaymentAt && new Date(family.trialEndsAt || 0).getTime() > Date.now()))
-        ? "trialing"
-        : family.subscriptionStatus === "trial" ? "trial" : "",
+      // "trial"    = admin-granted, no card, parent still needs to subscribe.
+      // "trialing" = Stripe card-upfront trial (kept while a cancelled one runs
+      //              out its term, which is why the second clause exists — but
+      //              it requires a Stripe subscription so a comped trial never
+      //              matches it).
+      status: family.subscriptionStatus === "trial"
+        ? "trial"
+        : (family.subscriptionStatus === "trialing" ||
+           (family.stripeSubscriptionId && family.paymentStatus === "trial" && !family.lastPaymentAt &&
+            new Date(family.trialEndsAt || 0).getTime() > Date.now()))
+          ? "trialing"
+          : "",
       endsAt: family.trialEndsAt || "",
       days: Number(family.trialDays) || TRIAL_PERIOD_DAYS,
-      cardOnFile: Boolean(family.stripeSubscriptionId)
+      cardOnFile: Boolean(family.stripeSubscriptionId),
+      // Whether a NEW self-serve trial would be granted at checkout — lets the
+      // portal avoid promising a free week to someone who has already had one.
+      eligible: eligibleForTrial(family),
+      // Whether a NEW self-serve trial would be granted at checkout.
+      eligible: eligibleForTrial(family)
     },
     stripeSubscriptionId: effectiveFamilySubscriptionId(family),
     yearlyUpgrade: family.yearlyUpgrade ? {
@@ -4392,7 +4409,11 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         family.grade = req.body?.grade || family.grade;
         family.readingLevel = req.body?.readingLevel || family.readingLevel;
         const alreadyActive = family.subscriptionStatus === "active" && family.paymentStatus === "paid";
-        if (alreadyActive) {
+        // A family already on a trial keeps its status until Stripe confirms the
+        // payment. Flipping it to "pending" here would revoke access the moment
+        // they opened Checkout — before they had paid anything.
+        const onTrialNow = trialStillActive(family) || family.subscriptionStatus === "trialing";
+        if (alreadyActive || onTrialNow) {
           family.pendingPlanName = planName || family.pendingPlanName || family.plan;
         } else {
           family.plan = planName || family.plan;

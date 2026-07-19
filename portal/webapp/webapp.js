@@ -1205,8 +1205,9 @@
       var pitch = document.getElementById("trial-pitch");
       if (!pitch) return;
       var trial = trialInfo();
-      var alreadyUsed = Boolean(trial && trial.cardOnFile) || paid;
-      pitch.hidden = alreadyUsed;
+      // Trust the server's eligibility rule (one trial per account, either kind)
+      // rather than guessing client-side.
+      pitch.hidden = trial ? !trial.eligible : paid;
     }
 
     function updatePlanTiles() {
@@ -1239,11 +1240,15 @@
 
     function renderSubscriptionState() {
       var plan = paid ? activePlan() : selectedPlan();
-      if (subscriptionTitle) subscriptionTitle.textContent = paid ? "Your current package" : "Choose a family plan";
-      if (currentPackageCard) currentPackageCard.classList.toggle("hidden", !paid);
-      if (planTileGrid) planTileGrid.classList.toggle("hidden", paid);
+      if (subscriptionTitle) subscriptionTitle.textContent = (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
+      // A comped (no-card) trial is entitled but not subscribed: keep the plan
+      // tiles and checkout button on screen so they can convert during or after
+      // the trial, rather than being shown a package they never bought.
+      var needsCheckout = !paid || onNoCardTrial();
+      if (currentPackageCard) currentPackageCard.classList.toggle("hidden", needsCheckout);
+      if (planTileGrid) planTileGrid.classList.toggle("hidden", !needsCheckout);
       renderPromotionOffer();
-      if (paymentButton) paymentButton.classList.toggle("hidden", paid);
+      if (paymentButton) paymentButton.classList.toggle("hidden", !needsCheckout);
       if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !paid);
       if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid);
       if (currentPackageName) currentPackageName.textContent = plan.name;
@@ -1292,6 +1297,13 @@
     // Card-upfront Stripe trial state, straight from /api/entitlements/me.
     function trialInfo() {
       return (parentEntitlement && parentEntitlement.trial) || null;
+    }
+
+    // Admin-granted trial: entitled, but no card and no Stripe subscription — the
+    // parent still has to subscribe, so checkout must stay reachable.
+    function onNoCardTrial() {
+      var trial = trialInfo();
+      return Boolean(trial && trial.status === "trial" && !trial.cardOnFile);
     }
 
     function onStripeTrial() {
@@ -1399,12 +1411,14 @@
           yearlyUpgradeInfo = entitlement.yearlyUpgrade || null;
           yearlyUpgradeScheduled = Boolean(yearlyUpgradeInfo && yearlyUpgradeInfo.status === "scheduled");
           var trialing = onStripeTrial();
+          var compedTrial = onNoCardTrial();
           var trialEnds = trialEndsText();
           var planName = entitlement.plan || activePlan().name;
           // During a trial the parent needs the end date and when billing starts
           // — a bare "Subscription active" hides the fact a charge is coming.
           var title = cancellationScheduled
             ? (trialing ? "Trial ending" : "Cancellation scheduled")
+            : compedTrial ? "Free trial active"
             : trialing ? "Free trial active"
             : yearlyUpgradeScheduled ? "Yearly upgrade confirmed"
             : "Subscription active";
@@ -1413,6 +1427,10 @@
             detail = "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil || trialEnds) + ". Access continues until then, and you will not be charged.";
           } else if (cancellationScheduled) {
             detail = "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then.";
+          } else if (compedTrial) {
+            // No card on file: nothing will be charged, so they must choose a
+            // plan to keep access when the trial ends.
+            detail = "Your child has full access until " + trialEnds + ". Choose a plan below to keep it going — you can subscribe any time during or after the trial.";
           } else if (trialing) {
             detail = planName + " · your child has access during the trial. Billing starts on " + trialEnds + " unless cancelled.";
           } else if (yearlyUpgradeScheduled) {
@@ -1421,6 +1439,10 @@
             detail = planName + " is active for this family.";
           }
           setPaidPlan(key, title, detail);
+          if (compedTrial && paymentState) {
+            paymentState.textContent = "Free trial · ends " + trialEnds;
+            paymentState.className = "state-chip trialing";
+          }
           if (trialing && paymentState) {
             paymentState.textContent = "Trial ends " + trialEnds;
             paymentState.className = "state-chip warning";
