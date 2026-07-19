@@ -3681,12 +3681,6 @@
 
     function renderAiSettings() {
       var settings = Object.assign(defaultAiSettings(), aiSettingsCache || {});
-      setMetric("ai-key-status", settings.hasOpenAIKey ? "Stored" : "Not set");
-      setMetric("ai-key-mask", settings.maskedOpenAIKey || "Add server key");
-      setMetric("ai-math-limit", Number(settings.mathProblemsPerUserDaily || 0) + "/day");
-      setMetric("ai-voice-limit", Number(settings.tutorVoiceMinutesPerUserDaily || 0) + " min/day");
-      setMetric("ai-voice-status", settings.tutorVoiceEnabled ? "Enabled" : "Off");
-      setMetric("ai-updated-at", settings.updatedAt ? "Updated " + rowDateTime(settings.updatedAt) : "Not saved");
       if (aiSettingsForm) {
         aiSettingsForm.elements.openaiApiKey.value = "";
         // Show the stored (masked) key as the placeholder so it's obvious a key

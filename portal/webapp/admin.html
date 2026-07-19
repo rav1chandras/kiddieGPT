@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=120">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=121">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -86,8 +86,6 @@
         </div>
         <div class="admin-actions">
           <span class="admin-live-status" id="admin-live-status">Ready</span>
-          <button class="button ghost" type="button" id="seed-data"><i data-lucide="database"></i>Demo data</button>
-          <a class="button primary" href="/index.html"><i data-lucide="plus"></i>New family</a>
         </div>
       </header>
 
@@ -360,13 +358,6 @@
       </section>
 
       <section class="admin-view" data-admin-panel="ai-usage">
-        <div class="admin-stat-grid ai-control-kpis">
-          <article><span>OpenAI key</span><strong id="ai-key-status">Not set</strong><small id="ai-key-mask">Add server key</small></article>
-          <article><span>Math limit</span><strong id="ai-math-limit">20/day</strong><small>Math Step Tutor per student</small></article>
-          <article><span>Voice limit</span><strong id="ai-voice-limit">10 min/day</strong><small>Tutor voice per student</small></article>
-          <article><span>Voice tools</span><strong id="ai-voice-status">Enabled</strong><small id="ai-updated-at">Not saved</small></article>
-        </div>
-
         <form class="admin-table-card ai-settings-card" id="ai-settings-form">
           <div class="admin-card-head">
             <div><p class="eyebrow">AI controls</p><h2>Model access and usage limits</h2></div>
@@ -659,6 +650,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=120"></script>
+  <script src="/webapp/webapp.js?v=121"></script>
 </body>
 </html>
