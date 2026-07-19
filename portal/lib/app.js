@@ -29,6 +29,31 @@ const allowedExtensionOrigins = (process.env.ALLOWED_EXTENSION_ORIGINS || "*")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const USAGE_RETENTION_DAYS = Number(process.env.USAGE_RETENTION_DAYS || 30);
+// ---- AI request bounds ------------------------------------------------------
+// The extension's own caps are cosmetic: maxlength is a DOM attribute and any
+// client value can be forged, so the ceiling has to be enforced here. Counts
+// TEXT only — base64 image payloads (QR capture) are exempt or screenshots break.
+const AI_MAX_INPUT_CHARS = Number(process.env.AI_MAX_INPUT_CHARS || 8000);
+const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 2000);
+// OpenAI's TTS endpoint rejects >4096 characters, so stay just under it.
+const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
+
+// Sum the text an OpenAI Responses `input` carries, ignoring image parts.
+function aiInputTextLength(input) {
+  if (typeof input === "string") return input.length;
+  if (Array.isArray(input)) {
+    return input.reduce((sum, item) => {
+      if (typeof item === "string") return sum + item.length;
+      if (item && typeof item === "object") {
+        if (typeof item.text === "string") return sum + item.text.length;
+        if (Array.isArray(item.content)) return sum + aiInputTextLength(item.content);
+      }
+      return sum;
+    }, 0);
+  }
+  if (input && typeof input === "object" && Array.isArray(input.content)) return aiInputTextLength(input.content);
+  return 0;
+}
 // ---- Autopilot (lifecycle sweep + dunning) --------------------------------
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== "false";
 // Days after the first failed payment on which to send a reminder email.
@@ -3248,6 +3273,14 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   if (isMath && usageRemaining(family, settings, body.childId).mathProblems <= 0) {
     return res.status(429).json({ error: "cap_reached", scope: "math" });
   }
+  // Bound the prompt server-side. `instructions` is client-supplied too, so it
+  // counts against the same budget — capping only `input` would just move an
+  // injection into the other field.
+  const promptChars = aiInputTextLength(body.input) + String(body.instructions || "").length;
+  if (promptChars > AI_MAX_INPUT_CHARS) {
+    mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI prompt rejected", { chars: promptChars, limit: AI_MAX_INPUT_CHARS, tool }, req.auth.email));
+    return res.status(413).json({ error: "input_too_large", limit: AI_MAX_INPUT_CHARS, received: promptChars });
+  }
   // Enforce the "require step-by-step" parental control server-side so it can't
   // be bypassed by the client.
   let instructions = body.instructions;
@@ -3261,7 +3294,14 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
       body: JSON.stringify({
         model: body.model || settings.openaiModel || "gpt-5.6-luna",
         instructions,
-        input: body.input
+        input: body.input,
+        // Clamp rather than trust: the client's value was previously not
+        // forwarded at all, so nothing bounded output length. A modified client
+        // can send any number, so take the smaller of theirs and our ceiling.
+        max_output_tokens: Math.min(
+          Math.max(1, Number(body.max_output_tokens) || AI_MAX_OUTPUT_TOKENS),
+          AI_MAX_OUTPUT_TOKENS
+        )
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -3304,6 +3344,12 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   }
   const text = String(body.text || "").trim();
   if (!text) return res.status(400).json({ error: "empty_text" });
+  // The tutor script is already word-clamped server-side, but a modified client
+  // can post arbitrary text straight to this route.
+  if (text.length > TTS_MAX_INPUT_CHARS) {
+    mutateDb((store) => monitor(store, "warning", "ai", "Oversized TTS text rejected", { chars: text.length, limit: TTS_MAX_INPUT_CHARS }, req.auth.email));
+    return res.status(413).json({ error: "input_too_large", limit: TTS_MAX_INPUT_CHARS, received: text.length });
+  }
   // Resolve the voice server-side: student pick if allowed, else admin default,
   // else fallback order (marin -> cedar -> sage). Never trust a raw client voice.
   const voice = resolveTtsVoice(body.voice, settings);
