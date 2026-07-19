@@ -894,6 +894,29 @@ function usageRemaining(family, settings, childId) {
   };
 }
 
+// ---- Abuse signals ----------------------------------------------------------
+// Three things a normal student never trips: exhausting the account-wide token
+// ceiling, sending an oversized prompt (only possible by bypassing the client's
+// caps), and tripping moderation. Counted per family so the operator can see who
+// to look at, and dismissible once reviewed.
+function recordAbuseSignal(db, familyId, kind) {
+  const fam = (db.families || []).find((item) => item.id === familyId);
+  if (!fam) return;
+  fam.abuse = { capHits: 0, oversized: 0, moderation: 0, lastAt: "", dismissedAt: "", ...(fam.abuse || {}) };
+  if (kind === "cap") fam.abuse.capHits += 1;
+  else if (kind === "oversized") fam.abuse.oversized += 1;
+  else if (kind === "moderation") fam.abuse.moderation += 1;
+  fam.abuse.lastAt = nowIso();
+}
+
+// Flagged while there are signals newer than the operator's last dismissal.
+function abuseFlagged(family) {
+  const abuse = family?.abuse;
+  if (!abuse || !abuse.lastAt) return false;
+  if (!abuse.dismissedAt) return true;
+  return new Date(abuse.lastAt).getTime() > new Date(abuse.dismissedAt).getTime();
+}
+
 // Tokens the whole account has spent today, summed across every child.
 function familyTokensToday(family) {
   const day = usageDayKey();
@@ -2655,6 +2678,23 @@ app.get("/api/admin/state", requireAdmin, (req, res) => {
   res.json({ families: db.families, pricing: db.pricing, deletedUserSequence: Number(db.deletedUserSequence || 0), payments: db.payments.slice(0, 100), auditLogs: db.auditLogs.slice(0, 300), emailLogs: db.emailLogs.slice(0, 100), monitorEvents: (db.monitorEvents || []).slice(0, 100) });
 });
 
+// Dismiss abuse alerts. Marks signals reviewed rather than deleting them: the
+// counters stay for history, and a family only re-flags on a NEW signal.
+// Pass { familyId } to clear one account, omit it to clear all flagged ones.
+app.post("/api/admin/abuse-alerts/dismiss", requireAdmin, (req, res) => {
+  const familyId = String(req.body?.familyId || "").trim();
+  const at = nowIso();
+  const cleared = mutateDb((db) => {
+    const targets = (db.families || []).filter((family) =>
+      abuseFlagged(family) && (!familyId || family.id === familyId)
+    );
+    targets.forEach((family) => { family.abuse = { ...(family.abuse || {}), dismissedAt: at }; });
+    audit(db, "abuse.alerts.dismiss", { familyId: familyId || "all", cleared: targets.length }, req.auth?.email);
+    return targets.length;
+  });
+  res.json({ ok: true, cleared, dismissedAt: at });
+});
+
 app.post("/api/admin/state", requireAdmin, (req, res) => {
   const { families, pricing } = req.body || {};
   const updated = mutateDb((db) => {
@@ -3319,6 +3359,7 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   // left writing and follow-up chat unbounded.
   const budget = familyTokenBudget(family, settings);
   if (budget.exhausted) {
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap"));
     return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: budget.cap, used: budget.used });
   }
   // Bound the prompt server-side. `instructions` is client-supplied too, so it
@@ -3327,6 +3368,7 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   const promptChars = aiInputTextLength(body.input) + String(body.instructions || "").length;
   if (promptChars > AI_MAX_INPUT_CHARS) {
     mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI prompt rejected", { chars: promptChars, limit: AI_MAX_INPUT_CHARS, tool }, req.auth.email));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized"));
     return res.status(413).json({ error: "input_too_large", limit: AI_MAX_INPUT_CHARS, received: promptChars });
   }
   // Enforce the "require step-by-step" parental control server-side so it can't
@@ -3392,6 +3434,7 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   }
   const speechBudget = familyTokenBudget(family, settings);
   if (speechBudget.exhausted) {
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap"));
     return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: speechBudget.cap, used: speechBudget.used });
   }
   const text = String(body.text || "").trim();
@@ -3400,6 +3443,7 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   // can post arbitrary text straight to this route.
   if (text.length > TTS_MAX_INPUT_CHARS) {
     mutateDb((store) => monitor(store, "warning", "ai", "Oversized TTS text rejected", { chars: text.length, limit: TTS_MAX_INPUT_CHARS }, req.auth.email));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized"));
     return res.status(413).json({ error: "input_too_large", limit: TTS_MAX_INPUT_CHARS, received: text.length });
   }
   // Resolve the voice server-side: student pick if allowed, else admin default,
@@ -3456,7 +3500,10 @@ app.post("/api/ai/moderations", requireParent, async (req, res) => {
   try {
     const { flagged, categories } = await moderationCheck(settings.openaiApiKey, input);
     if (flagged) {
-      mutateDb((store) => monitor(store, "warning", "safety", "Moderation flagged content", { email: family?.email || "", categories }, family?.email || ""));
+      mutateDb((store) => {
+        monitor(store, "warning", "safety", "Moderation flagged content", { email: family?.email || "", categories }, family?.email || "");
+        recordAbuseSignal(store, family?.id, "moderation");
+      });
     }
     return res.json({ flagged, categories });
   } catch (error) {

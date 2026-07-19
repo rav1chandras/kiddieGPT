@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=119">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=120">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -97,6 +97,12 @@
           <article><span>Active families</span><strong id="active-subs">0</strong><small id="active-note">Subscribed and unlocked</small></article>
           <article><span>Students</span><strong id="student-count">0</strong><small id="student-note">Profiles using tools</small></article>
           <article><span>Needs action</span><strong id="action-count">0</strong><small id="action-note">Operator queue</small></article>
+          <article id="abuse-tile" hidden>
+            <span>Abuse alerts</span>
+            <strong id="abuse-count">0</strong>
+            <small id="abuse-note">Accounts hitting limits</small>
+            <button class="table-action" type="button" id="dismiss-abuse">Dismiss</button>
+          </article>
         </div>
 
         <div class="founder-overview-grid">
@@ -653,6 +659,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=119"></script>
+  <script src="/webapp/webapp.js?v=120"></script>
 </body>
 </html>

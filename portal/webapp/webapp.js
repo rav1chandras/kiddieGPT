@@ -2695,6 +2695,58 @@
         .replace(/"/g, "&quot;");
     }
 
+
+    // Abuse alerts: families with signals newer than the operator's last dismissal.
+    // The tile stays hidden at zero so a clean console isn't cluttered by it.
+    function abuseFlagged(family) {
+      var abuse = family && family.abuse;
+      if (!abuse || !abuse.lastAt) return false;
+      if (!abuse.dismissedAt) return true;
+      return new Date(abuse.lastAt).getTime() > new Date(abuse.dismissedAt).getTime();
+    }
+
+    function renderAbuseTile(families) {
+      var tile = document.getElementById("abuse-tile");
+      if (!tile) return;
+      var flagged = (families || []).filter(abuseFlagged);
+      tile.hidden = flagged.length === 0;
+      if (!flagged.length) return;
+      setMetric("abuse-count", flagged.length);
+      var totals = flagged.reduce(function (acc, family) {
+        var abuse = family.abuse || {};
+        acc.cap += Number(abuse.capHits || 0);
+        acc.oversized += Number(abuse.oversized || 0);
+        acc.moderation += Number(abuse.moderation || 0);
+        return acc;
+      }, { cap: 0, oversized: 0, moderation: 0 });
+      var parts = [];
+      if (totals.cap) parts.push(totals.cap + " over limit");
+      if (totals.oversized) parts.push(totals.oversized + " oversized");
+      if (totals.moderation) parts.push(totals.moderation + " flagged");
+      var note = document.getElementById("abuse-note");
+      if (note) note.textContent = parts.join(" · ") || "Accounts hitting limits";
+    }
+
+    async function dismissAbuseAlerts() {
+      var button = document.getElementById("dismiss-abuse");
+      if (button) button.disabled = true;
+      try {
+        var response = await apiFetch("/api/admin/abuse-alerts/dismiss", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (!response.ok) throw new Error("Could not dismiss");
+        await loadBackendState();
+        renderAdmin();
+      } catch (error) {
+        var note = document.getElementById("abuse-note");
+        if (note) note.textContent = "Could not dismiss — try again.";
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
     function setMetric(id, value) {
       var element = document.getElementById(id);
       if (element) element.textContent = String(value);
@@ -4089,6 +4141,7 @@
       setMetric("activation-rate", percent(activationCount, families.length));
       setMetric("engagement-rate", percent(engagedStudents, studentTotal));
       setMetric("churn-risk", riskFamilies.length);
+      renderAbuseTile(families);
       setMetric("failed-payment-count", failedPayments.length);
       setMetric("payment-collected", money(monthlyRevenue));
       setMetric("payment-failed", money(failedPayments.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
@@ -4472,6 +4525,13 @@
         seedFamilies();
         selectedFamilyId = null;
         renderAdmin();
+      });
+    }
+
+    var dismissAbuseBtn = document.getElementById("dismiss-abuse");
+    if (dismissAbuseBtn) {
+      dismissAbuseBtn.addEventListener("click", function () {
+        dismissAbuseAlerts();
       });
     }
 
