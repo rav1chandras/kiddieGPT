@@ -2816,7 +2816,8 @@ app.post("/api/account/delete-request", requireParent, (req, res) => {
     if (family) {
       family.deletionRequestedAt = user.deletionRequestedAt;
       family.accountLocked = true;
-      family.subscriptionStatus = family.subscriptionStatus === "active" ? "paused" : family.subscriptionStatus;
+      // accountLocked is the single access control; the billing status is left
+      // alone so the operator can still see what the account was.
     }
     audit(db, "account.delete.request", { userId: user.id, familyId: family?.id || "", email: user.email }, user.email);
     monitor(db, "warning", "account", "Parent requested account deletion", { email: user.email, familyId: family?.id || "" }, user.email);
@@ -5342,7 +5343,7 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === String(email || "").toLowerCase());
       if (family) {
-        if (action === "pause") family.subscriptionStatus = "paused";
+        if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
         else {
           const mockPeriodEnd = new Date();
           mockPeriodEnd.setMonth(mockPeriodEnd.getMonth() + (String(family.plan || "").toLowerCase().includes("year") ? 12 : 1));
@@ -5370,7 +5371,7 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
     mutateDb((db) => {
       const family = db.families.find((item) => item.stripeSubscriptionId === subscriptionId || item.email === String(email || "").toLowerCase());
       if (family) {
-        if (action === "pause") family.subscriptionStatus = "paused";
+        if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
         else markCancellationScheduled(family, subscription, "Admin scheduled cancellation");
       }
       audit(db, `subscription.${action}`, { subscriptionId, email });
@@ -5707,7 +5708,10 @@ app.post("/api/admin/billing-exception", requireAdmin, async (req, res) => {
       mutateDb((db) => {
         const next = db.families.find((item) => item.id === family.id);
         if (!next) return null;
-        next.subscriptionStatus = action === "pause_billing" ? "paused" : "cancelled";
+        // The Stripe pause_collection call above is the billing side; locally we
+        // lock rather than inventing a "paused" status that duplicates it.
+        if (action === "pause_billing") next.accountLocked = true;
+        else next.subscriptionStatus = "cancelled";
         next[action === "pause_billing" ? "pausedAt" : "cancelledAt"] = nowIso();
         next.billingExceptions = next.billingExceptions || [];
         next.billingExceptions.unshift({ action, subscriptionId: result.subscriptionId, reason, createdAt: nowIso() });

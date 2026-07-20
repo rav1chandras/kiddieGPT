@@ -2613,6 +2613,7 @@
     var statusFilter = document.getElementById("status-filter");
     var lockedFilter = document.getElementById("locked-filter");
     var maxAiFilter = document.getElementById("max-ai-filter");
+    var subscriptionFilter = document.getElementById("subscription-filter");
     var paidDateFilter = document.getElementById("paid-date-filter");
     var deletedDateFilter = document.getElementById("deleted-date-filter");
     var trialForm = document.getElementById("trial-form");
@@ -2797,6 +2798,7 @@
       var status = statusFilter.value;
       var lockedOnly = lockedFilter ? lockedFilter.checked : false;
       var maxAiOnly = maxAiFilter ? maxAiFilter.checked : false;
+      var subscription = subscriptionFilter ? subscriptionFilter.value : "all";
       var paidWindow = paidDateFilter ? paidDateFilter.value : "all";
       return readFamilies().filter(function (family) {
         // Deleted accounts live on the Deleted tab and never appear here.
@@ -2804,20 +2806,35 @@
         // Accounts is the paying book: a family appears once it has actually been
         // charged. Trials (never charged) live on the Free Trial tab until they
         // convert, and pending signups are not customers yet.
-        if (!hasEverPaid(family)) return false;
+        // Accounts = committed customers. That means anyone who has paid, plus a
+      // Stripe card-upfront trial: they have a card on file and will be charged,
+      // so they are a customer mid-trial — not a comped account. Without this
+      // they would fall through both tabs and be invisible.
+      if (!hasEverPaid(family) && !onStripeTrialFamily(family)) return false;
         var haystack = [family.parentName, family.email, family.studentName, family.grade, family.readingLevel, familyLoginType(family)].join(" ").toLowerCase();
         var matchesQuery = !query || haystack.indexOf(query) >= 0;
         var matchesStatus = status === "all" || family.subscriptionStatus === status;
         var matchesLocked = !lockedOnly || familyLocked(family);
         var matchesMaxAi = !maxAiOnly || familyMaxedAi(family);
+        // Matches what the Subscription column shows: a trial counts as a trial
+        // regardless of which plan it will bill onto.
+        var onTrial = family.subscriptionStatus === "trial" || family.subscriptionStatus === "trialing";
+        var interval = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
+        var matchesSubscription = subscription === "all" ||
+          (subscription === "trial" ? onTrial : !onTrial && interval === subscription);
         var matchesPaid = withinDateWindow(familyPaidAt(family), paidWindow);
-        return matchesQuery && matchesStatus && matchesLocked && matchesMaxAi && matchesPaid;
+        return matchesQuery && matchesStatus && matchesLocked && matchesMaxAi && matchesPaid && matchesSubscription;
       });
     }
 
     // Has this family ever actually been charged? A trial has paymentStatus
     // "trial" (then "unpaid" once it expires) and a pending signup "pending", so
     // neither counts. A refund still counts — money changed hands both ways.
+    // A Stripe card-upfront trial: card captured, Stripe will bill at trial end.
+    function onStripeTrialFamily(family) {
+      return Boolean(family && family.subscriptionStatus === "trialing" && family.stripeSubscriptionId);
+    }
+
     function hasEverPaid(family) {
       if (!family) return false;
       if (family.lastPaymentAt) return true;
@@ -4383,11 +4400,11 @@
       // and self-serve card-upfront Stripe trials ("trialing"). Neither has been
       // charged, so neither appears in Accounts — without this a Stripe trial
       // would be invisible in the console entirely.
+      // Free Trial tab lists ONLY admin-granted (no-card) trials — the comped
+      // accounts an operator created. A Stripe trial has a card on file and is a
+      // self-serve customer, so it stays on Accounts.
       var trialFamilies = families.filter(function (family) {
-        return family.subscriptionStatus === "trial" ||
-          family.subscriptionStatus === "trialing" ||
-          family.trialStartedAt ||   // admin-granted trial history
-          family.trialUsedAt;        // Stripe trial history (survives cancel_scheduled)
+        return Boolean(family.trialStartedAt) && !family.trialUsedAt;
       });
       var actions = adminActions(families);
       var activationCount = families.filter(function (family) {
@@ -4421,13 +4438,6 @@
       setMetric("log-email-count", emailLogsCache.length);
       setMetric("monitor-count", monitorEventsCache.length);
       setMetric("monitor-error-count", monitorEventsCache.filter(function (event) { return event.severity === "error"; }).length + " errors");
-      // Count what the Accounts tab actually lists — paying, non-deleted families
-      // — not every family record, or the badge contradicts the table.
-      setMetric("family-toggle-accounts", families.filter(function (family) {
-        return !familyDeleted(family) && hasEverPaid(family);
-      }).length);
-      setMetric("family-toggle-deletions", pendingDeletes.length);
-      setMetric("family-toggle-trials", trialFamilies.length);
       familyTableButtons.forEach(function (button) {
         button.classList.toggle("active", button.dataset.familyTable === activeFamilyTable);
       });
@@ -4475,9 +4485,6 @@
           "<td>" + studentCount + "</td>" +
           "<td>" + planType + "</td>" +
           "<td>" + statusChip(locked ? "locked" : family.subscriptionStatus) + "</td>" +
-          "<td>" + (familyMaxedAi(family)
-            ? "<span class='state-chip warning'>Maxed &times;" + Number((family.abuse || {}).capHits || 0) + "</span>"
-            : "<span class='muted-cell'>—</span>") + "</td>" +
           "<td>" + text(familyNextRenewal(family)) + "</td>" +
           "<td>" + text(shortDate(family.createdAt)) + "</td>" +
           "<td>" + rowDateTime(family.lastLoginAt) + "</td>" +
@@ -4861,6 +4868,7 @@
     });
 
     if (maxAiFilter) maxAiFilter.addEventListener("change", renderAdmin);
+    if (subscriptionFilter) subscriptionFilter.addEventListener("change", renderAdmin);
     if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
     if (deletedDateFilter) deletedDateFilter.addEventListener("change", renderAdmin);
     if (paymentSearch) paymentSearch.addEventListener("input", renderAdmin);

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=137">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=139">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -129,9 +129,9 @@
 
       <section class="admin-view" data-admin-panel="families">
         <div class="payment-table-toggle" role="tablist" aria-label="Family views">
-          <button class="active" type="button" data-family-table="accounts">Accounts <span id="family-toggle-accounts">0</span></button>
-          <button type="button" data-family-table="deletions">Deleted <span id="family-toggle-deletions">0</span></button>
-          <button type="button" data-family-table="trials">Free Trial <span id="family-toggle-trials">0</span></button>
+          <button class="active" type="button" data-family-table="accounts">Accounts</button>
+          <button type="button" data-family-table="deletions">Deleted</button>
+          <button type="button" data-family-table="trials">Free Trial</button>
         </div>
 
         <div data-family-table-panel="accounts">
@@ -143,11 +143,16 @@
               </div>
               <div class="admin-filters">
                 <input id="family-search" type="search" placeholder="Search parent, email, student">
+                <select id="subscription-filter" aria-label="Filter by subscription">
+                  <option value="all">All subscriptions</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                  <option value="trial">Trial</option>
+                </select>
                 <select id="status-filter" aria-label="Filter by status">
                   <option value="all">All</option>
                   <option value="active">Active</option>
                   <option value="pending">Pending</option>
-                  <option value="paused">Paused</option>
                   <option value="cancel_scheduled">Cancel scheduled</option>
                   <option value="cancelled">Cancelled</option>
                   <option value="trialing">Trialing (card on file)</option>
@@ -168,7 +173,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>AI limit</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
               </table>
             </div>
@@ -718,6 +723,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=137"></script>
+  <script src="/webapp/webapp.js?v=139"></script>
 </body>
 </html>

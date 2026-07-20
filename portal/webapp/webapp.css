@@ -6222,3 +6222,16 @@ body[data-page="admin"] .muted-note {
   font-size: 11.5px;
   overflow-wrap: anywhere;
 }
+
+/* Filters sit at the left of the card head, next to the title, rather than
+   pushed to the right edge — they are scanned far more often than the heading. */
+body[data-page="admin"] .admin-card-head:has(.admin-filters) {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px 18px;
+}
+body[data-page="admin"] .admin-filters {
+  margin-right: auto;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
