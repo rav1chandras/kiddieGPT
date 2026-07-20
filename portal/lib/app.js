@@ -2197,10 +2197,17 @@ function demoLoginsEnabled() {
 // Seeded fixtures covering each subscription state, surfaced as login tiles so
 // they can be switched between without retyping credentials.
 const DEMO_LOGIN_ACCOUNTS = [
-  { email: "trial.active@gmail.com", label: "Trial active", note: "Free trial running", icon: "clock" },
-  { email: "paid.monthly@gmail.com", label: "Monthly paid", note: "Active subscription", icon: "credit-card" },
-  { email: "paid.yearly@gmail.com", label: "Yearly paid", note: "Active subscription", icon: "badge-dollar-sign" },
-  { email: "trial.ended@gmail.com", label: "Trial ended", note: "Access expired", icon: "clock-alert" }
+  // Fresh and trial-eligible — use these to run a real Stripe Checkout with the
+  // 7-day card-upfront trial.
+  { email: "stripe.new1@gmail.com", label: "New · monthly", note: "Eligible for trial", icon: "credit-card" },
+  { email: "stripe.new2@gmail.com", label: "New · yearly", note: "Eligible for trial", icon: "badge-dollar-sign" },
+  // Trial already used — checkout charges immediately, no free week.
+  { email: "stripe.used@gmail.com", label: "Trial used", note: "Charges immediately", icon: "clock-alert" },
+  // Display fixtures for UI states (no Stripe objects behind them).
+  { email: "trial.active@gmail.com", label: "Trial active", note: "Comped, no card", icon: "clock" },
+  { email: "paid.monthly@gmail.com", label: "Monthly paid", note: "Active subscription", icon: "wallet" },
+  { email: "paid.yearly@gmail.com", label: "Yearly paid", note: "Active subscription", icon: "wallet" },
+  { email: "trial.ended@gmail.com", label: "Trial ended", note: "Access expired", icon: "ban" }
 ];
 
 app.get("/api/auth/config", (req, res) => {
