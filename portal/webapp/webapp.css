@@ -6235,3 +6235,12 @@ body[data-page="admin"] .admin-filters {
   justify-content: flex-start;
   flex-wrap: wrap;
 }
+
+/* Upcoming renewals: the expected-value summary sits inline with the filters. */
+body[data-page="admin"] .renewal-total {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}

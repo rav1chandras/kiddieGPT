@@ -2614,6 +2614,8 @@
     var lockedFilter = document.getElementById("locked-filter");
     var maxAiFilter = document.getElementById("max-ai-filter");
     var subscriptionFilter = document.getElementById("subscription-filter");
+    var renewalSubscriptionFilter = document.getElementById("renewal-subscription-filter");
+    var renewalWindowFilter = document.getElementById("renewal-window-filter");
     var paidDateFilter = document.getElementById("paid-date-filter");
     var deletedDateFilter = document.getElementById("deleted-date-filter");
     var trialForm = document.getElementById("trial-form");
@@ -2833,6 +2835,50 @@
     // A Stripe card-upfront trial: card captured, Stripe will bill at trial end.
     function onStripeTrialFamily(family) {
       return Boolean(family && family.subscriptionStatus === "trialing" && family.stripeSubscriptionId);
+    }
+
+    // The next date money moves for a family. For a live subscription that is the
+    // period end; for a trial it is when billing starts, which is the whole point
+    // of the forecast — those are the accounts about to convert or churn.
+    function nextBillingDate(family) {
+      if (!family) return "";
+      if (family.subscriptionStatus === "trialing" || family.subscriptionStatus === "trial") {
+        return family.trialEndsAt || "";
+      }
+      if (family.subscriptionStatus !== "active") return "";
+      return (family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) ||
+        family.currentPeriodEnd || family.nextRenewalAt || "";
+    }
+
+    // Cancel-scheduled accounts are deliberately excluded: they are not renewing,
+    // they are ending, and the Cancellations tab already covers them.
+    function upcomingRenewals(families) {
+      var now = Date.now();
+      var subscription = renewalSubscriptionFilter ? renewalSubscriptionFilter.value : "all";
+      var window = renewalWindowFilter ? renewalWindowFilter.value : "30";
+      var horizon = window === "all" ? Infinity : now + Number(window) * 86400000;
+      return (families || []).reduce(function (rows, family) {
+        if (familyDeleted(family) || family.accountLocked) return rows;
+        var iso = nextBillingDate(family);
+        if (!iso) return rows;
+        var at = new Date(iso).getTime();
+        if (!isFinite(at) || at < now || at > horizon) return rows;
+        var onTrial = family.subscriptionStatus === "trial" || family.subscriptionStatus === "trialing";
+        var interval = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
+        if (subscription !== "all") {
+          if (subscription === "trial" ? !onTrial : (onTrial || interval !== subscription)) return rows;
+        }
+        rows.push({
+          family: family,
+          at: at,
+          iso: iso,
+          days: Math.max(0, Math.ceil((at - now) / 86400000)),
+          onTrial: onTrial,
+          // A comped trial has no card, so nothing is collected when it ends.
+          amountCents: (onTrial && !family.stripeSubscriptionId) ? 0 : planAmountCents(family.plan || moneyPlan())
+        });
+        return rows;
+      }, []).sort(function (a, b) { return a.at - b.at; });
     }
 
     function hasEverPaid(family) {
@@ -4552,6 +4598,32 @@
           dateInRange(family.cancelledAt || family.cancellationCompletedAt || family.cancelAccessUntil || family.cancellationAccessUntil, cancelledFrom, cancelledTo);
       });
       setMetric("payment-toggle-cancelled", cancelledRows.length);
+      var renewalRows = upcomingRenewals(families);
+      var renewalValue = renewalRows.reduce(function (total, row) { return total + row.amountCents; }, 0);
+      var renewalTotal = document.getElementById("renewal-total");
+      if (renewalTotal) {
+        renewalTotal.textContent = renewalRows.length
+          ? renewalRows.length + " renewing · " + money(renewalValue / 100) + " expected"
+          : "";
+      }
+      renderRows("renewal-table", renewalRows.length ? renewalRows.map(function (row) {
+        var family = row.family;
+        var label = row.onTrial
+          ? (family.stripeSubscriptionId ? "Trial converting" : "Trial (no card)")
+          : (String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Yearly" : "Monthly");
+        return "<tr>" +
+          "<td>" + text(family.parentName) + "</td>" +
+          "<td>" + text(family.email) + "</td>" +
+          "<td>" + text(label) + "</td>" +
+          "<td>" + statusChip(family.subscriptionStatus) + "</td>" +
+          "<td>" + rowDateTime(row.iso) + "</td>" +
+          "<td>" + (row.days === 0 ? "Today" : row.days + (row.days === 1 ? " day" : " days")) + "</td>" +
+          // A comped trial collects nothing when it ends, so show why rather
+          // than a misleading $0.
+          "<td>" + (row.amountCents ? money(row.amountCents / 100) : "<span class='muted-cell'>no card</span>") + "</td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='7'><div class='empty-state'>No renewals in this window.</div></td></tr>"]);
+
       renderRows("cancelled-subscription-table", cancelledRows.length ? cancelledRows.map(function (family) {
         var subscriptionId = family.cancellationSubscriptionId || family.stripeSubscriptionId || "";
         return "<tr>" +
@@ -4869,6 +4941,8 @@
 
     if (maxAiFilter) maxAiFilter.addEventListener("change", renderAdmin);
     if (subscriptionFilter) subscriptionFilter.addEventListener("change", renderAdmin);
+    if (renewalSubscriptionFilter) renewalSubscriptionFilter.addEventListener("change", renderAdmin);
+    if (renewalWindowFilter) renewalWindowFilter.addEventListener("change", renderAdmin);
     if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
     if (deletedDateFilter) deletedDateFilter.addEventListener("change", renderAdmin);
     if (paymentSearch) paymentSearch.addEventListener("input", renderAdmin);

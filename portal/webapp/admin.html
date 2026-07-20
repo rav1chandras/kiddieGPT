@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=139">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=140">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -268,6 +268,7 @@
 
         <div class="payment-table-toggle" role="tablist" aria-label="Payment tables">
           <button class="active" type="button" data-payment-table="payments">Payments <span id="payment-toggle-payments">0</span></button>
+          <button type="button" data-payment-table="renewals">Upcoming renewals</button>
           <button type="button" data-payment-table="cancellations">Cancellation requests <span id="payment-toggle-cancellations">0</span></button>
           <button type="button" data-payment-table="upgrades">Yearly upgrades <span id="payment-toggle-upgrades">0</span></button>
           <button type="button" data-payment-table="cancelled">Cancelled <span id="payment-toggle-cancelled">0</span></button>
@@ -345,6 +346,35 @@
             <table>
               <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Cancelled</th><th>Access ended</th><th>Stripe sub</th></tr></thead>
               <tbody id="cancelled-subscription-table"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="admin-table-card" data-payment-table-panel="renewals" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Forecast</p><h2>Upcoming renewals</h2></div>
+            <div class="admin-filters">
+              <select id="renewal-subscription-filter" aria-label="Filter renewals by subscription">
+                <option value="all">All subscriptions</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+                <option value="trial">Trial converting</option>
+              </select>
+              <select id="renewal-window-filter" aria-label="Filter renewals by window">
+                <option value="7">Next 7 days</option>
+                <option value="30" selected>Next 30 days</option>
+                <option value="60">Next 60 days</option>
+                <option value="90">Next 90 days</option>
+                <option value="365">Next 12 months</option>
+                <option value="all">All upcoming</option>
+              </select>
+              <span class="renewal-total" id="renewal-total"></span>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Email</th><th>Subscription</th><th>Status</th><th>Renews</th><th>Days away</th><th>Amount</th></tr></thead>
+              <tbody id="renewal-table"></tbody>
             </table>
           </div>
         </article>
@@ -723,6 +753,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=139"></script>
+  <script src="/webapp/webapp.js?v=140"></script>
 </body>
 </html>
