@@ -8,61 +8,160 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=141">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=144">
 </head>
 <body data-page="parent" class="parent-locked">
   <section class="parent-auth-gate" id="parent-auth-gate">
-    <form class="parent-auth-card" id="parent-login-form">
-      <div class="admin-auth-brand">
-        <img src="/icons/logo-mascot.png" alt="">
-        <span>KiddieGPT</span>
+    <div class="parent-login-shell">
+      <div class="parent-login-visual" aria-hidden="true">
+        <div class="login-flow-stage">
+          <div class="flow-label flow-label-left">Bring it in</div>
+          <div class="flow-label flow-label-right">Learn with it</div>
+          <svg class="login-flow-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <path id="flow-in-web" d="M27 20 C34 20 38 40 45 50"></path>
+            <path id="flow-in-pdf" d="M27 50 C34 50 39 50 45 50"></path>
+            <path id="flow-in-shot" d="M27 80 C34 80 38 60 45 50"></path>
+            <path id="flow-out-explain" d="M55 50 C62 40 66 20 73 20"></path>
+            <path id="flow-out-mission" d="M55 50 C62 50 66 50 73 50"></path>
+            <path id="flow-out-tutor" d="M55 50 C62 60 66 80 73 80"></path>
+            <circle class="flow-anchor-dot" cx="32" cy="27" r="1.3"></circle>
+            <circle class="flow-anchor-dot" cx="35" cy="50" r="1.3"></circle>
+            <circle class="flow-anchor-dot" cx="32" cy="73" r="1.3"></circle>
+            <circle class="flow-anchor-dot" cx="68" cy="27" r="1.3"></circle>
+            <circle class="flow-anchor-dot" cx="65" cy="50" r="1.3"></circle>
+            <circle class="flow-anchor-dot" cx="68" cy="73" r="1.3"></circle>
+            <circle class="flow-pulse-dot" r="1.4">
+              <animateMotion dur="4s" repeatCount="indefinite">
+                <mpath href="#flow-in-web"></mpath>
+              </animateMotion>
+            </circle>
+            <circle class="flow-pulse-dot" r="1.4">
+              <animateMotion dur="4s" begin="-3.3s" repeatCount="indefinite">
+                <mpath href="#flow-in-pdf"></mpath>
+              </animateMotion>
+            </circle>
+            <circle class="flow-pulse-dot" r="1.4">
+              <animateMotion dur="4s" begin="-2.6s" repeatCount="indefinite">
+                <mpath href="#flow-in-shot"></mpath>
+              </animateMotion>
+            </circle>
+            <circle class="flow-pulse-dot flow-pulse-output" r="1.4">
+              <animateMotion dur="4s" begin="-3.65s" repeatCount="indefinite">
+                <mpath href="#flow-out-explain"></mpath>
+              </animateMotion>
+            </circle>
+            <circle class="flow-pulse-dot flow-pulse-output" r="1.4">
+              <animateMotion dur="4s" begin="-2.95s" repeatCount="indefinite">
+                <mpath href="#flow-out-mission"></mpath>
+              </animateMotion>
+            </circle>
+            <circle class="flow-pulse-dot flow-pulse-output" r="1.4">
+              <animateMotion dur="4s" begin="-2.25s" repeatCount="indefinite">
+                <mpath href="#flow-out-tutor"></mpath>
+              </animateMotion>
+            </circle>
+          </svg>
+          <div class="flow-column flow-inputs">
+            <div class="flow-tile">
+              <i data-lucide="globe-2"></i>
+              <strong>Web page</strong>
+              <span>Active tab</span>
+            </div>
+            <div class="flow-tile">
+              <i data-lucide="file-text"></i>
+              <strong>PDF file</strong>
+              <span>Notes or handout</span>
+            </div>
+            <div class="flow-tile">
+              <i data-lucide="scan-line"></i>
+              <strong>Screenshot</strong>
+              <span>Problem or diagram</span>
+            </div>
+          </div>
+          <div class="flow-hub">
+            <img src="/icons/logo-mascot.png" alt="">
+            <strong>KiddieGPT</strong>
+            <span>Grade-safe learning</span>
+          </div>
+          <div class="flow-column flow-outputs">
+            <div class="flow-tile">
+              <i data-lucide="message-circle-question"></i>
+              <strong>Explain</strong>
+              <span>Make it click</span>
+            </div>
+            <div class="flow-tile">
+              <i data-lucide="target"></i>
+              <strong>Mission</strong>
+              <span>Build a plan</span>
+            </div>
+            <div class="flow-tile">
+              <i data-lucide="play"></i>
+              <strong>Tutor</strong>
+              <span>Follow along</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <h1 id="parent-auth-title">Parent sign in</h1>
-      <p id="parent-auth-copy">Sign in to manage subscription, children, rewards, and extension access.</p>
-      <div class="auth-mode-toggle" id="parent-auth-mode-toggle" aria-label="Authentication mode">
-        <button class="active" type="button" data-parent-auth-mode="login">Sign in</button>
-        <button type="button" data-parent-auth-mode="signup">Create account</button>
-      </div>
-      <label class="signup-only hidden">Parent full name
-        <input type="text" name="parentName" autocomplete="name" placeholder="Your name">
-      </label>
-      <label id="parent-email-row">Email
-        <input type="email" name="email" autocomplete="username" placeholder="you@gmail.com" required>
-      </label>
-      <label id="parent-password-row">Password
-        <input type="password" name="password" autocomplete="current-password" placeholder="Your password" required>
-      </label>
-      <label class="reset-confirm-only hidden">Reset code
-        <input type="text" name="resetOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
-      </label>
-      <label class="reset-confirm-only hidden">New password
-        <input type="password" name="resetPassword" autocomplete="new-password" placeholder="At least 8 characters">
-      </label>
-      <label class="otp-only hidden">Verification code
-        <input type="text" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
-      </label>
-      <button class="button primary" type="submit" id="parent-auth-submit">Sign in</button>
-      <button class="text-link-button otp-only hidden" type="button" id="resend-otp">Resend code</button>
-      <button class="text-link-button login-only" type="button" id="forgot-password">Forgot password?</button>
-      <button class="google-login-button gate-google" type="button" id="google-login-button">
-        <i data-lucide="mail"></i>
-        Continue with Google
-      </button>
-      <div class="auth-demo-grid" aria-label="Demo accounts">
-        <button class="auth-demo-tile" type="button" data-parent-demo-login>
-          <i data-lucide="user-round"></i>
-          <span>Parent demo</span>
-          <strong>parent.kiddiegpt@gmail.com</strong>
+
+      <form class="parent-auth-card" id="parent-login-form">
+        <div class="login-card-topline">
+          <div class="admin-auth-brand">
+            <img src="/icons/logo-mascot.png" alt="">
+            <span>KiddieGPT</span>
+          </div>
+        </div>
+        <h1 id="parent-auth-title">Parent sign in</h1>
+        <div class="auth-mode-toggle" id="parent-auth-mode-toggle" aria-label="Authentication mode">
+          <button class="active" type="button" data-parent-auth-mode="login">Sign in</button>
+          <button type="button" data-parent-auth-mode="signup">Create account</button>
+        </div>
+        <label class="signup-only hidden">Parent full name
+          <input type="text" name="parentName" autocomplete="name" placeholder="Your name">
+        </label>
+        <label id="parent-email-row">Email
+          <input type="email" name="email" autocomplete="username" placeholder="you@gmail.com" required>
+        </label>
+        <label id="parent-password-row">Password
+          <input type="password" name="password" autocomplete="current-password" placeholder="Your password" required>
+        </label>
+        <label class="reset-confirm-only hidden">Reset code
+          <input type="text" name="resetOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+        </label>
+        <label class="reset-confirm-only hidden">New password
+          <input type="password" name="resetPassword" autocomplete="new-password" placeholder="At least 8 characters">
+        </label>
+        <label class="otp-only hidden">Verification code
+          <input type="text" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+        </label>
+        <button class="button primary" type="submit" id="parent-auth-submit">Sign in</button>
+        <p class="supported-email-note signup-only hidden">Supported email providers: Gmail, Yahoo, AOL, Outlook, and Hotmail.</p>
+        <button class="text-link-button otp-only hidden" type="button" id="resend-otp">Resend code</button>
+        <button class="text-link-button login-only" type="button" id="forgot-password">Forgot password?</button>
+        <div class="login-divider"><span>Or continue with</span></div>
+        <button class="google-login-button gate-google" type="button" id="google-login-button">
+          <i data-lucide="mail"></i>
+          Continue with Google
         </button>
-        <a class="auth-demo-tile" href="/admin.html">
-          <i data-lucide="layout-dashboard"></i>
-          <span>Admin demo</span>
-          <strong>admin@kiddiegpt.demo</strong>
-        </a>
-      </div>
-      <small id="parent-login-error" role="alert"></small>
-      <button class="text-link-button reset-flow-only reset-back-login hidden" type="button" id="back-to-login">Back to login</button>
-    </form>
+        <div class="login-demo-head">
+          <span>Test accounts</span>
+          <small>Use these tiles for local testing.</small>
+        </div>
+        <div class="auth-demo-grid" aria-label="Demo accounts">
+          <button class="auth-demo-tile" type="button" data-parent-demo-login>
+            <i data-lucide="user-round"></i>
+            <span>Parent demo</span>
+            <strong>parent.kiddiegpt@gmail.com</strong>
+          </button>
+          <a class="auth-demo-tile" href="/admin.html">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Admin demo</span>
+            <strong>admin@kiddiegpt.demo</strong>
+          </a>
+        </div>
+        <small id="parent-login-error" role="alert"></small>
+        <button class="text-link-button reset-flow-only reset-back-login hidden" type="button" id="back-to-login">Back to login</button>
+      </form>
+    </div>
   </section>
   <main class="flat-portal-shell parent-portal-pro">
     <header class="flat-hero">
@@ -516,6 +615,6 @@
     </div>
   </div>
 
-  <script src="/webapp/webapp.js?v=141"></script>
+  <script src="/webapp/webapp.js?v=142"></script>
 </body>
 </html>

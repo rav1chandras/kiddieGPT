@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=141">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=142">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -130,6 +130,7 @@
       <section class="admin-view" data-admin-panel="families">
         <div class="payment-table-toggle" role="tablist" aria-label="Family views">
           <button class="active" type="button" data-family-table="accounts">Accounts</button>
+          <button type="button" data-family-table="signups">Signups</button>
           <button type="button" data-family-table="deletions">Deleted</button>
           <button type="button" data-family-table="trials">Free Trial</button>
         </div>
@@ -175,6 +176,30 @@
               <table>
                 <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div data-family-table-panel="signups" hidden>
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Funnel</p><h2>Signups — not yet subscribed</h2></div>
+              <div class="admin-filters">
+                <input id="signup-search" type="search" placeholder="Search parent, email">
+                <select id="signup-date-filter" aria-label="Filter signups by date">
+                  <option value="all">All time</option>
+                  <option value="week">This week</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="60">Last 60 days</option>
+                  <option value="ytd">Year to date</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Status</th><th>Registered</th><th>Days since</th><th>Last login</th></tr></thead>
+                <tbody id="signup-table"></tbody>
               </table>
             </div>
           </article>
@@ -753,6 +778,6 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=141"></script>
+  <script src="/webapp/webapp.js?v=142"></script>
 </body>
 </html>

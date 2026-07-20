@@ -58,7 +58,7 @@
   }
 
   function parentEmailHint() {
-    return "Use " + allowedParentEmailDomains.join(", ") + ".";
+    return "Supported email providers: Gmail, Yahoo, AOL, Outlook, and Hotmail.";
   }
 
   function readFamilies() {
@@ -731,15 +731,7 @@
       if (parentEmailRow) parentEmailRow.classList.toggle("hidden", parentAuthMode === "reset-confirm");
       if (parentAuthSubmit) parentAuthSubmit.textContent = parentAuthMode === "otp" ? "Verify email" : parentAuthMode === "signup" ? "Create account" : parentAuthMode === "reset-request" ? "Send reset code" : parentAuthMode === "reset-confirm" ? "Reset password" : "Sign in";
       if (parentAuthTitle) parentAuthTitle.textContent = parentAuthMode === "otp" ? "Verify your email" : parentAuthMode === "signup" ? "Create parent account" : parentAuthMode === "reset-request" ? "Reset password" : parentAuthMode === "reset-confirm" ? "Set new password" : "Parent sign in";
-      if (parentAuthCopy) parentAuthCopy.textContent = parentAuthMode === "otp"
-        ? "Enter the 6-digit code sent to your email. The portal unlocks after verification."
-        : parentAuthMode === "signup"
-        ? "Create the parent account first. We will email a verification code before unlocking the portal."
-        : parentAuthMode === "reset-request"
-        ? "Enter your parent email and we will send a password reset code."
-        : parentAuthMode === "reset-confirm"
-        ? "Enter the reset code and choose a new password."
-        : "Sign in to manage subscription, children, rewards, and extension access.";
+      if (parentAuthCopy) parentAuthCopy.textContent = "";
       if (parentLoginError) parentLoginError.textContent = "";
       if (parentLoginForm && parentLoginForm.elements.password) {
         parentLoginForm.elements.password.autocomplete = parentAuthMode === "signup" ? "new-password" : "current-password";
@@ -1057,6 +1049,11 @@
     function validateParentEmail() {
       var emailInput = form.elements.email;
       var email = normalizeEmail(formValue("email"));
+      if (!email) {
+        if (emailInput) emailInput.setCustomValidity("");
+        showParentAuthMessage(parentEmailHint(), "ready");
+        return true;
+      }
       if (!parentEmailAllowed(email)) {
         var message = parentEmailHint();
         if (emailInput) emailInput.setCustomValidity(message);
@@ -2614,6 +2611,8 @@
     var lockedFilter = document.getElementById("locked-filter");
     var maxAiFilter = document.getElementById("max-ai-filter");
     var subscriptionFilter = document.getElementById("subscription-filter");
+    var signupSearch = document.getElementById("signup-search");
+    var signupDateFilter = document.getElementById("signup-date-filter");
     var renewalSubscriptionFilter = document.getElementById("renewal-subscription-filter");
     var renewalWindowFilter = document.getElementById("renewal-window-filter");
     var paidDateFilter = document.getElementById("paid-date-filter");
@@ -2879,6 +2878,29 @@
         });
         return rows;
       }, []).sort(function (a, b) { return a.at - b.at; });
+    }
+
+    // Signed up but never converted: no payment, no trial of either kind, not
+    // deleted. Accounts is paying-only and Free Trial is comped-only, so without
+    // this view these families appear nowhere in the console at all.
+    function isPendingSignup(family) {
+      if (!family || familyDeleted(family)) return false;
+      if (hasEverPaid(family) || onStripeTrialFamily(family)) return false;
+      if (family.trialStartedAt || family.trialUsedAt) return false;
+      return true;
+    }
+
+    function filteredSignups(families) {
+      var query = signupSearch ? signupSearch.value.trim().toLowerCase() : "";
+      var window = signupDateFilter ? signupDateFilter.value : "all";
+      return (families || []).filter(function (family) {
+        if (!isPendingSignup(family)) return false;
+        var haystack = [family.parentName, family.email, family.studentName].join(" ").toLowerCase();
+        if (query && haystack.indexOf(query) < 0) return false;
+        return withinDateWindow(family.createdAt, window);
+      }).sort(function (a, b) {
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
     }
 
     function hasEverPaid(family) {
@@ -4759,6 +4781,23 @@
         "</tr>";
       }) : ["<tr><td colspan='5'><div class='empty-state'>No deleted accounts in this period.</div></td></tr>"]);
 
+      var signupRows = filteredSignups(families);
+      renderRows("signup-table", signupRows.length ? signupRows.map(function (family) {
+        var days = family.createdAt
+          ? Math.floor((Date.now() - new Date(family.createdAt).getTime()) / 86400000)
+          : null;
+        return "<tr>" +
+          "<td>" + text(family.parentName) + "</td>" +
+          "<td>" + text(family.email) + "</td>" +
+          "<td>" + text(familyLoginType(family)) + "</td>" +
+          "<td>" + childrenOf(family).length + "</td>" +
+          "<td>" + statusChip(family.accountLocked ? "locked" : family.subscriptionStatus) + "</td>" +
+          "<td>" + text(shortDate(family.createdAt)) + "</td>" +
+          "<td>" + (days === null ? "—" : days === 0 ? "Today" : days + (days === 1 ? " day" : " days")) + "</td>" +
+          "<td>" + text(family.lastLoginAt ? shortDate(family.lastLoginAt) : "Never") + "</td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='8'><div class='empty-state'>No signups waiting to subscribe.</div></td></tr>"]);
+
       renderRows("trial-table", trialFamilies.length ? trialFamilies.map(function (family) {
         // Anything Stripe owns — including a cancelled trial still running out
         // its term — must not offer local delete: removing the family here would
@@ -4941,6 +4980,8 @@
 
     if (maxAiFilter) maxAiFilter.addEventListener("change", renderAdmin);
     if (subscriptionFilter) subscriptionFilter.addEventListener("change", renderAdmin);
+    if (signupSearch) signupSearch.addEventListener("input", renderAdmin);
+    if (signupDateFilter) signupDateFilter.addEventListener("change", renderAdmin);
     if (renewalSubscriptionFilter) renewalSubscriptionFilter.addEventListener("change", renderAdmin);
     if (renewalWindowFilter) renewalWindowFilter.addEventListener("change", renderAdmin);
     if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
