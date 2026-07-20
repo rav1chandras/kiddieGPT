@@ -2259,6 +2259,19 @@ app.post("/api/auth/login", (req, res) => {
     }
   }
   if (!user || !verifyPassword(password, user.passwordHash)) {
+    // A Google-only account has no password at all, so "invalid email or
+    // password" sends the parent off hunting for a typo that does not exist.
+    // Naming the provider discloses that an account exists, which signup already
+    // does via its 409 — and it is the difference between a dead end and a
+    // signpost.
+    if (user && user.authProvider === "google" && !user.passwordHash) {
+      mutateDb((dbToUpdate) => monitor(dbToUpdate, "info", "auth", "Password login attempted on a Google account", { email: normalizedEmail }, normalizedEmail));
+      return res.status(409).json({
+        ok: false,
+        authProvider: "google",
+        error: "This account uses Google sign-in. Continue with Google, or use \"Forgot password\" to set a password."
+      });
+    }
     mutateDb((dbToUpdate) => monitor(dbToUpdate, "warning", "auth", "Failed login", { email: normalizedEmail, role: requestedRole }, normalizedEmail));
     return res.status(401).json({ ok: false, error: "Invalid email or password." });
   }
