@@ -1872,6 +1872,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.stripeCustomerId = stripeId(object.customer) || family.stripeCustomerId;
       family.stripeSubscriptionId = stripeId(object.subscription) || family.stripeSubscriptionId;
       family.lastPaymentAt = nowIso();
+      // A renewal actually charged, so any pending cancellation is moot — Stripe
+      // would not bill a subscription that was ending. Clearing these stops a
+      // resumed subscription carrying a stale "cancels on ..." date after it has
+      // plainly renewed.
+      family.cancellationRequested = false;
+      family.cancellationStatus = "";
+      family.cancelAtPeriodEnd = false;
+      family.cancelAccessUntil = "";
+      family.cancellationAccessUntil = "";
       const periodEnd = object.period_end || (object.lines && object.lines.data && object.lines.data[0] && object.lines.data[0].period && object.lines.data[0].period.end);
       if (periodEnd) family.currentPeriodEnd = unixToIso(periodEnd) || family.currentPeriodEnd;
       delete family.nextRenewalDiscountCents; // one-time discount consumed on this invoice
