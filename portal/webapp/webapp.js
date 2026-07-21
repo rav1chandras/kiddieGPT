@@ -4817,6 +4817,15 @@
       }
     }
 
+    // Without this the form saved silently: no chip, no button state, so a click
+    // read as "nothing happened" even though the write succeeded.
+    function setPricingSaveState(label, state) {
+      var chip = document.getElementById("pricing-save-state");
+      if (!chip) return;
+      chip.textContent = label;
+      chip.className = "state-chip " + (state || "ready");
+    }
+
     function planSetupKey() {
       return pricingForm.elements.planSetupKey ? pricingForm.elements.planSetupKey.value : "monthly";
     }
@@ -4828,6 +4837,14 @@
       if (pricingForm.elements.planAmount) pricingForm.elements.planAmount.value = Number(plan.amount || 0);
       if (pricingForm.elements.planStripePriceId) pricingForm.elements.planStripePriceId.value = plan.stripePriceId || "";
       if (pricingForm.elements.planFamilyMemberCount) pricingForm.elements.planFamilyMemberCount.value = Number(plan.familyMemberCount || 3);
+      // The toggle drives both halves of the card. Both promo inputs stay in the
+      // DOM — only one is shown — so each plan keeps its own price and the save
+      // handler can still read both.
+      var planTitle = document.getElementById("plan-details-title");
+      if (planTitle) planTitle.textContent = (key === "yearly" ? "Yearly" : "Monthly") + " plan details";
+      Array.prototype.forEach.call(document.querySelectorAll("[data-promo-plan]"), function (field) {
+        field.hidden = field.dataset.promoPlan !== key;
+      });
     }
 
     function labelForException(action) {
@@ -5973,6 +5990,9 @@
 
     pricingForm.addEventListener("submit", async function (event) {
       event.preventDefault();
+      var saveButton = pricingForm.querySelector('button[type="submit"]');
+      setPricingSaveState("Saving", "warning");
+      if (saveButton) saveButton.disabled = true;
       try {
         var pricing = readPricing();
         var setupKey = planSetupKey();
@@ -6011,9 +6031,12 @@
           }
         });
         writeDevOutput("Pricing saved", readPricing());
+        setPricingSaveState("Saved", "ok");
       } catch (error) {
+        setPricingSaveState(error && error.error ? error.error : "Save failed", "error");
         writeDevOutput("Pricing save failed", error);
       }
+      if (saveButton) saveButton.disabled = false;
       renderAdmin();
     });
 

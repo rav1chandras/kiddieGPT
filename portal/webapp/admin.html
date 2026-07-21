@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=152">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=154">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -485,36 +485,41 @@
 
       <section class="admin-view" data-admin-panel="plans">
         <form class="plan-config-stack pricing-form" id="pricing-form">
-          <article class="admin-table-card pricing-card">
-            <div class="admin-card-head">
-              <div><p class="eyebrow">Stripe</p><h2>Plan setup</h2></div>
-            </div>
-            <div class="pricing-section-grid">
-              <label class="plan-toggle-field">Plan type
+          <article class="admin-table-card pricing-card plan-promo-card">
+            <div class="admin-card-head plan-promo-head">
+              <div><p class="eyebrow">Stripe</p><h2>Plan &amp; promotion</h2></div>
+              <div class="plan-promo-controls">
                 <span class="segmented-plan-toggle" role="radiogroup" aria-label="Plan type">
                   <input type="radio" name="planSetupKey" value="monthly" id="plan-setup-monthly" checked>
                   <label for="plan-setup-monthly">Monthly</label>
                   <input type="radio" name="planSetupKey" value="yearly" id="plan-setup-yearly">
                   <label for="plan-setup-yearly">Yearly</label>
                 </span>
-              </label>
-              <label>Price ($)<input type="number" name="planAmount" min="1" step="0.01" required></label>
-              <label>Stripe ID<input type="text" name="planStripePriceId" placeholder="price_..."></label>
-              <label>Family member count<input type="number" name="planFamilyMemberCount" min="1" step="1" required></label>
+                <span class="state-chip ready" id="pricing-save-state">Ready</span>
+                <button class="button primary" type="submit">Save</button>
+              </div>
             </div>
-          </article>
+            <div class="plan-promo-body">
+              <section class="plan-promo-col">
+                <p class="plan-promo-col-title" id="plan-details-title">Monthly plan details</p>
+                <div class="plan-detail-grid">
+                  <label class="plan-detail-wide">Stripe ID<input type="text" name="planStripePriceId" placeholder="price_..."></label>
+                  <label>Price ($)<input type="number" name="planAmount" min="1" step="0.01" required></label>
+                  <label>Family member count<input type="number" name="planFamilyMemberCount" min="1" step="1" required></label>
+                </div>
+              </section>
 
-          <article class="admin-table-card pricing-card promotion-override-section">
-            <div class="admin-card-head">
-              <div><p class="eyebrow">Promotion</p><h2>Promotion override</h2></div>
-            </div>
-            <div class="pricing-section-grid">
-              <label class="checkbox-field"><input type="checkbox" name="promotionEnabled"> Enable this override for eligible parents</label>
-              <label>Monthly discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="14.99"><small>Discounted monthly price. Leave blank for no monthly discount.</small></label>
-              <label>Yearly discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="99"><small>Discounted yearly price. Leave blank for no yearly discount.</small></label>
-              <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
-              <label>Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
-              <small class="pricing-help">One code and description covers both plans, but each price is independent — set one, the other, or both.</small>
+              <section class="plan-promo-col promotion-override-section">
+                <p class="plan-promo-col-title">Promotion override</p>
+                <div class="plan-detail-grid">
+                  <label class="checkbox-field plan-detail-wide"><input type="checkbox" name="promotionEnabled"> Enable this override for eligible parents</label>
+                  <label class="plan-detail-wide promo-price-field" data-promo-plan="monthly">Monthly discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="14.99"><small>Discounted monthly price. Leave blank for no monthly discount.</small></label>
+                  <label class="plan-detail-wide promo-price-field" data-promo-plan="yearly" hidden>Yearly discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="99"><small>Discounted yearly price. Leave blank for no yearly discount.</small></label>
+                  <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
+                  <label>Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
+                  <small class="pricing-help plan-detail-wide">The code and description are shared, but each plan keeps its own discount price — switch the toggle to set the other one.</small>
+                </div>
+              </section>
             </div>
           </article>
 
@@ -539,7 +544,7 @@
               <label>Bonus months<input type="number" name="upgradeBonusMonths" min="0" step="1" placeholder="3"><small>Extra months on top of 12 (plus prorated remaining days).</small></label>
               <label>Upgrade discount (%)<input type="number" name="upgradeDiscountPercent" min="0" max="90" step="1" placeholder="0"><small>Discount off the yearly price for upgraders.</small></label>
               <label>Offer note<input type="text" name="upgradeNote" placeholder="Example: July 4th sale — limited time"><small>Shown to monthly parents on the upgrade offer.</small></label>
-              <button class="button primary" type="submit">Save plan, promotion &amp; upgrade offer</button>
+              
             </div>
           </article>
         </form>
@@ -854,6 +859,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=152"></script>
+  <script src="/webapp/webapp.js?v=154"></script>
 </body>
 </html>

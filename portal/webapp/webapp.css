@@ -8409,3 +8409,74 @@ body.parent-mockup .parent-portal-live .plan-tile.is-selected .plan-radio {
   background: #fff;
   box-shadow: inset 0 0 0 6px var(--mock-green-2), inset 0 0 0 7px #fff;
 }
+
+/* ---- Plans: combined plan + promotion card ------------------------------- */
+/* Plan setup and Promotion override were separate cards, so the Monthly/Yearly
+   toggle sat in one and the save button at the bottom of a third card entirely.
+   One card, toggle and Save top-right, plan left, promotion right. */
+body[data-page="admin"] .plan-promo-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+body[data-page="admin"] .plan-promo-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+body[data-page="admin"] .plan-promo-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 26px;
+  padding: 18px;
+}
+body[data-page="admin"] .plan-promo-col {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+body[data-page="admin"] .plan-promo-col + .plan-promo-col {
+  padding-left: 26px;
+  border-left: 1px solid var(--line);
+}
+body[data-page="admin"] .plan-promo-col-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+/* Two per row, with Stripe ID and the promo price spanning the full width. */
+body[data-page="admin"] .plan-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+body[data-page="admin"] .plan-detail-grid > .plan-detail-wide { grid-column: 1 / -1; }
+body[data-page="admin"] .plan-detail-grid > label[hidden] { display: none; }
+
+@media (max-width: 900px) {
+  body[data-page="admin"] .plan-promo-body { grid-template-columns: minmax(0, 1fr); }
+  body[data-page="admin"] .plan-promo-col + .plan-promo-col {
+    padding-left: 0;
+    padding-top: 18px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* The segmented toggle is a 2-col grid sized for a form field; in the card head
+   it has no width to divide, so the labels overlapped. Give it a fixed track. */
+body[data-page="admin"] .plan-promo-controls .segmented-plan-toggle {
+  position: relative;
+  grid-template-columns: repeat(2, 84px);
+  min-height: 40px;
+  padding: 3px;
+}
+body[data-page="admin"] .plan-promo-controls .segmented-plan-toggle label {
+  min-height: 32px;
+  padding: 0 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
