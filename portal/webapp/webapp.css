@@ -2572,7 +2572,10 @@ body[data-page="parent"].parent-locked .flat-portal-shell {
   display: grid;
   place-items: center;
   padding: 24px;
-  background:
+  /* Opaque: the gradients below are translucent, so without a solid base colour
+     the signed-in app shell behind the gate bleeds through the login card. */
+  background-color: #f6f8f5;
+  background-image:
     radial-gradient(circle at 20% 15%, rgba(238, 246, 181, 0.72), transparent 34%),
     linear-gradient(135deg, rgba(246, 248, 245, 0.94), rgba(255, 255, 255, 0.96));
 }
