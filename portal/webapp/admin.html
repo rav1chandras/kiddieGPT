@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=151">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=152">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -510,11 +510,11 @@
             </div>
             <div class="pricing-section-grid">
               <label class="checkbox-field"><input type="checkbox" name="promotionEnabled"> Enable this override for eligible parents</label>
-              <label>Monthly discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="14.99"><small>Shown to new parents choosing monthly billing.</small></label>
-              <label>Yearly discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="99"><small>Shown to new parents and monthly subscribers upgrading to yearly.</small></label>
+              <label>Monthly discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="14.99"><small>Discounted monthly price. Leave blank for no monthly discount.</small></label>
+              <label>Yearly discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="99"><small>Discounted yearly price. Leave blank for no yearly discount.</small></label>
               <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
               <label>Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
-              <small class="pricing-help">The same code and description can support both plans. Leave a plan price blank to use its standard price.</small>
+              <small class="pricing-help">One code and description covers both plans, but each price is independent — set one, the other, or both.</small>
             </div>
           </article>
 
@@ -854,6 +854,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=151"></script>
+  <script src="/webapp/webapp.js?v=152"></script>
 </body>
 </html>

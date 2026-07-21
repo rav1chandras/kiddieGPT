@@ -4795,8 +4795,13 @@
       syncPlanSetupFields();
       if (pricingForm.elements.promotionEnabled) pricingForm.elements.promotionEnabled.checked = pricing.promotion.enabled !== false;
       pricingForm.elements.promoCode.value = pricing.promotion.code;
-      if (pricingForm.elements.promoMonthlyPrice) pricingForm.elements.promoMonthlyPrice.value = Number(promotionAmountForPlan(pricing.promotion, "monthly") || 0);
-      if (pricingForm.elements.promoYearlyPrice) pricingForm.elements.promoYearlyPrice.value = Number(promotionAmountForPlan(pricing.promotion, "yearly") || 0);
+      // Blank means "no discount on this plan". Writing 0 here made a disabled
+      // plan look like a $0 price, which is why a monthly override appeared set
+      // but never reached the portal.
+      var promoMonthlyValue = promotionAmountForPlan(pricing.promotion, "monthly");
+      var promoYearlyValue = promotionAmountForPlan(pricing.promotion, "yearly");
+      if (pricingForm.elements.promoMonthlyPrice) pricingForm.elements.promoMonthlyPrice.value = promoMonthlyValue ? Number(promoMonthlyValue) : "";
+      if (pricingForm.elements.promoYearlyPrice) pricingForm.elements.promoYearlyPrice.value = promoYearlyValue ? Number(promoYearlyValue) : "";
       if (pricingForm.elements.promoDescription) pricingForm.elements.promoDescription.value = pricing.promotion.description || "";
       var upgrade = pricing.yearlyUpgrade || {};
       if (pricingForm.elements.upgradeBonusMonths) pricingForm.elements.upgradeBonusMonths.value = Number(upgrade.bonusMonths != null ? upgrade.bonusMonths : 3);
