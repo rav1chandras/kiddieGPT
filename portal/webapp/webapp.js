@@ -2,6 +2,23 @@
   var STORAGE_KEY = "kiddiegptFamilies";
   var PRICING_KEY = "kiddiegptPricing";
   var ADMIN_TOKEN_KEY = "kiddiegptAdminToken";
+
+  // Status chips start hidden so screens are not littered with idle "Ready"
+  // pills. Any code that writes textContent reveals the chip automatically,
+  // so the many call sites did not need touching.
+  document.addEventListener("DOMContentLoaded", function () {
+    Array.prototype.forEach.call(document.querySelectorAll(".state-chip[hidden]"), function (chip) {
+      var proto = Object.getPrototypeOf(chip);
+      var desc = Object.getOwnPropertyDescriptor(proto, "textContent") ||
+        Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+      if (!desc || !desc.set) return;
+      Object.defineProperty(chip, "textContent", {
+        configurable: true,
+        get: function () { return desc.get.call(this); },
+        set: function (value) { desc.set.call(this, value); this.hidden = !String(value || "").trim(); }
+      });
+    });
+  });
   var ACTIVE_PLAN_KEY = "kiddiegptActivePlan";
   var PENDING_CHECKOUT_PLAN_KEY = "kiddiegptPendingCheckoutPlan";
   var PARENT_TOKEN_KEY = "kiddiegptParentToken";
@@ -3227,6 +3244,23 @@
   }
 
   function setupAdminConsole() {
+    // Identity lives in the left rail so the operator can see which account they
+    // are on, and leave, without hunting through the topbar.
+    var signOutButton = document.getElementById("admin-signout");
+    if (signOutButton) {
+      signOutButton.addEventListener("click", function () {
+        localStorage.removeItem(ADMIN_TOKEN_KEY);
+        window.location.reload();
+      });
+    }
+    apiFetch("/api/auth/me")
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (me) {
+        var el = document.getElementById("admin-identity-email");
+        if (el && me && (me.email || (me.user && me.user.email))) el.textContent = me.email || me.user.email;
+      })
+      .catch(function () {});
+
     var table = document.getElementById("family-table");
     if (!table) return;
 
@@ -4906,6 +4940,7 @@
     function setPricingSaveState(label, state) {
       var chip = document.getElementById("pricing-save-state");
       if (!chip) return;
+      chip.hidden = !label;
       chip.textContent = label;
       chip.className = "state-chip " + (state || "ready");
     }

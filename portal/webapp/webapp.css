@@ -8496,3 +8496,64 @@ body.parent-mockup .parent-portal-live .current-plan .plan-price s {
   color: var(--mock-muted, #75828a);
   font-weight: 600;
 }
+
+/* ---- Admin left rail: identity + sign out -------------------------------- */
+body[data-page="admin"] .admin-identity {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--soft);
+}
+body[data-page="admin"] .admin-identity-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+body[data-page="admin"] .admin-identity-who i { width: 15px; height: 15px; color: var(--muted); flex: none; }
+body[data-page="admin"] .admin-identity-who strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+body[data-page="admin"] .admin-signout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+body[data-page="admin"] .admin-signout:hover { color: var(--ink); border-color: rgba(0,79,72,.25); }
+body[data-page="admin"] .admin-signout i { width: 14px; height: 14px; }
+
+/* Idle status chips are hidden, so nothing reserves space for them. */
+body[data-page="admin"] .state-chip[hidden] { display: none; }
+
+/* ---- Plan & promotion: tighter, aligned columns -------------------------- */
+body[data-page="admin"] .plan-promo-body { padding: 20px 22px 22px; }
+body[data-page="admin"] .plan-promo-col + .plan-promo-col { padding-left: 22px; }
+body[data-page="admin"] .plan-promo-col-title { margin-bottom: 2px; }
+/* Checkbox and its label on one line rather than stacked. */
+body[data-page="admin"] .checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+body[data-page="admin"] .checkbox-inline input { width: 17px; height: 17px; margin: 0; flex: none; }
+body[data-page="admin"] .checkbox-inline span { line-height: 1.3; }
