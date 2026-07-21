@@ -94,6 +94,7 @@ function defaultPricing() {
       active: true
     },
     promotion: {
+      enabled: true,
       code: "SAVE50",
       monthlyAmount: 10,
       yearlyAmount: 75,
@@ -107,6 +108,12 @@ function defaultPricing() {
       bonusMonths: 3,       // extra months granted on top of 12
       discountPercent: 0,   // discount on the yearly price for upgraders
       note: ""              // e.g. "July 4th sale — limited time"
+    },
+    cancellationPromo: {
+      enabled: true,
+      percentOff: 50,
+      duration: "once",
+      description: "Keep your plan and get 50% off the next renewal."
     }
   };
 }
@@ -117,24 +124,24 @@ function normalisePricing(pricing = {}) {
   const yearly = { ...defaults.yearly, ...(pricing.yearly || {}) };
   const rawPromotion = pricing.promotion || {};
   const promotion = { ...defaults.promotion, ...rawPromotion };
-  const hasRawPlanKey = Object.prototype.hasOwnProperty.call(rawPromotion, "planKey");
-  promotion.planKey = promotion.planKey === "yearly" ? "yearly" : "monthly";
-  if (!hasRawPlanKey && Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) {
-    promotion.planKey = "yearly";
-  }
-  const hasExplicitPrice = Object.prototype.hasOwnProperty.call(rawPromotion, "price") && rawPromotion.price !== "";
-  if (!hasExplicitPrice) {
-    promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
-  }
-  if (Number(promotion.price || 0) <= 0 && Number(rawPromotion.discountPercent || 0) > 0) {
-    const plan = promotion.planKey === "yearly" ? yearly : monthly;
-    promotion.price = Number(plan.amount || 0) * (1 - Number(rawPromotion.discountPercent || 0) / 100);
-  }
-  if (promotion.planKey === "yearly") {
-    promotion.yearlyAmount = Number(promotion.price || promotion.yearlyAmount || 0);
+  const hasMonthlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "monthlyAmount");
+  const hasYearlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "yearlyAmount");
+  const hasLegacyPrice = Object.prototype.hasOwnProperty.call(rawPromotion, "price") && rawPromotion.price !== "";
+  const legacyPlanKey = rawPromotion.planKey === "yearly" ? "yearly" : "monthly";
+  // Keep old one-plan records readable, but retain independent override prices
+  // once both fields are present. The admin form writes both fields on every save.
+  if (!hasMonthlyAmount && !hasYearlyAmount && hasLegacyPrice) {
+    promotion.monthlyAmount = legacyPlanKey === "monthly" ? Number(rawPromotion.price || 0) : 0;
+    promotion.yearlyAmount = legacyPlanKey === "yearly" ? Number(rawPromotion.price || 0) : 0;
   } else {
-    promotion.monthlyAmount = Number(promotion.price || promotion.monthlyAmount || 0);
+    promotion.monthlyAmount = hasMonthlyAmount ? Number(rawPromotion.monthlyAmount || 0) : Number(promotion.monthlyAmount || 0);
+    promotion.yearlyAmount = hasYearlyAmount ? Number(rawPromotion.yearlyAmount || 0) : Number(promotion.yearlyAmount || 0);
   }
+  // `price` and `planKey` remain as compatibility fields for older clients.
+  promotion.planKey = promotion.planKey === "yearly" ? "yearly" : "monthly";
+  promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
+  if (Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) promotion.planKey = "yearly";
+  promotion.enabled = promotion.enabled !== false;
   delete promotion.discountPercent;
   delete promotion.endDate;
   const rawUpgrade = pricing.yearlyUpgrade || {};
@@ -143,11 +150,21 @@ function normalisePricing(pricing = {}) {
     discountPercent: Math.min(90, Math.max(0, Number(rawUpgrade.discountPercent) || 0)),
     note: String(rawUpgrade.note || "")
   };
+  const rawCancellationPromo = pricing.cancellationPromo || {};
+  const cancellationPromo = {
+    enabled: rawCancellationPromo.enabled !== false,
+    percentOff: Math.min(90, Math.max(0, Number(rawCancellationPromo.percentOff) || 0)),
+    duration: rawCancellationPromo.duration === "repeating" ? "repeating" : "once",
+    description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
+    stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
+    stripeCouponPercentOff: Number(rawCancellationPromo.stripeCouponPercentOff || 0)
+  };
   return {
     monthly,
     yearly,
     promotion,
-    yearlyUpgrade
+    yearlyUpgrade,
+    cancellationPromo
   };
 }
 
@@ -401,9 +418,9 @@ function promotionForPlan(pricing, planName) {
   const plan = pricing[key];
   const promo = pricing.promotion || {};
   const code = String(promo.code || "").trim();
-  const promoPrice = Number(promo.price || (key === "yearly" ? promo.yearlyAmount : promo.monthlyAmount) || 0);
+  const promoPrice = Number((key === "yearly" ? promo.yearlyAmount : promo.monthlyAmount) || 0);
   const basePrice = Number(plan?.amount || 0);
-  if (!plan || !code || promo.planKey !== key || !promoPrice || !basePrice || promoPrice >= basePrice) return null;
+  if (!plan || promo.enabled === false || !code || !promoPrice || !basePrice || promoPrice >= basePrice) return null;
   return {
     key,
     code,
@@ -505,9 +522,9 @@ function isAllowedParentEmail(email) {
 }
 
 function parentEmailError(email) {
-  const domainText = allowedParentEmailDomains.join(", ");
-  if (!normalizeEmail(email)) return `Email is required. Use one of: ${domainText}.`;
-  return `Use a parent email from one of these domains: ${domainText}.`;
+  const supported = "Supported email providers: Gmail, Yahoo, AOL, Outlook, and Hotmail.";
+  if (!normalizeEmail(email)) return `Email is required. ${supported}`;
+  return supported;
 }
 
 function generateOtp() {
@@ -679,6 +696,27 @@ function readDb() {
     changed = true;
   }
   db.families = (db.families || []).map(normaliseFamily);
+  // Keep the local parent demo usable even if its seeded family was removed
+  // while testing account deletion/anonymization. The fixture is intentionally
+  // scoped to PARENT_TEST_EMAIL; real parent accounts are never recreated here.
+  let demoParentFamily = db.families.find((family) => family.email === parentEmail);
+  if (!demoParentFamily && parentEmail === REVIEW_EMAIL && !process.env.VERCEL && !String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live")) {
+    const fixture = normaliseFamily({
+      ...demoFamilies()[0],
+      id: "fam_demo_parent",
+      parentName: "Demo Parent",
+      email: parentEmail,
+      loginType: "Email"
+    });
+    db.families.unshift(fixture);
+    demoParentFamily = fixture;
+    changed = true;
+  }
+  const demoParentUser = db.users.find((user) => user.role === "parent" && user.email === parentEmail);
+  if (demoParentUser && demoParentFamily && demoParentUser.familyId !== demoParentFamily.id) {
+    demoParentUser.familyId = demoParentFamily.id;
+    changed = true;
+  }
   db.auditLogs = db.auditLogs || [];
   db.monitorEvents = db.monitorEvents || [];
   db.emailLogs = db.emailLogs || [];
@@ -758,6 +796,7 @@ function normaliseFamily(family) {
     next.children = [{
       id: makeId("child"),
       studentName: next.studentName,
+      age: next.age || "",
       grade: next.grade,
       readingLevel: next.readingLevel,
       goal: next.goal,
@@ -767,6 +806,7 @@ function normaliseFamily(family) {
   }
   const primary = next.children[0] || {};
   next.studentName = next.studentName || primary.studentName || "";
+  next.age = next.age || primary.age || "";
   next.grade = next.grade || primary.grade || "";
   next.readingLevel = next.readingLevel || primary.readingLevel || "";
   next.createdAt = next.createdAt || nowIso();
@@ -1229,24 +1269,31 @@ function checkoutStripeError(error, priceId) {
 }
 
 async function retentionCouponId(stripe, db) {
-  const configured = process.env.STRIPE_RETENTION_COUPON_ID || db.pricing?.promotion?.retentionCouponId;
-  if (configured) return configured;
+  const pricing = normalisePricing(db.pricing);
+  const promo = pricing.cancellationPromo || defaultPricing().cancellationPromo;
+  const envConfigured = process.env.STRIPE_RETENTION_COUPON_ID || "";
+  const configured = envConfigured || promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId;
+  const configuredPercent = Number(promo.stripeCouponPercentOff || 0);
+  if (envConfigured || (configured && configuredPercent === Number(promo.percentOff || 0))) return configured;
 
   const coupon = await stripe.coupons.create({
-    percent_off: 50,
-    duration: "once",
-    name: "KiddieGPT retention save offer",
+    percent_off: Number(promo.percentOff || 50),
+    duration: promo.duration === "repeating" ? "repeating" : "once",
+    ...(promo.duration === "repeating" ? { duration_in_months: 1 } : {}),
+    name: "KiddieGPT cancellation save offer",
     metadata: {
       app: "KiddieGPT",
-      offer: "50_percent_next_invoice"
+      offer: "cancellation_promo",
+      percentOff: String(promo.percentOff || 50)
     }
   });
 
   mutateDb((nextDb) => {
     nextDb.pricing = nextDb.pricing || defaultPricing();
-    nextDb.pricing.promotion = nextDb.pricing.promotion || {};
-    nextDb.pricing.promotion.retentionCouponId = coupon.id;
-    audit(nextDb, "stripe.retention_coupon.create", { couponId: coupon.id });
+    nextDb.pricing.cancellationPromo = nextDb.pricing.cancellationPromo || {};
+    nextDb.pricing.cancellationPromo.stripeCouponId = coupon.id;
+    nextDb.pricing.cancellationPromo.stripeCouponPercentOff = Number(promo.percentOff || 50);
+    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, percentOff: Number(promo.percentOff || 50) });
   });
 
   return coupon.id;
@@ -1488,7 +1535,9 @@ async function createImmediateYearlyUpgradeSchedule(stripe, options) {
     defaultPaymentMethod,
     email,
     bonusMonths,
-    monthlySubscriptionIds
+    monthlySubscriptionIds,
+    initialAmountCents,
+    promotionCode
   } = options;
   const yearlyPrice = await stripe.prices.retrieve(yearlyPriceId);
   const productId = stripeId(yearlyPrice.product);
@@ -1514,6 +1563,7 @@ async function createImmediateYearlyUpgradeSchedule(stripe, options) {
       upgradeBillingMode: "immediate_15_month",
       bonusMonths: String(bonusMonths),
       accessMonths: String(accessMonths),
+      promotionCode: promotionCode || "",
       replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
     },
     phases: [
@@ -1523,7 +1573,7 @@ async function createImmediateYearlyUpgradeSchedule(stripe, options) {
             price_data: {
               currency: yearlyPrice.currency,
               product: productId,
-              unit_amount: yearlyPrice.unit_amount,
+              unit_amount: Number(initialAmountCents || yearlyPrice.unit_amount),
               recurring: {
                 interval: "month",
                 interval_count: accessMonths
@@ -1540,6 +1590,7 @@ async function createImmediateYearlyUpgradeSchedule(stripe, options) {
           upgradeBillingMode: "immediate_15_month",
           bonusMonths: String(bonusMonths),
           accessMonths: String(accessMonths),
+          promotionCode: promotionCode || "",
           replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
         }
       },
@@ -1550,6 +1601,7 @@ async function createImmediateYearlyUpgradeSchedule(stripe, options) {
           parentEmail: email,
           yearlyUpgrade: "true",
           upgradeBillingMode: "standard_yearly",
+          promotionCode: promotionCode || "",
           replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
         }
       }
@@ -1611,13 +1663,13 @@ function subscriptionHasCoupon(subscription, couponId, discountId) {
   });
 }
 
-async function applySubscriptionCoupon(stripe, subscriptionId, couponId) {
+async function applySubscriptionCoupon(stripe, subscriptionId, couponId, percentOff = 50) {
   try {
     return await stripe.subscriptions.update(subscriptionId, {
       discounts: [{ coupon: couponId }],
       metadata: {
         retentionOfferAccepted: "true",
-        retentionOffer: "50_percent_next_invoice"
+        retentionOffer: `${percentOff}_percent_next_invoice`
       }
     });
   } catch (error) {
@@ -1626,7 +1678,7 @@ async function applySubscriptionCoupon(stripe, subscriptionId, couponId) {
       coupon: couponId,
       metadata: {
         retentionOfferAccepted: "true",
-        retentionOffer: "50_percent_next_invoice"
+        retentionOffer: `${percentOff}_percent_next_invoice`
       }
     });
   }
@@ -2206,6 +2258,7 @@ function demoLoginsEnabled() {
 // Seeded fixtures covering each subscription state, surfaced as login tiles so
 // they can be switched between without retyping credentials.
 const DEMO_LOGIN_ACCOUNTS = [
+  { email: "parent.kiddiegpt@gmail.com", label: "Parent demo", note: "Monthly card trial", icon: "user-round" },
   // Fresh and trial-eligible — use these to run a real Stripe Checkout with the
   // 7-day card-upfront trial.
   { email: "stripe.new1@gmail.com", label: "New · monthly", note: "Eligible for trial", icon: "credit-card" },
@@ -2711,6 +2764,7 @@ app.get("/api/auth/me", (req, res) => {
       children: (Array.isArray(family.children) ? family.children : []).map((child) => ({
         id: child.id,
         studentName: child.studentName || "",
+        age: child.age || "",
         grade: child.grade || "",
         readingLevel: child.readingLevel || "",
         goal: child.goal || "",
@@ -2721,6 +2775,30 @@ app.get("/api/auth/me", (req, res) => {
     return res.json({ user: auth, family: familyPublic });
   }
   res.json({ user: auth });
+});
+
+app.delete("/api/parent/family/children/:childId", requireParent, (req, res) => {
+  const result = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return { error: "Family account not found.", status: 404 };
+    const children = Array.isArray(family.children) ? family.children : [];
+    if (children.length <= 1) return { error: "A family account must keep at least one student profile.", status: 400 };
+    const index = children.findIndex((child) => String(child.id || "") === String(req.params.childId || ""));
+    if (index < 0) return { removed: false, notFound: true };
+    const [removed] = children.splice(index, 1);
+    family.children = children;
+    const primary = children[0] || {};
+    family.studentName = primary.studentName || "";
+    family.grade = primary.grade || "";
+    family.readingLevel = primary.readingLevel || "";
+    family.goal = primary.goal || "";
+    family.reward = primary.reward || "";
+    family.learningGoals = Array.isArray(primary.learningGoals) ? primary.learningGoals : [];
+    audit(db, "family.child.delete", { familyId: family.id, childId: removed.id, studentName: removed.studentName || "" }, family.email);
+    return { removed: true, childId: removed.id, familyId: family.id };
+  });
+  if (result?.error) return res.status(result.status || 400).json({ error: result.error });
+  return res.json({ ok: true, ...result });
 });
 
 app.post("/api/account/change-password", requireParent, (req, res) => {
@@ -3341,7 +3419,10 @@ app.get("/api/support/messages", requireParent, (req, res) => {
   const cutoff = Date.now() - 30 * 86400000;
   const mine = (db.supportMessages || [])
     .filter((m) => m.email === email && new Date(m.updatedAt || m.createdAt).getTime() >= cutoff)
-    .slice(0, 50);
+    .slice(0, 50)
+    // Replies go out by email only, so strip them here too: the portal must not
+    // become a chat surface, and reply text should not sit in a client payload.
+    .map(({ replies, ...rest }) => rest);
   res.json({ messages: mine });
 });
 
@@ -3363,11 +3444,43 @@ app.post("/api/admin/support/:id/reply", requireAdmin, async (req, res) => {
     return entry;
   });
   if (!updated) return res.status(404).json({ error: "Message not found." });
-  // Email the parent their reply (best effort).
+  // Email is the ONLY way this reply reaches the parent — the portal shows no
+  // thread. A silent failure would mean the operator believes they answered
+  // while the parent hears nothing, so surface it instead of swallowing it.
+  const tpl = renderTemplate("support_reply", { parentName: updated.parentName || "there", supportReply: reply });
+  let delivery;
   try {
-    await sendEmail({ to: updated.email, template: "Support reply", message: `Reply from KiddieGPT support:\n\n${reply}` });
-  } catch (error) { /* ignore */ }
-  res.json({ ok: true, message: updated });
+    delivery = await sendEmail({
+      to: updated.email,
+      template: "Support reply",
+      subject: tpl.subject,
+      html: tpl.html,
+      message: tpl.text
+    });
+  } catch (error) {
+    delivery = { mode: "failed", error: String(error.message || error) };
+  }
+  const delivered = Boolean(delivery) && delivery.mode !== "failed" && delivery.mode !== "mock";
+  if (!delivered) {
+    mutateDb((db) => {
+      const entry = (db.supportMessages || []).find((m) => m.id === req.params.id);
+      if (entry) { entry.deliveryFailed = true; entry.deliveryError = delivery?.error || delivery?.mode || "unknown"; }
+      monitor(db, "error", "support", "Support reply email was not delivered", { id: req.params.id, email: updated.email, mode: delivery?.mode || "unknown", detail: delivery?.error || "" }, updated.email);
+    });
+    return res.json({
+      ok: true,
+      delivered: false,
+      message: updated,
+      warning: delivery?.mode === "mock"
+        ? "Reply saved, but NO email was sent: no email provider is configured. Set the Postmark token in Emails."
+        : `Reply saved, but the email failed to send (${delivery?.error || "unknown error"}). The parent has not been notified.`
+    });
+  }
+  mutateDb((db) => {
+    const entry = (db.supportMessages || []).find((m) => m.id === req.params.id);
+    if (entry) { delete entry.deliveryFailed; delete entry.deliveryError; }
+  });
+  res.json({ ok: true, delivered: true, message: updated });
 });
 
 app.post("/api/admin/support/:id/resolve", requireAdmin, (req, res) => {
@@ -3425,8 +3538,34 @@ app.post("/api/admin/support/reply", requireAdmin, async (req, res) => {
     return latest;
   });
   if (!target) return res.status(404).json({ error: "No messages from that parent." });
-  try { await sendEmail({ to: email, template: "Support reply", message: `Reply from KiddieGPT support:\n\n${reply}` }); } catch (error) { /* ignore */ }
-  res.json({ ok: true });
+  // Email is the ONLY way this reply reaches the parent — the portal shows no
+  // thread — so a failed send must not look like success.
+  const tpl = renderTemplate("support_reply", { parentName: target.parentName || "there", supportReply: reply });
+  let delivery;
+  try {
+    delivery = await sendEmail({ to: email, template: "Support reply", subject: tpl.subject, html: tpl.html, message: tpl.text });
+  } catch (error) {
+    delivery = { mode: "failed", error: String(error.message || error) };
+  }
+  const delivered = Boolean(delivery) && delivery.mode !== "failed" && delivery.mode !== "mock";
+  mutateDb((db) => {
+    const entry = (db.supportMessages || []).find((m) => m.id === target.id);
+    if (entry) {
+      if (delivered) { delete entry.deliveryFailed; delete entry.deliveryError; }
+      else { entry.deliveryFailed = true; entry.deliveryError = delivery?.error || delivery?.mode || "unknown"; }
+    }
+    if (!delivered) monitor(db, "error", "support", "Support reply email was not delivered", { email, mode: delivery?.mode || "unknown", detail: delivery?.error || "" }, email);
+  });
+  if (!delivered) {
+    return res.json({
+      ok: true,
+      delivered: false,
+      warning: delivery?.mode === "mock"
+        ? "Reply saved, but NO email was sent: no email provider is configured. Set the Postmark token in Emails."
+        : `Reply saved, but the email failed to send (${delivery?.error || "unknown error"}). The parent has not been notified.`
+    });
+  }
+  res.json({ ok: true, delivered: true });
 });
 
 app.post("/api/admin/support/resolve", requireAdmin, (req, res) => {
@@ -4507,6 +4646,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         familyId: checkoutFamilyId || "",
         email: parentEmail || "",
         planName: planName || "",
+        trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0,
+        promoCode: checkoutPromotion?.code || promoCode || "",
+        amountCents: Math.round(Number(checkoutPromotion?.promoPrice || selectedPlan?.amount || 0) * 100),
         createdAt: nowIso()
       });
       db.mockCheckouts = db.mockCheckouts.slice(0, 50);
@@ -4607,14 +4749,29 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
         (pending?.familyId && item.id === pending.familyId) || (email && item.email === email)
       );
       if (!family) return null;
-      family.subscriptionStatus = "active";
-      family.paymentStatus = "paid";
+      const trialDays = Math.max(0, Number(pending?.trialDays || 0));
+      const trialing = trialDays > 0;
+      const trialEndsAt = trialing
+        ? new Date(Date.now() + trialDays * 86400000).toISOString()
+        : "";
+      const paymentId = trialing ? "" : "pi_mock_" + crypto.randomBytes(6).toString("hex");
+      family.subscriptionStatus = trialing ? "trialing" : "active";
+      family.paymentStatus = trialing ? "trial" : "paid";
       family.plan = pending?.planName || family.pendingPlanName || family.plan;
       delete family.pendingPlanName;
       family.stripeCustomerId = family.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
       family.stripeSubscriptionId = "sub_mock_" + crypto.randomBytes(6).toString("hex");
-      family.stripePaymentId = "pi_mock_" + crypto.randomBytes(6).toString("hex");
-      family.lastPaymentAt = nowIso();
+      family.stripePaymentId = paymentId;
+      family.trialDays = trialDays;
+      family.trialUsedAt = trialing ? nowIso() : family.trialUsedAt || "";
+      family.trialEndsAt = trialEndsAt;
+      if (trialing) {
+        delete family.lastPaymentAt;
+        delete family.lastPaymentAmountCents;
+        delete family.lastPaymentCurrency;
+      } else {
+        family.lastPaymentAt = nowIso();
+      }
       // Starting a new subscription clears any prior cancellation/refund state.
       family.cancellationRequested = false;
       family.cancellationStatus = "";
@@ -4624,6 +4781,21 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       family.cancellationAccessUntil = "";
       family.cancelledAt = "";
       delete family.refundedAt;
+      if (!trialing) {
+        recordStripePayment(db, {
+          id: `mock_${sessionId}`,
+          type: "checkout.session.completed"
+        }, {
+          id: paymentId,
+          amount_total: Number(pending?.amountCents || 0),
+          currency: "usd",
+          customer: family.stripeCustomerId,
+          subscription: family.stripeSubscriptionId,
+          status: "paid",
+          created: Math.floor(Date.now() / 1000),
+          metadata: { parentEmail: family.email, planName: family.plan, promoCode: pending?.promoCode || "" }
+        }, family);
+      }
       retireYearlyUpgrade(family);
       db.mockCheckouts = db.mockCheckouts.filter((item) => item.sessionId !== sessionId);
       audit(db, "stripe.checkout.mock_confirm", { sessionId, familyId: family.id, email: family.email, plan: family.plan });
@@ -4742,8 +4914,8 @@ app.post("/api/stripe/create-customer-portal-session", async (req, res) => {
   }
 });
 
-app.post("/api/stripe/apply-retention-discount", async (req, res) => {
-  const email = normalizeEmail(req.body?.email || req.body?.parentEmail || "");
+app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res) => {
+  const email = normalizeEmail(req.auth?.email || req.body?.email || req.body?.parentEmail || "");
   if (email && !isAllowedParentEmail(email)) {
     return res.status(400).json({ error: parentEmailError(email) });
   }
@@ -4756,8 +4928,13 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
   if (!existingFamily) {
     return res.status(404).json({ error: "Family account not found." });
   }
-  if (existingFamily.subscriptionStatus !== "active") {
-    return res.status(400).json({ error: "A retention discount can only be applied to an active subscription." });
+  const cancellationPromo = normalisePricing(readDb().pricing).cancellationPromo;
+  if (!cancellationPromo.enabled || Number(cancellationPromo.percentOff || 0) <= 0) {
+    return res.status(400).json({ error: "The cancellation save offer is not currently available." });
+  }
+  const trialing = existingFamily.subscriptionStatus === "trialing";
+  if (!trialing && existingFamily.subscriptionStatus !== "active") {
+    return res.status(400).json({ error: "A cancellation save offer can only be applied to an active subscription or card-upfront trial." });
   }
   if (!process.env.STRIPE_SECRET_KEY || !existingFamily.stripeSubscriptionId || existingFamily.stripeSubscriptionId.startsWith("sub_mock")) {
     if (existingFamily.retentionOffer?.status === "accepted") {
@@ -4766,19 +4943,22 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
         alreadyApplied: true,
         familyId: existingFamily.id,
         couponId: existingFamily.retentionOffer.stripeCouponId || "",
-        message: "The 50% save offer is already applied to the next invoice."
+        percentOff: cancellationPromo.percentOff,
+        message: `The ${cancellationPromo.percentOff}% save offer is already applied to the next invoice.`
       });
     }
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
       if (!family) return null;
-      family.subscriptionStatus = "active";
+      family.subscriptionStatus = trialing ? "trialing" : "active";
+      family.paymentStatus = trialing ? "trial" : (family.paymentStatus || "paid");
       family.retentionOffer = {
         status: "accepted",
         mode: "mock",
-        percentOff: 50,
-        duration: "once",
+        percentOff: cancellationPromo.percentOff,
+        duration: cancellationPromo.duration,
         appliesTo: "next_invoice",
+        description: cancellationPromo.description,
         reason,
         acceptedAt: nowIso()
       };
@@ -4788,7 +4968,8 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
     return res.json({
       mode: "mock",
       familyId: updated?.id || existingFamily.id,
-      message: "The 50% save offer was recorded. Stripe discount application was simulated."
+      percentOff: cancellationPromo.percentOff,
+      message: `The ${cancellationPromo.percentOff}% save offer was recorded for the next renewal. Stripe discount application was simulated.`
     });
   }
 
@@ -4813,7 +4994,7 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
     const toUpdate = subscriptions.filter((subscription) => !subscriptionHasCoupon(subscription, couponId, previousDiscountId));
     const updatedSubscriptions = [];
     for (const subscription of toUpdate) {
-      updatedSubscriptions.push(await applySubscriptionCoupon(stripe, subscription.id, couponId));
+      updatedSubscriptions.push(await applySubscriptionCoupon(stripe, subscription.id, couponId, cancellationPromo.percentOff));
     }
 
     const updatedById = new Map(updatedSubscriptions.map((subscription) => [subscription.id, subscription]));
@@ -4831,16 +5012,18 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
     mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
       if (!family) return null;
-      family.subscriptionStatus = "active";
+      family.subscriptionStatus = trialing ? "trialing" : "active";
+      family.paymentStatus = trialing ? "trial" : (family.paymentStatus || "paid");
       family.stripeCustomerId = primarySubscription.customer || family.stripeCustomerId;
       family.stripeSubscriptionId = primarySubscription.id || family.stripeSubscriptionId;
       family.stripeDuplicateSubscriptionIds = duplicateSubscriptionIds;
       family.retentionOffer = {
         status: "accepted",
         mode: "stripe",
-        percentOff: 50,
-        duration: "once",
+        percentOff: cancellationPromo.percentOff,
+        duration: cancellationPromo.duration,
         appliesTo: "next_invoice",
+        description: cancellationPromo.description,
         reason,
         stripeCouponId: couponId,
         stripeDiscountId: discountId,
@@ -4868,11 +5051,12 @@ app.post("/api/stripe/apply-retention-discount", async (req, res) => {
       duplicateSubscriptionIds,
       couponId,
       discountId,
+      percentOff: cancellationPromo.percentOff,
       message: duplicateSubscriptionIds.length
-        ? "The 50% save offer was applied, but multiple active Stripe subscriptions exist for this parent email."
-        : toUpdate.length
-          ? "The 50% save offer was applied to the next Stripe invoice."
-          : "The 50% save offer is already applied to the next invoice."
+          ? `The ${cancellationPromo.percentOff}% save offer was applied, but multiple active Stripe subscriptions exist for this parent email.`
+          : toUpdate.length
+          ? `The ${cancellationPromo.percentOff}% save offer was applied to the next Stripe invoice.`
+          : `The ${cancellationPromo.percentOff}% save offer is already applied to the next invoice.`
     });
   } catch (error) {
     mutateDb((db) => monitor(db, "error", "stripe", "Retention discount failed", { email, detail: error.message }, email));
@@ -5011,8 +5195,8 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
   }
 });
 
-app.post("/api/stripe/upgrade-yearly", async (req, res) => {
-  const email = normalizeEmail(req.body?.email || req.body?.parentEmail || "");
+app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
+  const email = normalizeEmail(req.auth?.email || req.body?.email || req.body?.parentEmail || "");
   if (email && !isAllowedParentEmail(email)) {
     return res.status(400).json({ error: parentEmailError(email) });
   }
@@ -5025,20 +5209,132 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
   if (!family) {
     return res.status(404).json({ error: "Family account not found." });
   }
-  if (family.subscriptionStatus !== "active") {
-    return res.status(400).json({ error: "Yearly upgrade requires an active monthly subscription." });
+  const trialing = family.subscriptionStatus === "trialing";
+  if (!trialing && family.subscriptionStatus !== "active") {
+    return res.status(400).json({ error: "Yearly upgrade requires an active monthly subscription or card-upfront trial." });
   }
 
   const yearlyPlan = dbSnapshot.pricing?.yearly || defaultPricing().yearly;
   const monthlyPlan = dbSnapshot.pricing?.monthly || defaultPricing().monthly;
   const yearlyPriceId = req.body?.yearlyPriceId || yearlyPlan.stripePriceId;
-  const upgradeConfig = normalisePricing(dbSnapshot.pricing).yearlyUpgrade;
-  const bonusMonths = Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3);
+  const normalisedPricing = normalisePricing(dbSnapshot.pricing);
+  const upgradeConfig = normalisedPricing.yearlyUpgrade;
   const upgradeDiscountPercent = Number(upgradeConfig.discountPercent || 0);
+  const configuredYearlyPromotion = promotionForPlan(normalisedPricing, yearlyPlan.label);
+  const requestedPromoCode = String(req.body?.promoCode || "").trim();
+  const yearlyPromotion = !upgradeDiscountPercent && configuredYearlyPromotion && (!requestedPromoCode || requestedPromoCode === configuredYearlyPromotion.code)
+    ? configuredYearlyPromotion
+    : null;
+  const bonusMonths = Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3);
   const upgradeNote = String(upgradeConfig.note || "");
+  const initialPrice = yearlyPromotion
+    ? Number(yearlyPromotion.promoPrice || yearlyPlan.amount || 0)
+    : upgradeDiscountPercent > 0
+    ? Math.round(Number(yearlyPlan.amount || 0) * (1 - upgradeDiscountPercent / 100) * 100) / 100
+    : Number(yearlyPlan.amount || 0);
+  const initialAmountCents = Math.round(initialPrice * 100);
+  const promotionCode = yearlyPromotion?.code || "";
+  const effectiveOfferNote = yearlyPromotion?.description || upgradeNote;
 
   if (!yearlyPriceId) {
     return res.status(400).json({ error: "Missing yearly Stripe Price ID." });
+  }
+
+  // A card-upfront trial already has a Stripe subscription. Change its price
+  // in place so the trial end date is preserved and the parent is never given
+  // a second overlapping subscription or a second trial.
+  if (trialing && family.stripeSubscriptionId) {
+    if (!process.env.STRIPE_SECRET_KEY || family.stripeSubscriptionId.startsWith("sub_mock")) {
+      const trialEnd = new Date(family.trialEndsAt || Date.now() + 7 * 86400000);
+      const updated = mutateDb((db) => {
+        const next = db.families.find((item) => item.email === email);
+        if (!next) return null;
+        next.plan = yearlyPlan.label || "Family Yearly";
+        next.pendingPlanName = "";
+        next.subscriptionStatus = "trialing";
+        next.paymentStatus = "trial";
+        next.currentPeriodEnd = trialEnd.toISOString();
+        next.yearlyUpgrade = {
+          status: "trialing",
+          mode: "mock",
+          billingMode: "trial_price_switch",
+          bonusMonths: 0,
+          accessMonths: 12,
+          trialEndsAt: trialEnd.toISOString(),
+          yearlyNextRenewalAt: new Date(trialEnd.getFullYear() + 1, trialEnd.getMonth(), trialEnd.getDate()).toISOString(),
+          yearlySubscriptionId: next.stripeSubscriptionId,
+          promoCode: promotionCode,
+          effectivePrice: initialPrice,
+          acceptedAt: nowIso()
+        };
+        audit(db, "subscription.trial_switch_yearly.mock", { familyId: next.id, email, trialEndsAt: trialEnd.toISOString() }, email);
+        return next;
+      });
+      return res.json({
+        mode: "mock",
+        familyId: updated?.id || family.id,
+        plan: yearlyPlan.label || "Family Yearly",
+        trialing: true,
+        trialEndsAt: trialEnd.toISOString(),
+        yearlyNextRenewalAt: updated?.yearlyUpgrade?.yearlyNextRenewalAt || "",
+        promoCode: promotionCode,
+        effectivePrice: initialPrice,
+        message: `Yearly billing is selected. Your first yearly charge starts when the trial ends on ${trialEnd.toLocaleDateString()}.`
+      });
+    }
+
+    try {
+      const stripe = stripeClient();
+      const subscription = await stripe.subscriptions.retrieve(family.stripeSubscriptionId, { expand: ["items.data"] });
+      const item = subscription.items?.data?.[0];
+      if (!item) return res.status(400).json({ error: "The trial subscription has no billable item to upgrade." });
+      const trialCouponId = yearlyPromotion ? await ensurePromotionCoupon(stripe, yearlyPromotion) : "";
+      const updatedSubscription = await stripe.subscriptions.update(family.stripeSubscriptionId, {
+        items: [{ id: item.id, price: yearlyPriceId }],
+        proration_behavior: "none",
+        ...(trialCouponId ? { discounts: [{ coupon: trialCouponId }] } : {}),
+        metadata: { yearlyUpgrade: "true", upgradeBillingMode: "trial_price_switch", promotionCode, app: "KiddieGPT" }
+      });
+      const trialEnd = unixToIso(updatedSubscription.trial_end || subscription.trial_end || 0) || family.trialEndsAt || "";
+      const updated = mutateDb((db) => {
+        const next = db.families.find((entry) => entry.email === email);
+        if (!next) return null;
+        next.plan = yearlyPlan.label || "Family Yearly";
+        next.pendingPlanName = "";
+        next.subscriptionStatus = "trialing";
+        next.paymentStatus = "trial";
+        next.trialEndsAt = trialEnd || next.trialEndsAt;
+        next.currentPeriodEnd = unixToIso(updatedSubscription.current_period_end || 0) || next.currentPeriodEnd;
+        next.yearlyUpgrade = {
+          status: "trialing",
+          mode: "stripe",
+          billingMode: "trial_price_switch",
+          bonusMonths: 0,
+          accessMonths: 12,
+          trialEndsAt: trialEnd,
+          yearlySubscriptionId: updatedSubscription.id,
+          promoCode: promotionCode,
+          effectivePrice: initialPrice,
+          acceptedAt: nowIso()
+        };
+        audit(db, "subscription.trial_switch_yearly", { familyId: next.id, email, subscriptionId: updatedSubscription.id, trialEndsAt: trialEnd }, email);
+        return next;
+      });
+      return res.json({
+        mode: "stripe",
+        familyId: updated?.id || family.id,
+        plan: yearlyPlan.label || "Family Yearly",
+        subscriptionId: updatedSubscription.id,
+        trialing: true,
+        trialEndsAt: trialEnd,
+        promoCode: promotionCode,
+        effectivePrice: initialPrice,
+        message: `Yearly billing is selected. Your first yearly charge starts when the trial ends on ${trialEnd ? new Date(trialEnd).toLocaleDateString() : "the trial end date"}.`
+      });
+    } catch (error) {
+      mutateDb((db) => monitor(db, "error", "stripe", "Trial yearly switch failed", { email, detail: error.message, subscriptionId: family.stripeSubscriptionId }, email));
+      return res.status(500).json({ error: "Unable to switch the trial subscription to yearly." });
+    }
   }
 
   if (!process.env.STRIPE_SECRET_KEY || !family.stripeSubscriptionId || family.stripeSubscriptionId.startsWith("sub_mock")) {
@@ -5057,15 +5353,19 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
     const accessEnd = new Date(now);
     accessEnd.setMonth(accessEnd.getMonth() + accessMonths);
     accessEnd.setDate(accessEnd.getDate() + proratedDays);
-    const effectivePrice = Math.round(Number(yearlyPlan.amount || 0) * (1 - upgradeDiscountPercent / 100) * 100) / 100;
+    const effectivePrice = initialPrice;
     const accessEndUnix = Math.floor(accessEnd.getTime() / 1000);
+    const mockYearlySubscriptionId = "sub_mock_yearly_" + crypto.randomBytes(6).toString("hex");
     const updated = mutateDb((db) => {
       const next = db.families.find((item) => item.email === email);
       if (!next) return null;
+      const monthlySubscriptionIds = next.stripeSubscriptionId ? [next.stripeSubscriptionId] : [];
       next.plan = yearlyPlan.label || "Family Yearly";
       next.subscriptionStatus = "active";
       next.paymentStatus = "paid";
-      next.lastPaymentAt = nowIso();
+      next.stripeCustomerId = next.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
+      next.stripePreviousMonthlySubscriptionIds = monthlySubscriptionIds;
+      next.stripeSubscriptionId = mockYearlySubscriptionId;
       next.currentPeriodEnd = accessEnd.toISOString();
       next.yearlyUpgrade = {
         status: "scheduled",
@@ -5076,12 +5376,28 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
         proratedDays,
         monthlyEndsAt: Math.floor(periodEnd.getTime() / 1000),
         yearlyNextRenewalAt: accessEndUnix,
-        monthlyCancelledAtPeriodEnd: true,
-        discountPercent: upgradeDiscountPercent,
+        monthlySubscriptionIds,
+        yearlySubscriptionId: mockYearlySubscriptionId,
+        monthlyCancelledAtPeriodEnd: false,
+        discountPercent: yearlyPromotion ? Math.round((1 - effectivePrice / Number(yearlyPlan.amount || 1)) * 100) : upgradeDiscountPercent,
+        promoCode: promotionCode,
         effectivePrice,
-        note: upgradeNote,
+        note: effectiveOfferNote,
         acceptedAt: nowIso()
       };
+      recordStripePayment(db, {
+        id: `upgrade_mock_${next.id}_${accessEndUnix}`,
+        type: "invoice.paid"
+      }, {
+        id: "pi_mock_yearly_" + crypto.randomBytes(6).toString("hex"),
+        amount_paid: Math.round(effectivePrice * 100),
+        currency: "usd",
+        customer: next.stripeCustomerId,
+        subscription: mockYearlySubscriptionId,
+        status: "paid",
+        created: Math.floor(now / 1000),
+        metadata: { parentEmail: next.email, planName: next.plan, upgradeBillingMode: "immediate_15_month", promoCode: promotionCode }
+      }, next);
       audit(db, "subscription.upgrade_yearly.mock", { familyId: next.id, email, bonusMonths, proratedDays, accessMonths }, email);
       return next;
     });
@@ -5095,7 +5411,9 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
       yearlyNextRenewalAt: accessEndUnix,
       monthlyEndsAt: Math.floor(periodEnd.getTime() / 1000),
       effectivePrice,
-      note: upgradeNote,
+      promoCode: promotionCode,
+      yearlySubscriptionId: updated?.yearlyUpgrade?.yearlySubscriptionId || "",
+      note: effectiveOfferNote,
       message: `Yearly active now: 12 months + ${bonusMonths} bonus month${bonusMonths === 1 ? "" : "s"} + ${proratedDays} remaining day${proratedDays === 1 ? "" : "s"} from your current month. Next renewal ${accessEnd.toLocaleDateString()}.`
     });
   }
@@ -5213,7 +5531,9 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
       defaultPaymentMethod,
       email,
       bonusMonths,
-      monthlySubscriptionIds: monthlyIds
+      monthlySubscriptionIds: monthlyIds,
+      initialAmountCents,
+      promotionCode
     });
     const yearlySubscription = yearlySchedule.subscription && typeof yearlySchedule.subscription === "object" ? yearlySchedule.subscription : null;
     if (!yearlySubscription) {
@@ -5242,6 +5562,8 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
         monthlySubscriptionIds: monthlyIds,
         yearlySubscriptionId: yearlySubscription.id,
         yearlyScheduleId: yearlySchedule.id,
+        promoCode: promotionCode,
+        effectivePrice: initialPrice,
         yearlyNextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null,
         monthlyEndsAt,
         chargedAt: settledInvoice?.status === "paid" ? nowIso() : "",
@@ -5256,6 +5578,8 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
         monthlySubscriptionIds: monthlyIds,
         yearlySubscriptionId: yearlySubscription.id,
         yearlyScheduleId: yearlySchedule.id,
+        promoCode: promotionCode,
+        effectivePrice: initialPrice,
         bonusMonths,
         accessMonths: 12 + bonusMonths,
         nextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null
@@ -5274,6 +5598,8 @@ app.post("/api/stripe/upgrade-yearly", async (req, res) => {
       yearlyNextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null,
       monthlyEndsAt,
       paymentStatus: settledInvoice?.status || "",
+      effectivePrice: initialPrice,
+      promoCode: promotionCode,
       message: `Yearly is charged now and includes ${12 + bonusMonths} months before the next renewal. Monthly renewal is cancelled at period end.`
     });
   } catch (error) {
@@ -5812,6 +6138,10 @@ app.get(["/", "/index.html", "/onboarding"], (req, res) => {
 
 app.get(["/admin", "/admin.html"], (req, res) => {
   res.sendFile(path.join(publicDir, "webapp", "admin.html"));
+});
+
+app.get("/parent-portal-mockup.html", (req, res) => {
+  res.sendFile(path.join(publicDir, "webapp", "parent-portal-mockup.html"));
 });
 
 app.use(express.static(publicDir, {

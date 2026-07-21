@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=142">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=147">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -125,6 +125,13 @@
             </div>
           </article>
         </div>
+
+        <div class="admin-ops-strip" aria-label="Billing health summary">
+          <div><span>Net collected</span><strong id="net-collected">$0</strong><small>Collected less refunds</small></div>
+          <div><span>Renewal value</span><strong id="renewal-value">$0</strong><small>Next 30 days</small></div>
+          <div><span>Trial conversion</span><strong id="trial-conversion-rate">0%</strong><small>Trials with a card</small></div>
+          <div><span>Billing alerts</span><strong id="billing-alert-count">0</strong><small>Needs review</small></div>
+        </div>
       </section>
 
       <section class="admin-view" data-admin-panel="families">
@@ -170,11 +177,12 @@
                 </select>
                 <label class="locked-filter"><input id="locked-filter" type="checkbox">Locked</label>
                 <label class="locked-filter"><input id="max-ai-filter" type="checkbox">Max AI usage accounts</label>
+                <button class="table-action" type="button" data-export-table="family-table" data-export-name="kiddiegpt-families">Export CSV</button>
               </div>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Risk</th><th>Next action</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
               </table>
             </div>
@@ -194,11 +202,12 @@
                   <option value="60">Last 60 days</option>
                   <option value="ytd">Year to date</option>
                 </select>
+                <button class="table-action" type="button" data-export-table="signup-table" data-export-name="kiddiegpt-signups">Export CSV</button>
               </div>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Status</th><th>Registered</th><th>Days since</th><th>Last login</th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Status</th><th>Registered</th><th>Days since</th><th>Last login</th><th>Next step</th><th>Actions</th></tr></thead>
                 <tbody id="signup-table"></tbody>
               </table>
             </div>
@@ -209,7 +218,7 @@
           <article class="admin-table-card">
             <div class="admin-card-head">
               <div><p class="eyebrow">Privacy</p><h2>Active deletion requests</h2></div>
-              <span class="state-chip ready" id="privacy-action-state">Ready</span>
+              <div class="admin-filters"><span class="state-chip ready" id="privacy-action-state">Ready</span><button class="table-action" type="button" data-export-table="deletion-table" data-export-name="kiddiegpt-deletion-requests">Export CSV</button></div>
             </div>
             <div class="table-wrap">
               <table>
@@ -230,11 +239,12 @@
                   <option value="60">Last 60 days</option>
                   <option value="ytd">Year to date</option>
                 </select>
+                <button class="table-action" type="button" data-export-table="deleted-table" data-export-name="kiddiegpt-deleted-accounts">Export CSV</button>
               </div>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Anonymized email</th><th>Plan</th><th>Requested</th><th>Deleted</th><th>Billing references</th></tr></thead>
+                <thead><tr><th>Anonymized email</th><th>Plan</th><th>Requested</th><th>Deleted</th><th>Billing references</th><th>Actions</th></tr></thead>
                 <tbody id="deleted-table"></tbody>
               </table>
             </div>
@@ -272,6 +282,7 @@
           <article class="admin-table-card">
             <div class="admin-card-head">
               <div><p class="eyebrow">Free trial</p><h2>Trial accounts</h2></div>
+              <button class="table-action" type="button" data-export-table="trial-table" data-export-name="kiddiegpt-trials">Export CSV</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -289,6 +300,13 @@
           <article><span>Failed</span><strong id="payment-failed">$0</strong><small>Needs retry email</small></article>
           <article><span>Refunded</span><strong id="payment-refunded">$0</strong><small>Customer saves lost</small></article>
           <article><span>Stripe mode</span><strong id="payment-stripe-mode">Mock</strong><small>Developer status</small></article>
+        </div>
+
+        <div class="billing-health-strip">
+          <div><span>Net collected</span><strong id="billing-net-collected">$0</strong></div>
+          <div><span>Failed follow-up</span><strong id="billing-follow-up">0</strong></div>
+          <div><span>Refunded and active</span><strong id="billing-refunded-active">0</strong></div>
+          <div><span>Reconciliation alerts</span><strong id="billing-reconciliation-alerts">0</strong></div>
         </div>
 
         <div class="payment-table-toggle" role="tablist" aria-label="Payment tables">
@@ -319,11 +337,12 @@
                 <option value="Family Monthly">Family Monthly</option>
                 <option value="Family Yearly">Family Yearly</option>
               </select>
+              <button class="table-action" type="button" data-export-table="payment-table" data-export-name="kiddiegpt-payments">Export CSV</button>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Parent</th><th>Plan</th><th>Amount</th><th>Status</th><th>Payment ID</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Date</th><th>Parent</th><th>Plan</th><th>Amount</th><th>Status</th><th>Payment ID</th><th>Account state</th><th>Actions</th></tr></thead>
               <tbody id="payment-table"></tbody>
             </table>
           </div>
@@ -335,11 +354,12 @@
               <input id="cancellation-from" type="date" aria-label="Cancellation request from date">
               <input id="cancellation-to" type="date" aria-label="Cancellation request to date">
               <span class="state-chip warning" id="cancellation-request-count">0 open</span>
+              <button class="table-action" type="button" data-export-table="cancellation-request-table" data-export-name="kiddiegpt-cancellation-requests">Export CSV</button>
             </div>
           </div>
           <div class="table-wrap compact-table">
             <table>
-              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Access until</th><th>Stripe sub</th><th>Status</th></tr></thead>
+              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Access until</th><th>Retention</th><th>Stripe sub</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="cancellation-request-table"></tbody>
             </table>
           </div>
@@ -350,11 +370,12 @@
             <div class="admin-filters date-filter-row">
               <input id="upgrade-from" type="date" aria-label="Yearly upgrade from date">
               <input id="upgrade-to" type="date" aria-label="Yearly upgrade to date">
+              <button class="table-action" type="button" data-export-table="yearly-upgrade-table" data-export-name="kiddiegpt-yearly-upgrades">Export CSV</button>
             </div>
           </div>
           <div class="table-wrap compact-table">
             <table>
-              <thead><tr><th>Parent</th><th>Current monthly</th><th>Yearly subscription</th><th>Monthly ends</th><th>Next yearly renewal</th><th>Access</th></tr></thead>
+              <thead><tr><th>Parent</th><th>Current monthly</th><th>Yearly subscription</th><th>Monthly ends</th><th>Next yearly renewal</th><th>Access</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="yearly-upgrade-table"></tbody>
             </table>
           </div>
@@ -365,11 +386,12 @@
             <div class="admin-filters date-filter-row">
               <input id="cancelled-from" type="date" aria-label="Cancelled from date">
               <input id="cancelled-to" type="date" aria-label="Cancelled to date">
+              <button class="table-action" type="button" data-export-table="cancelled-subscription-table" data-export-name="kiddiegpt-cancelled-subscriptions">Export CSV</button>
             </div>
           </div>
           <div class="table-wrap compact-table">
             <table>
-              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Cancelled</th><th>Access ended</th><th>Stripe sub</th></tr></thead>
+              <thead><tr><th>Parent</th><th>Plan</th><th>Reason</th><th>Requested</th><th>Cancelled</th><th>Access ended</th><th>Stripe sub</th><th>Actions</th></tr></thead>
               <tbody id="cancelled-subscription-table"></tbody>
             </table>
           </div>
@@ -394,11 +416,12 @@
                 <option value="all">All upcoming</option>
               </select>
               <span class="renewal-total" id="renewal-total"></span>
+              <button class="table-action" type="button" data-export-table="renewal-table" data-export-name="kiddiegpt-upcoming-renewals">Export CSV</button>
             </div>
           </div>
           <div class="table-wrap compact-table">
             <table>
-              <thead><tr><th>Parent</th><th>Email</th><th>Subscription</th><th>Status</th><th>Renews</th><th>Days away</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Parent</th><th>Email</th><th>Subscription</th><th>Status</th><th>Renews</th><th>Days away</th><th>Amount</th><th>Actions</th></tr></thead>
               <tbody id="renewal-table"></tbody>
             </table>
           </div>
@@ -406,19 +429,53 @@
 
         <article class="admin-table-card" data-payment-table-panel="exceptions" hidden>
           <div class="admin-card-head">
-            <div><p class="eyebrow">Exceptions</p><h2>Complaint save — next-renewal discount</h2></div>
-            <span class="state-chip" id="exception-status">Ready</span>
+            <div><p class="eyebrow">Exceptions</p><h2>Billing exception desk</h2></div>
+            <div class="admin-filters exception-filter-bar">
+              <input id="exception-search" type="search" placeholder="Search parent name or email" aria-label="Search exceptions by parent name or email">
+              <select id="exception-status-filter" aria-label="Filter exceptions by account status">
+                <option value="all">All account statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="trial">Trial</option>
+                <option value="trialing">Trialing</option>
+                <option value="past_due">Past due</option>
+                <option value="cancel_scheduled">Cancel scheduled</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="failed">Payment failed</option>
+              </select>
+              <span class="state-chip" id="exception-status">Ready</span>
+            </div>
           </div>
-          <div class="exception-form-row">
-            <label class="ex-family">Family<select id="exception-family"></select></label>
-            <label class="ex-amount">Discount ($)<input type="number" id="exception-amount" min="1" step="0.5" value="10"></label>
-            <label class="ex-reason">Reason<input type="text" id="exception-reason" placeholder="Example: complaint make-good"></label>
-            <button class="button primary" type="button" id="apply-exception">Apply discount</button>
-          </div>
-          <small class="ex-hint">Applied automatically to the next Stripe invoice.</small>
+          <form class="exception-form" id="exception-form">
+            <div class="exception-form-row">
+              <label class="ex-family">Parent account<select id="exception-family-select"></select><small>Search above by parent name or email, then review the account context below.</small></label>
+              <label class="ex-action">Action<select id="exception-action-select">
+                <option value="partial_refund">Partial refund</option>
+                <option value="credit_next_invoice">Credit next invoice</option>
+                <option value="add_free_months">Add free months</option>
+                <option value="apply_discount">Apply next-invoice discount</option>
+                <option value="extend_access">Extend access</option>
+                <option value="cancel_period_end">Cancel at period end</option>
+                <option value="send_save_email">Send save email</option>
+              </select></label>
+              <label class="ex-amount" id="exception-amount-field">Amount ($)<input type="number" id="exception-amount" min="1" step="0.5" value="10"></label>
+              <label class="ex-reason">Reason<input type="text" id="exception-reason" placeholder="Example: complaint make-good"></label>
+            </div>
+            <div class="exception-conditional-fields" aria-live="polite">
+              <label id="exception-months-field" hidden>Free months<input type="number" id="exception-months" min="1" step="1" value="1"></label>
+              <label id="exception-percent-field" hidden>Discount %<input type="number" id="exception-percent" min="1" max="100" step="1" value="50"></label>
+              <label id="exception-days-field" hidden>Access days<input type="number" id="exception-days" min="1" step="1" value="14"></label>
+            </div>
+            <div class="exception-composer-row">
+              <label>Parent follow-up email<textarea id="exception-email-message" rows="3" placeholder="The parent-facing message will appear here."></textarea><small>Review the draft before sending. The action and email are logged together.</small></label>
+              <div class="exception-action-controls"><label class="locked-filter"><input type="checkbox" id="exception-send-email" checked>Send this email after the action</label><div class="exception-submit-row"><span class="state-chip ready" id="exception-action-state">Select parent</span><button class="button primary" type="submit" id="exception-apply">Apply and log</button></div></div>
+            </div>
+          </form>
+          <small class="ex-hint">Stripe-backed refunds, credits, coupons, and access extensions are logged with the admin action.</small>
+          <div class="customer-context-panel" id="exception-context"><div class="exception-empty"><strong>Select a parent</strong><small>Review billing history and duplicate subscription signals before applying an action.</small></div></div>
           <div class="table-wrap compact-table">
             <table>
-              <thead><tr><th>Family</th><th>Type</th><th>Amount</th><th>Reason</th><th>Date</th></tr></thead>
+              <thead><tr><th>Family</th><th>Type</th><th>Amount</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead>
               <tbody id="exception-log"></tbody>
             </table>
           </div>
@@ -452,15 +509,25 @@
               <div><p class="eyebrow">Promotion</p><h2>Promotion override</h2></div>
             </div>
             <div class="pricing-section-grid">
-              <label class="promo-plan-label">Active plan
-                <select name="promoPlanKey" class="promo-plan-select" aria-label="Select active plan for promotion">
-                  <option value="monthly">Monthly plan</option>
-                  <option value="yearly">Yearly plan</option>
-                </select>
-              </label>
-              <label>Discount price ($)<input type="number" name="promoPrice" min="0" step="0.01" placeholder="14.99"></label>
+              <label class="checkbox-field"><input type="checkbox" name="promotionEnabled"> Enable this override for eligible parents</label>
+              <label>Monthly discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="14.99"><small>Shown to new parents choosing monthly billing.</small></label>
+              <label>Yearly discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="99"><small>Shown to new parents and monthly subscribers upgrading to yearly.</small></label>
               <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
               <label>Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
+              <small class="pricing-help">The same code and description can support both plans. Leave a plan price blank to use its standard price.</small>
+            </div>
+          </article>
+
+          <article class="admin-table-card pricing-card cancellation-promo-section">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Retention</p><h2>Cancellation promo</h2></div>
+            </div>
+            <div class="pricing-section-grid">
+              <label class="checkbox-field"><input type="checkbox" name="cancellationPromoEnabled"> Offer this when a parent starts cancellation</label>
+              <label>Discount (%)<input type="number" name="cancellationPromoPercentOff" min="0" max="90" step="1" placeholder="50"></label>
+              <label>Duration<select name="cancellationPromoDuration"><option value="once">Next renewal only</option><option value="repeating">Every renewal</option></select></label>
+              <label>Parent-facing description<input type="text" name="cancellationPromoDescription" placeholder="Keep your plan and get 50% off the next renewal."></label>
+              <small class="pricing-help">This offer is shown for monthly plans, including card-upfront trials. Stripe applies it automatically to the next invoice; no code is needed.</small>
             </div>
           </article>
 
@@ -778,6 +845,15 @@
     </section>
   </main>
 
-  <script src="/webapp/webapp.js?v=142"></script>
+  <div class="customer-drawer-backdrop" id="customer-drawer-backdrop" hidden></div>
+  <aside class="customer-drawer" id="customer-drawer" aria-label="Customer details" aria-hidden="true" hidden>
+    <div class="customer-drawer-head">
+      <div><p class="eyebrow">Customer 360</p><h2 id="customer-drawer-title">Parent details</h2><small id="customer-drawer-email"></small></div>
+      <button class="drawer-close" type="button" data-customer-close aria-label="Close customer details"><i data-lucide="x"></i></button>
+    </div>
+    <div class="customer-drawer-body" id="customer-drawer-body"></div>
+  </aside>
+
+  <script src="/webapp/webapp.js?v=147"></script>
 </body>
 </html>

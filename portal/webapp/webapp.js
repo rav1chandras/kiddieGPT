@@ -114,6 +114,7 @@
         active: true
       },
       promotion: {
+        enabled: true,
         code: "SAVE50",
         monthlyAmount: 10,
         yearlyAmount: 75,
@@ -122,6 +123,17 @@
         description: "Limited-time family starter offer",
         showAfterDays: 3,
         durationDays: 7
+      },
+      yearlyUpgrade: {
+        bonusMonths: 3,
+        discountPercent: 0,
+        note: ""
+      },
+      cancellationPromo: {
+        enabled: true,
+        percentOff: 50,
+        duration: "once",
+        description: "Keep your plan and get 50% off the next renewal."
       }
     };
   }
@@ -129,30 +141,39 @@
   function normalisePricingForClient(pricing) {
     var defaults = defaultPricing();
     var rawPromotion = pricing && pricing.promotion ? pricing.promotion : {};
+    var rawYearlyUpgrade = pricing && pricing.yearlyUpgrade ? pricing.yearlyUpgrade : {};
+    var rawCancellationPromo = pricing && pricing.cancellationPromo ? pricing.cancellationPromo : {};
     var monthly = Object.assign(defaults.monthly, pricing && pricing.monthly || {});
     var yearly = Object.assign(defaults.yearly, pricing && pricing.yearly || {});
     var promotion = Object.assign(defaults.promotion, rawPromotion);
-    var hasRawPlanKey = Object.prototype.hasOwnProperty.call(rawPromotion, "planKey");
-    promotion.planKey = promotion.planKey === "yearly" ? "yearly" : "monthly";
-    if (!hasRawPlanKey && Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) {
-      promotion.planKey = "yearly";
-    }
-    var hasExplicitPrice = Object.prototype.hasOwnProperty.call(rawPromotion, "price") && rawPromotion.price !== "";
-    if (!hasExplicitPrice) {
-      promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
-    }
-    if (Number(promotion.price || 0) <= 0 && Number(rawPromotion.discountPercent || 0) > 0) {
-      var fallbackPlan = promotion.planKey === "yearly" ? yearly : monthly;
-      promotion.price = Number(fallbackPlan.amount || 0) * (1 - Number(rawPromotion.discountPercent || 0) / 100);
-    }
-    if (promotion.planKey === "yearly") {
-      promotion.yearlyAmount = Number(promotion.price || promotion.yearlyAmount || 0);
+    var cancellationPromo = Object.assign(defaults.cancellationPromo, rawCancellationPromo);
+    var hasMonthlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "monthlyAmount");
+    var hasYearlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "yearlyAmount");
+    var hasLegacyPrice = Object.prototype.hasOwnProperty.call(rawPromotion, "price") && rawPromotion.price !== "";
+    var legacyPlanKey = rawPromotion.planKey === "yearly" ? "yearly" : "monthly";
+    // Older records stored one `price`; new records retain both plan overrides.
+    if (!hasMonthlyAmount && !hasYearlyAmount && hasLegacyPrice) {
+      promotion.monthlyAmount = legacyPlanKey === "monthly" ? Number(rawPromotion.price || 0) : 0;
+      promotion.yearlyAmount = legacyPlanKey === "yearly" ? Number(rawPromotion.price || 0) : 0;
     } else {
-      promotion.monthlyAmount = Number(promotion.price || promotion.monthlyAmount || 0);
+      promotion.monthlyAmount = hasMonthlyAmount ? Number(rawPromotion.monthlyAmount || 0) : Number(promotion.monthlyAmount || 0);
+      promotion.yearlyAmount = hasYearlyAmount ? Number(rawPromotion.yearlyAmount || 0) : Number(promotion.yearlyAmount || 0);
     }
+    promotion.planKey = promotion.planKey === "yearly" ? "yearly" : "monthly";
+    promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
+    if (Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) promotion.planKey = "yearly";
+    promotion.enabled = promotion.enabled !== false;
     delete promotion.discountPercent;
     delete promotion.endDate;
-    return { monthly: monthly, yearly: yearly, promotion: promotion };
+    var yearlyUpgrade = Object.assign({}, defaults.yearlyUpgrade, rawYearlyUpgrade);
+    yearlyUpgrade.bonusMonths = Math.max(0, Math.round(Number(yearlyUpgrade.bonusMonths) || 0));
+    yearlyUpgrade.discountPercent = Math.min(90, Math.max(0, Number(yearlyUpgrade.discountPercent) || 0));
+    yearlyUpgrade.note = String(yearlyUpgrade.note || "");
+    cancellationPromo.enabled = cancellationPromo.enabled !== false;
+    cancellationPromo.percentOff = Math.min(90, Math.max(0, Number(cancellationPromo.percentOff) || 0));
+    cancellationPromo.duration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
+    cancellationPromo.description = String(cancellationPromo.description || "");
+    return { monthly: monthly, yearly: yearly, promotion: promotion, yearlyUpgrade: yearlyUpgrade, cancellationPromo: cancellationPromo };
   }
 
   function readPricing() {
@@ -250,6 +271,13 @@
     }
   }
 
+  async function deleteChildOnBackend(childId) {
+    var response = await parentAuthFetch("/api/parent/family/children/" + encodeURIComponent(childId), { method: "DELETE" });
+    var result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to remove the student profile.");
+    return result;
+  }
+
   function formatPlanPrice(plan, promoAmount) {
     var amount = promoAmount != null && promoAmount !== "" ? Number(promoAmount) : Number(plan.amount);
     return "$" + amount + "/" + plan.interval;
@@ -293,8 +321,11 @@
   }
 
   function promotionAmountForPlan(promo, key) {
-    if (!promo || promotionPlanKey(promo) !== key) return null;
-    var amount = promo.price != null && promo.price !== "" ? Number(promo.price) : key === "yearly" ? Number(promo.yearlyAmount || 0) : Number(promo.monthlyAmount || 0);
+    if (!promo) return null;
+    var hasPlanAmount = key === "yearly" ? promo.yearlyAmount != null : promo.monthlyAmount != null;
+    var amount = hasPlanAmount
+      ? Number(key === "yearly" ? promo.yearlyAmount : promo.monthlyAmount)
+      : promotionPlanKey(promo) === key ? Number(promo.price || 0) : 0;
     return amount > 0 ? amount : null;
   }
 
@@ -329,9 +360,12 @@
     var completionPanel = document.getElementById("completion-panel");
     var completionTitle = document.getElementById("completion-title");
     var completionText = document.getElementById("completion-text");
-    var childList = document.getElementById("child-list");
-    var childTemplate = document.getElementById("child-template");
+    var profileSaveState = document.getElementById("profile-save-state");
+    var childList = document.getElementById("student-workspace-slides");
     var addChild = document.getElementById("add-child");
+    var previousChild = document.getElementById("previous-child");
+    var nextChild = document.getElementById("next-child");
+    var childPosition = document.getElementById("child-position");
     var tabButtons = Array.from(document.querySelectorAll("[data-parent-tab]"));
     var panels = Array.from(document.querySelectorAll("[data-parent-panel]"));
     var demoButtons = Array.from(document.querySelectorAll("[data-demo-account]"));
@@ -347,6 +381,8 @@
     var acceptDiscount = document.getElementById("accept-discount");
     var confirmCancel = document.getElementById("confirm-cancel");
     var cancelReason = document.getElementById("cancel-reason");
+    var cancellationYearlyOption = document.getElementById("cancellation-yearly-option");
+    var cancelSwitchYearly = document.getElementById("cancel-switch-yearly");
     var updatePaymentMethod = document.getElementById("update-payment-method");
     var promoOfferCard = document.getElementById("promo-offer-card");
     var promoOfferCode = document.getElementById("promo-offer-code");
@@ -363,8 +399,22 @@
     var upgradeYearly = document.getElementById("upgrade-yearly");
     var promoRow = document.getElementById("promo-offer-card");
     var planTileGrid = document.querySelector(".plan-tile-grid");
+    var planSelectionSurface = document.querySelector(".upgrade-plan");
+    var upgradePlanSurface = document.getElementById("upgrade-plan-surface");
+    var upgradePlanKicker = document.getElementById("upgrade-plan-kicker");
+    var upgradePlanTitle = document.getElementById("upgrade-plan-title");
+    var upgradeYearlyContent = document.getElementById("upgrade-yearly-content");
+    var upgradeYearlyName = document.getElementById("upgrade-yearly-name");
+    var upgradeYearlyPromo = document.getElementById("upgrade-yearly-promo");
+    var upgradeYearlyPrice = document.getElementById("upgrade-yearly-price");
+    var upgradeYearlyCopy = document.getElementById("upgrade-yearly-copy");
+    var upgradeYearlyBonus = document.getElementById("upgrade-yearly-bonus");
+    var upgradeYearlyBillingNote = document.getElementById("upgrade-yearly-billing-note");
+    var upgradeYearlyTileButton = document.getElementById("upgrade-yearly-tile-button");
     var parentAccountName = document.getElementById("parent-account-name");
     var parentAccountPlan = document.getElementById("parent-account-plan");
+    var parentSideStatus = document.getElementById("parent-side-status");
+    var parentSideNote = document.getElementById("parent-side-note");
     var googleLoginButton = document.getElementById("google-login-button");
     var authDomainHint = document.getElementById("auth-domain-hint");
     var parentAuthGate = document.getElementById("parent-auth-gate");
@@ -410,6 +460,9 @@
     var cancellationScheduled = false;
     var cancellationAccessUntil = "";
     var paid = false;
+    var activeChildIndex = 0;
+    var lastProgressData = null;
+    var deleteProfileCandidate = null;
 
     var demos = {
       parent: {
@@ -439,12 +492,29 @@
 
     function setParentTab(name) {
       tabButtons.forEach(function (button) {
-        button.classList.toggle("active", button.dataset.parentTab === name);
+        var active = button.dataset.parentTab === name;
+        button.classList.toggle("active", active);
+        button.classList.toggle("is-active", active);
       });
       panels.forEach(function (panel) {
-        panel.classList.toggle("active", panel.dataset.parentPanel === name);
+        var active = panel.dataset.parentPanel === name;
+        panel.classList.toggle("active", active);
+        panel.classList.toggle("is-active", active);
       });
-      if (name === "progress") { loadProgress(); }
+      var pageCopy = {
+        overview: ["Family overview", "Good evening, " + ((formValue("parentName") || "there").split(" ")[0]) + "", "Here is the latest on your child's learning journey."],
+        subscription: ["Family workspace", "Manage subscription", "Billing, access, and renewals in one place."],
+        support: ["Family workspace", "Help for your family", "Password, profile changes, and privacy requests all live here."]
+      }[name];
+      if (pageCopy) {
+        var kicker = document.getElementById("live-page-kicker");
+        var title = document.getElementById("live-page-title");
+        var subtitle = document.getElementById("live-page-subtitle");
+        if (kicker) kicker.textContent = pageCopy[0];
+        if (title) title.textContent = pageCopy[1];
+        if (subtitle) subtitle.textContent = pageCopy[2];
+      }
+      if (name === "overview" || name === "progress") { loadProgress(); }
       if (name === "support") { loadSupport(); }
       renderIcons();
     }
@@ -495,9 +565,11 @@
       return { totals: totals, quizzes: quizzes, byDate: byDate };
     }
 
-    function renderProgress(data) {
-      var list = document.getElementById("progress-list");
-      var chip = document.getElementById("progress-plan-chip");
+    function renderProgressLegacy(data) {
+      lastProgressData = data || null;
+      var slide = activeStudentSlide();
+      var list = slide ? slide.querySelector(".progress-list") : null;
+      var chip = slide ? slide.querySelector(".active-chip") : null;
       if (chip) {
         chip.textContent = data && data.active ? ((data.plan && data.plan.name) || "Active") : "No active plan";
         chip.className = "state-chip " + (data && data.active ? "ok" : "warning");
@@ -505,9 +577,15 @@
       if (!list) return;
       var children = (data && data.children) || [];
       if (!children.length) {
-        list.innerHTML = '<div class="progress-empty">No student profiles yet. Add a child in the Student tab.</div>';
+        list.innerHTML = '<div class="progress-empty">No student activity yet. Add a learning profile and extension activity will appear here.</div>';
         return;
       }
+      var selectedProgressChild = activeProgressChild(children);
+      if (!selectedProgressChild) {
+        list.innerHTML = '<div class="progress-empty">No extension activity yet for this profile.</div>';
+        return;
+      }
+      children = [selectedProgressChild];
       list.innerHTML = children.map(function (c) {
         var agg = aggregateProgress(c.progress);
         var t = agg.totals;
@@ -558,10 +636,61 @@
             '<div class="progress-tiles">' + tiles + '</div>' +
             (totalActions ?
               '<div class="pc-week"><span class="pc-section-label">Daily activity</span><div class="pc-week-bars">' + bars + '</div></div>' +
-              '<div class="pc-quizzes"><span class="pc-section-label">Recent quizzes</span>' + quizHtml + '</div>'
+              '<div class="pc-quizzes"><span class="pc-section-label">Recent activity</span>' + quizHtml + '</div>'
               : '<div class="pc-quiz-empty">No activity from the extension yet this week.</div>') +
           '</div>';
       }).join("");
+      renderIcons();
+    }
+
+    function renderProgress(data) {
+      lastProgressData = data || null;
+      var slide = activeStudentSlide();
+      var list = slide ? slide.querySelector(".progress-list") : null;
+      if (!list) return;
+      var children = (data && data.children) || [];
+      var profiles = Array.from(document.querySelectorAll(".child-profile"));
+      var selected = activeProgressChild(children);
+      var studentCount = document.querySelector("[data-student-count]");
+      var profileCount = Math.max(children.length, profiles.length, 1);
+      if (studentCount) studentCount.textContent = profileCount + " active " + (profileCount === 1 ? "profile" : "profiles");
+      if (!selected) {
+        var activeProfile = profiles[activeChildIndex];
+        var activeName = activeProfile && activeProfile.querySelector('[name="studentName"]')
+          ? activeProfile.querySelector('[name="studentName"]').value.trim()
+          : "This student";
+        list.innerHTML = '<div class="progress-empty">' + text(activeName || "This student") + "'s progress will appear here after their first extension session." + '</div>';
+        return;
+      }
+      var agg = aggregateProgress(selected.progress);
+      var t = agg.totals;
+      var totalActions = t.lessons + t.cardsReviewed + t.mathSolved + t.tutorLessons + t.explains + t.writingChecks + t.quizzes;
+      var percent = totalActions ? Math.min(100, Math.max(8, Math.round((totalActions / 7) * 100))) : 0;
+      var goalCount = Math.max(7, totalActions);
+      var completedCount = Math.min(goalCount, totalActions);
+      var message = totalActions
+        ? text(selected.name || "Your child") + " has completed " + completedCount + " of " + goalCount + " planned learning sessions."
+        : "Your child's first learning session will appear here.";
+      var keys = progressLast7Keys();
+      var maxActions = Math.max(1, Math.max.apply(null, keys.map(function (key) { return agg.byDate[key] || 0; })));
+      var bars = keys.map(function (key) {
+        var actions = agg.byDate[key] || 0;
+        var height = actions ? Math.max(12, Math.round((actions / maxActions) * 100)) : 10;
+        var label = new Date(key + "T00:00:00").toLocaleDateString([], { weekday: "short" }).slice(0, 1);
+        return '<span class="bar-day"><i' + (actions ? ' style="height:' + height + '%"' : ' class="empty" style="height:10%"') + '></i><small>' + label + '</small></span>';
+      }).join("");
+      var recent = agg.quizzes.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 3);
+      var activity = recent.length ? recent.map(function (quiz, index) {
+        var pct = quiz.total ? Math.round((quiz.score / quiz.total) * 100) : 0;
+        var icon = index === 0 ? "calculator" : index === 1 ? "file-text" : "lightbulb";
+        return '<div class="activity-item"><span class="activity-icon ' + (index === 1 ? 'violet' : index === 2 ? 'orange' : 'green') + '"><i data-lucide="' + icon + '"></i></span><span><strong>' + text(quiz.title || "Quiz completed") + '</strong><small>' + text(quiz.score) + '/' + text(quiz.total) + ' · ' + pct + '%</small></span><time>' + relativeSince(quiz.ts ? new Date(quiz.ts).toISOString() : "") + '</time></div>';
+      }).join("") : '<div class="progress-empty">No quizzes yet this week.</div>';
+      list.innerHTML = '<div class="progress-focus"><div class="donut" style="--progress:' + percent + '%" aria-label="' + percent + ' percent weekly goal completion"><span><strong>' + percent + '%</strong><small>weekly goal</small></span></div><div class="focus-copy"><strong>' + (percent >= 70 ? 'Nice momentum' : percent ? 'A good start' : 'Ready when you are') + '</strong><p>' + message + '</p><span class="focus-note">' + (percent >= 85 ? "This week's goal is nearly complete." : "One more session keeps the week moving.") + '</span></div></div><div class="mini-bars" aria-label="Weekly activity by day">' + bars + '</div><div class="focus-footer"><span><i data-lucide="clock-3"></i> ' + (totalActions * 12) + ' min learning time</span><span><i data-lucide="trending-up"></i> ' + (totalActions ? 'This week' : 'No activity yet') + '</span></div><div class="embedded-activity"><div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>' + recent.length + ' ' + (recent.length === 1 ? 'session' : 'sessions') + '</span></div><div class="activity-list">' + activity + '</div></div>';
+      var streak = document.querySelector("[data-learning-streak]");
+      if (streak) {
+        var streakDays = Math.min(7, Math.max(1, Object.keys(agg.byDate).length));
+        streak.textContent = totalActions ? streakDays + (streakDays === 1 ? " day" : " days") : "Ready to start";
+      }
       renderIcons();
     }
 
@@ -574,20 +703,12 @@
       } catch (error) { /* keep empty state */ }
     }
 
-    function renderSupportThread(messages) {
+    // Support is deliberately not a chat: replies reach the parent by email only.
+    // Rendering a thread here would imply an in-app conversation and set
+    // response-time expectations a solo operator cannot meet.
+    function renderSupportThread() {
       var el = document.getElementById("support-thread");
-      if (!el) return;
-      messages = messages || [];
-      if (!messages.length) { el.innerHTML = ""; return; }
-      el.innerHTML = "<h3 style='color:#004f48;font-size:15px;margin:0 0 4px'>Your messages</h3>" + messages.map(function (m) {
-        var replies = (m.replies || []).map(function (r) {
-          return "<div class='support-reply'><span>KiddieGPT reply · " + parentDate(r.at) + "</span><p>" + text(r.message) + "</p></div>";
-        }).join("");
-        return "<div class='support-msg'>" +
-          "<div class='support-msg-head'><b>" + text(m.category) + "</b><span class='chip'>" + text(m.status) + "</span></div>" +
-          "<p>" + text(m.message) + "</p><small style='color:#8a99a3'>" + parentDate(m.createdAt) + "</small>" + replies +
-        "</div>";
-      }).join("");
+      if (el) el.innerHTML = "";
     }
 
     async function loadSupport() {
@@ -673,9 +794,16 @@
       return form.elements[name] ? form.elements[name].value : "";
     }
 
+    function resetSubscriptionPanel() {
+      if (cancelFlow) cancelFlow.classList.add("hidden");
+      if (subscriptionMain) subscriptionMain.classList.remove("hidden");
+      if (cancelReason) cancelReason.value = "Too expensive";
+    }
+
     function applySignedInParent(user, family) {
       if (!user) return;
       signedInParentEmail = normalizeEmail(user.email || "");
+      resetSubscriptionPanel();
       if (form.elements.email) form.elements.email.value = user.email || form.elements.email.value;
       if (form.elements.parentName) form.elements.parentName.value = user.name || form.elements.parentName.value;
       if (parentAccountName) parentAccountName.textContent = user.name || "Parent";
@@ -684,6 +812,7 @@
       // already in the response; on fresh login we fetch it.
       if (family) hydrateChildren(family); else loadParentFamily();
       preview();
+      loadProgress().catch(function () {});
     }
 
     function showParentGate(message) {
@@ -1003,6 +1132,7 @@
       if (parentLogout) {
         parentLogout.addEventListener("click", function () {
           localStorage.removeItem(PARENT_TOKEN_KEY);
+          resetSubscriptionPanel();
           setParentAuthMode("login");
           showParentGate("Signed out.");
         });
@@ -1293,37 +1423,75 @@
       var plan = paid ? activePlan() : selectedPlan();
       if (subscriptionTitle) subscriptionTitle.textContent = (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
       // A comped (no-card) trial is entitled but not subscribed: keep the plan
-      // tiles and checkout button on screen so they can convert during or after
-      // the trial, rather than being shown a package they never bought.
+      // tiles and checkout button on screen. A paid monthly subscriber, including
+      // a card-based trial, gets a dedicated yearly upgrade tile beside the
+      // current package instead of the initial plan picker.
       var needsCheckout = !paid || onNoCardTrial();
+      var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled;
       if (currentPackageCard) currentPackageCard.classList.toggle("hidden", needsCheckout);
       if (planTileGrid) planTileGrid.classList.toggle("hidden", !needsCheckout);
+      if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile));
+      if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !showUpgradeTile);
+      if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile);
+      // The large right-hand tile is the single upgrade action for a current
+      // monthly package; keep the legacy action in the current card hidden.
+      if (upgradeYearly) upgradeYearly.classList.add("hidden");
+      if (upgradeYearlyTileButton) upgradeYearlyTileButton.classList.toggle("hidden", !showUpgradeTile);
+      if (upgradePlanTitle) upgradePlanTitle.textContent = showUpgradeTile ? "Upgrade to yearly" : "Choose your plan";
+      if (upgradePlanKicker) {
+        var upgradeKickerOffer = yearlyUpgradeOffer();
+        upgradePlanKicker.textContent = showUpgradeTile && (upgradeKickerOffer.usesPlanPromotion || upgradeKickerOffer.usesUpgradeOffer) ? "Limited-time offer" : "Best value";
+      }
+      if (showUpgradeTile) {
+        var tileOffer = yearlyUpgradeOffer();
+        if (upgradeYearlyName) upgradeYearlyName.textContent = planLabelForKey("yearly");
+        if (upgradeYearlyPrice) {
+          upgradeYearlyPrice.innerHTML = (tileOffer.discountPercent > 0 ? "<s>$" + tileOffer.baseStr + "</s>" : "") +
+            "<b>$" + tileOffer.priceStr + "</b><span>/year</span>";
+        }
+        if (upgradeYearlyPromo) {
+          upgradeYearlyPromo.textContent = tileOffer.promoCode ? "Code " + tileOffer.promoCode : "Best value";
+          upgradeYearlyPromo.classList.toggle("hidden", !tileOffer.promoCode);
+        }
+        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = onStripeTrial()
+          ? ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Keep your free trial, then switch to yearly billing when it ends.")
+          : ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Get a full year of access with your unused monthly time carried over.");
+        if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = onStripeTrial()
+          ? "No charge today"
+          : "+" + tileOffer.bonusMonths + " bonus month" + (tileOffer.bonusMonths === 1 ? "" : "s");
+        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = onStripeTrial() ? "Starts " + trialEndsText() : "No double billing";
+        if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = onStripeTrial()
+          ? "Choose yearly billing<i data-lucide='arrow-up-right'></i>"
+          : "Upgrade to yearly<i data-lucide='arrow-up-right'></i>";
+        renderIcons();
+      }
       renderPromotionOffer();
       if (paymentButton) paymentButton.classList.toggle("hidden", !needsCheckout);
       if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !paid);
       if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid);
       if (currentPackageName) currentPackageName.textContent = plan.name;
+      if (currentPackagePrice) currentPackagePrice.textContent = "$" + (plan.amount || "—");
+      var currentPackageInterval = document.getElementById("current-package-interval");
+      if (currentPackageInterval) currentPackageInterval.textContent = "/ " + (plan.interval === "year" ? "year" : "month");
       if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
         currentPackageNote.textContent = onStripeTrial()
           ? (cancellationScheduled
-            ? "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil || trialEndsText()) + ". Access continues until then, and you will not be charged."
+            ? "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEndsText()) + ". Access continues until then, and you will not be charged."
             : "Your child has access during the trial. Billing starts on " + trialEndsText() + " unless cancelled.")
           : yearlyUpgradeScheduled
           ? yearlyUpgradeDetailText(yearlyUpgradeInfo)
           : cancellationScheduled
           ? "Cancellation scheduled: your child keeps extension access until " + parentDate(cancellationAccessUntil) + "."
           : retentionOfferAccepted
-          ? "Save offer accepted: 50% off will apply automatically to the next invoice."
+          ? cancellationPromoConfig().percentOff + "% off will apply automatically to the next invoice."
           : plan.key === "monthly"
           ? "Upgrade to yearly and get 3 bonus months. Monthly renewal is cancelled at period end, so the paid month is honored."
           : "Your yearly package is active. Child profiles and extension access stay unlocked.";
       }
       if (upgradeYearly) {
-        // No upsell mid-trial: the parent has not been charged for the plan they
-        // are on yet, so asking them to switch plans is premature.
-        upgradeYearly.classList.toggle("hidden", !paid || plan.key !== "monthly" || cancellationScheduled || yearlyUpgradeScheduled || onStripeTrial());
+        upgradeYearly.classList.add("hidden");
         upgradeYearly.textContent = "Upgrade to yearly";
         renderUpgradeOffer();
       }
@@ -1367,6 +1535,17 @@
       return trial && trial.endsAt ? parentDate(trial.endsAt) : "";
     }
 
+    function cancellationPromoConfig() {
+      var pricing = readPricing();
+      var promo = pricing.cancellationPromo || {};
+      return {
+        enabled: promo.enabled !== false && Number(promo.percentOff || 0) > 0,
+        percentOff: Math.min(90, Math.max(0, Number(promo.percentOff || 0))),
+        duration: promo.duration === "repeating" ? "repeating" : "once",
+        description: String(promo.description || "Keep your plan and get a discount on the next renewal.")
+      };
+    }
+
     function refundWindow() {
       return (parentEntitlement && parentEntitlement.refundWindow) || null;
     }
@@ -1381,24 +1560,30 @@
       var rw = refundWindow();
       var refundable = inRefundWindow();
       var trialing = onStripeTrial();
-      // Nothing has been charged on a trial, so neither the refund wording nor
-      // the 50% save offer applies — just say when the trial ends.
+      var promo = cancellationPromoConfig();
+      var promoAvailable = promo.enabled && promo.percentOff > 0 && !yearly && !refundable;
+      if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
-        if (cancelFlowTitle) cancelFlowTitle.textContent = "End your free trial";
+        if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? promo.percentOff + "% off your first renewal" : "End your free trial";
         if (cancelFlowCopy) {
-          cancelFlowCopy.textContent = "Your trial ends on " + trialEndsText() + " and you will not be charged. Your child keeps access until then, and all profiles and progress are saved.";
+          cancelFlowCopy.textContent = promoAvailable
+            ? "Your current plan cancels on " + trialEndsText() + " if you continue. Keep it instead and get " + promo.percentOff + "% off when billing starts on " + trialEndsText() + ". No code is needed."
+            : "Your trial ends on " + trialEndsText() + " and you will not be charged. Your child keeps access until then, and all profiles and progress are saved.";
         }
-        if (acceptDiscount) acceptDiscount.classList.add("hidden");
-        if (confirmCancel) confirmCancel.textContent = "End trial";
-        if (saveOffer) saveOffer.classList.add("yearly-cancel");
+        if (acceptDiscount) {
+          acceptDiscount.classList.toggle("hidden", !promoAvailable);
+          acceptDiscount.textContent = promoAvailable ? "Keep plan with " + promo.percentOff + "% off" : "Keep my plan";
+        }
+        if (confirmCancel) confirmCancel.textContent = "Cancel renewal";
+        if (saveOffer) saveOffer.classList.toggle("yearly-cancel", !promoAvailable);
         return;
       }
       if (cancelFlowLabel) cancelFlowLabel.textContent = refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
       if (cancelFlowTitle) {
         cancelFlowTitle.textContent = refundable
           ? "Cancel and get a full refund"
-          : yearly ? "Cancel yearly renewal" : "50% off your next month";
+          : yearly ? "Cancel yearly renewal" : promoAvailable ? promo.percentOff + "% off your next renewal" : "Cancel your renewal";
       }
       if (cancelFlowCopy) {
         // Inside the refund window cancelling refunds the payment in full and
@@ -1407,10 +1592,14 @@
           ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept."
           : yearly
           ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."
-          : "We will apply the discount automatically to the next invoice. No code is needed, and all child profiles, goals, rewards, and extension access stay active.";
+          : promoAvailable
+          ? promo.description + " It will be applied automatically to the next invoice."
+          : "Your renewal will be turned off. Your child keeps access through the paid plan end date.";
       }
-      // No point offering 50% off a month we are about to refund in full.
-      if (acceptDiscount) acceptDiscount.classList.toggle("hidden", yearly || refundable);
+      if (acceptDiscount) {
+        acceptDiscount.classList.toggle("hidden", !promoAvailable);
+        acceptDiscount.textContent = promoAvailable ? "Keep plan with " + promo.percentOff + "% off" : "Keep my plan";
+      }
       // Inside the window the plan itself ends (refunded); outside, only the
       // renewal stops and access runs to the period end.
       if (confirmCancel) confirmCancel.textContent = refundable ? "Cancel plan" : "Cancel renewal";
@@ -1454,7 +1643,7 @@
         var entitlement = await response.json();
         if (!response.ok) throw entitlement;
         parentEntitlement = entitlement;
-        parentRenewalAt = entitlement.renewalAt || "";
+        parentRenewalAt = entitlement.renewalAt || (entitlement.trial && entitlement.trial.endsAt) || "";
         if (entitlement.active) {
           var key = String(entitlement.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
           cancellationScheduled = entitlement.status === "cancel_scheduled";
@@ -1475,7 +1664,7 @@
             : "Subscription active";
           var detail;
           if (cancellationScheduled && trialing) {
-            detail = "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil || trialEnds) + ". Access continues until then, and you will not be charged.";
+            detail = "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEnds) + ". Access continues until then, and you will not be charged.";
           } else if (cancellationScheduled) {
             detail = "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then.";
           } else if (compedTrial) {
@@ -1495,7 +1684,7 @@
             paymentState.className = "state-chip trialing";
           }
           if (trialing && paymentState) {
-            paymentState.textContent = "Trial ends " + trialEnds;
+            paymentState.textContent = cancellationScheduled ? "Cancels " + parentDate(cancellationAccessUntil || trialEnds) : "Trial ends " + trialEnds;
             paymentState.className = "state-chip warning";
           }
         } else {
@@ -1601,13 +1790,12 @@
       }) || null;
     }
 
-    function eligiblePromotion(planKey) {
+    function configuredPromotionForPlan(planKey) {
       var pricing = readPricing();
       var promo = pricing.promotion || {};
       var code = String(promo.code || "").trim();
       var key = planKey || selectedPlanKeyFromInputs(planInputs);
-      if (!code || paid) return null;
-      if (promotionPlanKey(promo) !== key) return null;
+      if (promo.enabled === false || !code) return null;
       var amount = promotionAmountForPlan(promo, key);
       var base = Number((pricing[key] || {}).amount || 0);
       if (!amount || !base || amount >= base) return null;
@@ -1616,6 +1804,11 @@
         planKey: key,
         promoPrice: amount
       }, promo);
+    }
+
+    function eligiblePromotion(planKey) {
+      if (paid) return null;
+      return configuredPromotionForPlan(planKey);
     }
 
     function renderPromotionOffer() {
@@ -1633,10 +1826,45 @@
       return { "Emerging": "1", "On track": "2", "Advanced": "3" }[String(label)] || "2";
     }
 
+    function gradeNumber(value) {
+      var match = String(value == null ? "" : value).match(/\d+/);
+      if (!match) return "";
+      return String(Math.min(12, Math.max(1, Number(match[0]))));
+    }
+
+    function gradeLabel(value) {
+      var number = gradeNumber(value);
+      return number ? "Grade " + number : "";
+    }
+
     function fillGoalRow(row, goal) {
       var g = row.querySelector('[name="goal"]'); if (g) g.value = goal.goal || "";
       var r = row.querySelector('[name="reward"]'); if (r) r.value = goal.reward || "";
       var c = row.querySelector('[name="goalComplete"]'); if (c) c.checked = Boolean(goal.completed);
+    }
+
+    function studentSlides() {
+      return Array.from(document.querySelectorAll(".student-workspace-slide"));
+    }
+
+    function activeStudentSlide() {
+      var slides = studentSlides();
+      return slides[activeChildIndex] || slides[0] || null;
+    }
+
+    function activeProgressChild(children) {
+      var profiles = Array.from(document.querySelectorAll(".child-profile"));
+      var profile = profiles[activeChildIndex];
+      var id = profile && profile.dataset.childId;
+      if (id) {
+        var matched = (children || []).find(function (child) { return String(child.id || "") === String(id); });
+        if (matched) return matched;
+      }
+      return (children || [])[activeChildIndex] || null;
+    }
+
+    function removeCloneIds(slide) {
+      slide.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
     }
 
     // Rebuild the child-profile cards from the family's saved children so the
@@ -1653,19 +1881,30 @@
         form.elements.email.value = family.email;
       }
       if (!Array.isArray(family.children) || !family.children.length) return;
-      Array.from(childList.querySelectorAll(".child-profile")).forEach(function (el) { el.remove(); });
+      var baseSlide = studentSlides()[0];
+      if (!baseSlide) return;
+      studentSlides().slice(1).forEach(function (slide) { slide.remove(); });
+      activeChildIndex = 0;
       family.children.slice(0, 3).forEach(function (child, index) {
-        var node = childTemplate.content.firstElementChild.cloneNode(true);
+        var slide = index === 0 ? baseSlide : baseSlide.cloneNode(true);
+        if (index > 0) {
+          removeCloneIds(slide);
+          childList.appendChild(slide);
+        }
+        slide.dataset.slideIndex = String(index);
+        var node = slide.querySelector(".child-profile");
         if (child.id) node.dataset.childId = child.id;
+        node.dataset.readingLevel = child.readingLevel || "";
         var heading = node.querySelector("h3"); if (heading) heading.textContent = "Child " + (index + 1);
         var nameEl = node.querySelector('[name="studentName"]'); if (nameEl) nameEl.value = child.studentName || "";
-        var gradeEl = node.querySelector('[name="grade"]'); if (gradeEl) gradeEl.value = child.grade || "";
-        var readEl = node.querySelector('[name="readingLevel"]'); if (readEl) readEl.value = readingLevelValue(child.readingLevel);
+        var gradeEl = node.querySelector('[name="grade"]'); if (gradeEl) gradeEl.value = gradeNumber(child.grade) || "5";
         var goals = (child.learningGoals && child.learningGoals.length)
-          ? child.learningGoals
+          ? child.learningGoals.slice(0, 7)
           : (child.goal ? [{ goal: child.goal, reward: child.reward, completed: false }] : []);
         var list = node.querySelector(".goal-reward-list");
-        var firstRow = node.querySelector(".goal-reward-row");
+        if (list) list.innerHTML = "";
+        var firstRow = createGoalRow();
+        if (list) list.appendChild(firstRow);
         if (goals.length && firstRow) {
           fillGoalRow(firstRow, goals[0]);
           goals.slice(1).forEach(function (goal) {
@@ -1674,7 +1913,8 @@
             if (list) list.appendChild(row);
           });
         }
-        childList.appendChild(node);
+        var progressList = slide.querySelector(".progress-list");
+        if (progressList) progressList.innerHTML = '<div class="progress-empty">Your child\'s activity from the KiddieGPT extension will show here.</div>';
         updateGoalRows(node);
       });
       updateChildCards();
@@ -1693,18 +1933,29 @@
     function updateGoalRows(profile) {
       var rows = Array.from(profile.querySelectorAll(".goal-reward-row"));
       var list = profile.querySelector(".goal-reward-list");
-      rows.sort(function (a, b) {
+      var orderedRows = rows.slice().sort(function (a, b) {
         return Number(a.querySelector('[name="goalComplete"]').checked) - Number(b.querySelector('[name="goalComplete"]').checked);
-      }).forEach(function (row) {
-        list.appendChild(row);
+      });
+      // Avoid re-appending the active input row on every keystroke. Moving a
+      // focused input in the DOM interrupts typing and can make the field
+      // appear unresponsive to the parent.
+      orderedRows.forEach(function (row, index) {
+        if (list.children[index] !== row) list.appendChild(row);
       });
       var showCompleted = profile.querySelector(".show-completed").checked;
       rows.forEach(function (row) {
         var checked = row.querySelector('[name="goalComplete"]').checked;
         row.classList.toggle("is-complete", checked);
         row.classList.toggle("is-hidden-complete", checked && !showCompleted);
+        row.hidden = checked && !showCompleted;
         row.querySelector(".delete-goal").classList.toggle("hidden", rows.length === 1);
       });
+      var addGoal = profile.querySelector(".add-goal");
+      if (addGoal) {
+        var atLimit = rows.length >= 7;
+        addGoal.disabled = atLimit;
+        addGoal.title = atLimit ? "Maximum of 7 goals and rewards" : "Add goal and reward";
+      }
     }
 
     function createGoalRow(goal) {
@@ -1712,8 +1963,8 @@
       row.className = "goal-reward-row";
       row.innerHTML =
         '<label class="complete-check"><input type="checkbox" name="goalComplete"><span>Done</span></label>' +
-        '<label>Learning goal<input type="text" name="goal" placeholder="Example: Reading confidence"></label>' +
-        '<label>Reward<input type="text" name="reward" placeholder="Example: Movie night"></label>' +
+        '<label>Learning goal<input type="text" name="goal" maxlength="75" placeholder="Example: Reading confidence"></label>' +
+        '<label>Reward<input type="text" name="reward" maxlength="75" placeholder="Example: Movie night"></label>' +
         '<button class="ghost-icon delete-goal" type="button" aria-label="Delete goal"><i data-lucide="trash-2"></i></button>';
       if (goal) {
         row.querySelector('[name="goalComplete"]').checked = Boolean(goal.completed);
@@ -1738,7 +1989,7 @@
       return Array.from(document.querySelectorAll(".child-profile")).map(function (profile, index) {
         var name = profile.querySelector('[name="studentName"]').value.trim();
         var grade = profile.querySelector('[name="grade"]').value;
-        var readingLevel = profile.querySelector('[name="readingLevel"]').value;
+        var readingLevel = profile.dataset.readingLevel || "";
         var goals = profileGoals(profile);
         var firstGoal = goals.find(function (item) { return !item.completed; }) || goals[0] || { goal: "", reward: "" };
         // Each card carries a stable id so a re-save keeps the same child id and
@@ -1749,8 +2000,8 @@
         return {
           id: stableId,
           studentName: name,
-          grade: grade,
-          readingLevel: readingLevelLabel(readingLevel),
+          grade: gradeLabel(grade),
+          readingLevel: readingLevel,
           learningGoals: goals,
           goal: firstGoal.goal,
           reward: firstGoal.reward
@@ -1774,8 +2025,7 @@
       var firstChild = document.querySelector(".child-profile");
       if (firstChild) {
         firstChild.querySelector('[name="studentName"]').value = demo.studentName;
-        firstChild.querySelector('[name="grade"]').value = demo.grade;
-        firstChild.querySelector('[name="readingLevel"]').value = demo.readingLevel;
+        firstChild.querySelector('[name="grade"]').value = gradeNumber(demo.grade) || "5";
         var list = firstChild.querySelector(".goal-reward-list");
         list.innerHTML = "";
         demo.goals.forEach(function (goal) {
@@ -1784,7 +2034,7 @@
         updateGoalRows(firstChild);
       }
 
-      setParentTab(name === "student" ? "student" : "parent");
+      setParentTab("overview");
       completionTitle.textContent = name === "student" ? "Student demo loaded" : "Parent demo loaded";
       completionText.textContent = "Review the details, complete payment, then save this family profile.";
       preview();
@@ -1792,18 +2042,79 @@
 
     function updateChildCards() {
       var profiles = Array.from(document.querySelectorAll(".child-profile"));
+      var slides = studentSlides();
+      activeChildIndex = Math.max(0, Math.min(activeChildIndex, Math.max(0, profiles.length - 1)));
       profiles.forEach(function (profile, index) {
+        var slide = slides[index];
         var nameInput = profile.querySelector('[name="studentName"]');
-        var title = profile.querySelector("h3");
         var avatar = profile.querySelector(".avatar");
         var remove = profile.querySelector(".remove-child");
         var name = nameInput.value.trim();
-        title.textContent = name || "Child " + (index + 1);
         avatar.textContent = (name || "C").charAt(0).toUpperCase();
         profile.dataset.childIndex = String(index);
+        profile.classList.toggle("is-active-profile", index === activeChildIndex);
+        profile.hidden = false;
+        if (slide) {
+          slide.dataset.slideIndex = String(index);
+          slide.hidden = index !== activeChildIndex;
+        }
         remove.classList.toggle("hidden", profiles.length === 1);
         updateGoalRows(profile);
       });
+      var studentCount = document.querySelector("[data-student-count]");
+      if (studentCount) studentCount.textContent = profiles.length + " active " + (profiles.length === 1 ? "profile" : "profiles");
+      if (childPosition) childPosition.textContent = (profiles.length ? activeChildIndex + 1 : 0) + " of 3";
+      if (previousChild) previousChild.disabled = profiles.length < 2 || activeChildIndex === 0;
+      if (nextChild) nextChild.disabled = profiles.length < 2 || activeChildIndex >= profiles.length - 1;
+      if (addChild) {
+        addChild.disabled = profiles.length >= 3;
+        addChild.title = profiles.length >= 3 ? "Maximum of 3 child profiles" : "Add child profile";
+      }
+      renderLiveProfile();
+      if (lastProgressData) renderProgress(lastProgressData);
+    }
+
+    function renderLiveProfile() {
+      var profiles = Array.from(document.querySelectorAll(".child-profile"));
+      var profile = profiles[activeChildIndex] || profiles[0];
+      if (!profile) return;
+      var slide = activeStudentSlide();
+      var name = (profile.querySelector('[name="studentName"]') || {}).value || "Child";
+      var grade = gradeLabel((profile.querySelector('[name="grade"]') || {}).value) || "Grade not set";
+      var level = readingLevelLabel(profile.dataset.readingLevel || "");
+      var goals = profileGoals(profile);
+      var completed = goals.filter(function (goal) { return goal.completed; }).length;
+      var reward = goals.find(function (goal) { return goal.reward; });
+      var initials = name.trim().split(/\s+/).map(function (part) { return part.charAt(0); }).join("").slice(0, 2).toUpperCase() || "C";
+      var summaryInitials = slide ? slide.querySelector("#live-profile-initials") : null;
+      var summaryName = slide ? slide.querySelector("#live-profile-name") : null;
+      var summaryDetails = slide ? slide.querySelector("#live-profile-details") : null;
+      var summaryStatus = slide ? slide.querySelector("#live-profile-status") : null;
+      var summaryGoalCount = slide ? slide.querySelector("#live-profile-goal-count") : null;
+      var summaryGoals = slide ? slide.querySelector("#live-profile-goals") : null;
+      var summaryReward = slide ? slide.querySelector("#live-profile-reward") : null;
+      var summaryRewardProgress = slide ? slide.querySelector("#live-profile-reward-progress") : null;
+      if (summaryInitials) summaryInitials.textContent = initials;
+      if (summaryName) summaryName.textContent = name.trim() || "Add a student";
+      if (summaryDetails) summaryDetails.innerHTML = text(grade) + " <b>•</b> " + text(level);
+      if (summaryStatus) summaryStatus.textContent = name.trim() ? "On track" : "Needs setup";
+      if (summaryGoalCount) summaryGoalCount.textContent = goals.length + " " + (goals.length === 1 ? "goal" : "goals");
+      if (summaryReward) summaryReward.textContent = reward ? reward.reward : "Add a reward";
+      if (summaryRewardProgress) summaryRewardProgress.textContent = goals.length ? completed + " of " + goals.length + " goals" : "Optional";
+      if (summaryGoals) {
+        summaryGoals.innerHTML = goals.length ? goals.slice(0, 4).map(function (goal, index) {
+          return '<div class="goal-row"><span class="goal-check ' + (goal.completed ? 'is-done' : '') + '"><i data-lucide="' + (goal.completed ? 'check' : index ? 'book-open' : 'message-circle') + '"></i></span><span class="goal-copy"><strong>' + text(goal.goal || "Learning goal") + '</strong><small>' + (goal.completed ? 'Completed' : 'In progress') + '</small></span><span class="goal-state ' + (goal.completed ? 'done' : '') + '">' + (goal.completed ? 'Done' : 'Next') + '</span></div>';
+        }).join("") : '<div class="goal-row"><span class="goal-check"><i data-lucide="book-open"></i></span><span class="goal-copy"><strong>Add a learning goal</strong><small>Use Edit profile to get started</small></span><span class="goal-state">Next</span></div>';
+      }
+      var supportName = document.getElementById("support-account-name");
+      var supportEmail = document.getElementById("support-account-email");
+      var supportInitials = document.getElementById("support-account-initials");
+      var parentName = (formValue("parentName") || "Parent").trim();
+      var email = formValue("email") || "";
+      if (supportName) supportName.textContent = parentName;
+      if (supportEmail) supportEmail.textContent = email;
+      if (supportInitials) supportInitials.textContent = parentName.split(/\s+/).map(function (part) { return part.charAt(0); }).join("").slice(0, 2).toUpperCase() || "P";
+      renderIcons();
     }
 
     function preview() {
@@ -1813,6 +2124,32 @@
       if (capPreview) capPreview.textContent = capValue + " min";
       if (parentAccountName) parentAccountName.textContent = formValue("parentName").trim() || "Parent";
       if (parentAccountPlan) parentAccountPlan.textContent = paid ? activePlan().name : "Setup in progress";
+      if (parentSideStatus) {
+        parentSideStatus.lastChild.textContent = paid ? (cancellationScheduled ? "Ending" : onStripeTrial() ? "Trial" : "Active") : "Pending";
+        parentSideStatus.classList.toggle("is-pending", !paid || cancellationScheduled);
+      }
+      if (parentSideNote) {
+        parentSideNote.textContent = cancellationScheduled
+          ? "Access remains active until " + parentDate(cancellationAccessUntil)
+          : onStripeTrial()
+          ? "Billing starts " + trialEndsText()
+          : paid ? "Family access and extension sync" : "Choose a plan to unlock access";
+      }
+      renderLiveProfile();
+      var sidePlan = paid ? activePlan() : selectedPlan();
+      var sidePrice = document.getElementById("parent-side-price");
+      var sideInterval = document.getElementById("parent-side-interval");
+      if (sidePrice) sidePrice.textContent = paid ? "$" + (sidePlan.amount || "—") : sidePlan.price;
+      if (sideInterval) sideInterval.textContent = paid ? "/ " + (sidePlan.interval === "year" ? "year" : "month") : "";
+      var renewalDate = document.querySelector("[data-renewal-date]");
+      var renewal = parentRenewalAt
+        ? parentDate(parentRenewalAt)
+        : onStripeTrial() && trialInfo() && trialInfo().endsAt
+        ? parentDate(trialInfo().endsAt)
+        : "Not scheduled";
+      if (renewalDate) renewalDate.textContent = renewal;
+      var planPeriod = document.querySelector("[data-plan-period]");
+      if (planPeriod) planPeriod.textContent = paid ? (activePlan().key === "yearly" ? "Yearly plan" : "Monthly plan") : "Payment pending";
       document.getElementById("preview-children").textContent = children.length + (children.length === 1 ? " profile" : " profiles");
       document.getElementById("preview-subscription").textContent = paid ? activePlan().name.replace("Family ", "") : "Pending";
       document.getElementById("preview-access").textContent = paid && children.length ? "Unlocked" : "Locked";
@@ -1823,7 +2160,7 @@
 
     function validateForm() {
       if (!validateParentEmail()) {
-        setParentTab("parent");
+        setParentTab("support");
         return false;
       }
       var fields = Array.from(form.querySelectorAll("input, select"));
@@ -1839,6 +2176,8 @@
           var card = field.closest(".child-profile");
           if (card) {
             var idx = Array.from(document.querySelectorAll(".child-profile")).indexOf(card);
+            activeChildIndex = Math.max(0, idx);
+            updateChildCards();
             var who = (card.querySelector('[name="studentName"]') || {}).value;
             who = (who || "").trim() || ("Child " + (idx + 1));
             card.classList.add("needs-attention");
@@ -1867,7 +2206,7 @@
       if (!childProfiles().length) {
         completionTitle.textContent = "Add a child profile";
         completionText.textContent = "At least one child profile is needed before the extension can unlock tools.";
-        setParentTab("student");
+        setParentTab("overview");
         return false;
       }
       return true;
@@ -1907,6 +2246,13 @@
 
     if (changePasswordButton) {
       changePasswordButton.addEventListener("click", function () {
+        var passwordFields = changePasswordButton.closest(".account-setting-row")?.nextElementSibling;
+        if (passwordFields && passwordFields.classList.contains("hidden")) {
+          passwordFields.classList.remove("hidden");
+          var firstPasswordField = passwordFields.querySelector("input");
+          if (firstPasswordField) firstPasswordField.focus();
+          return;
+        }
         changeParentPassword().catch(function (error) {
           showAccountStatus(error.detail || error.error || "Password update failed", "error");
         });
@@ -1915,6 +2261,13 @@
 
     if (requestEmailChangeButton) {
       requestEmailChangeButton.addEventListener("click", function () {
+        var emailFields = requestEmailChangeButton.closest(".account-setting-row")?.nextElementSibling;
+        if (emailFields && emailFields.classList.contains("hidden")) {
+          emailFields.classList.remove("hidden");
+          var newEmailField = emailFields.querySelector("input");
+          if (newEmailField) newEmailField.focus();
+          return;
+        }
         requestParentEmailChange().catch(function (error) {
           showAccountStatus(error.detail || error.error || "Could not send code", "error");
         });
@@ -1939,7 +2292,7 @@
 
     paymentButton.addEventListener("click", async function () {
       if (!validateParentEmail()) {
-        setParentTab("parent");
+        setParentTab("support");
         return;
       }
       var plan = selectedPlan();
@@ -2053,9 +2406,32 @@
       var pricing = readPricing();
       var up = pricing.yearlyUpgrade || { bonusMonths: 3, discountPercent: 0, note: "" };
       var base = Number((pricing.yearly || {}).amount || 0);
+      var planPromotion = configuredPromotionForPlan("yearly");
       var pct = Math.max(0, Number(up.discountPercent || 0));
-      var price = pct > 0 ? Math.round(base * (1 - pct / 100) * 100) / 100 : base;
-      return { bonusMonths: Math.max(0, Number(up.bonusMonths || 0)), discountPercent: pct, basePrice: base, price: price, priceStr: moneyStr(price), baseStr: moneyStr(base), note: up.note || "" };
+      var configuredPrice = planPromotion ? Number(planPromotion.promoPrice || 0) : 0;
+      var upgradePrice = pct > 0 ? Math.round(base * (1 - pct / 100) * 100) / 100 : 0;
+      // The yearly-upgrade section is for existing monthly subscribers. If its
+      // discount is set, it takes precedence over a generic signup override;
+      // signup plan tiles continue to use the promotion override independently.
+      var usesUpgradeOffer = pct > 0 || Boolean(String(up.note || "").trim());
+      var usesPlanPromotion = !usesUpgradeOffer && Boolean(planPromotion && configuredPrice > 0);
+      var price = usesPlanPromotion
+        ? configuredPrice
+        : upgradePrice > 0 ? upgradePrice : base;
+      var effectivePct = base > 0 && price < base ? Math.round((1 - price / base) * 100) : 0;
+      return {
+        bonusMonths: Math.max(0, Number(up.bonusMonths || 0)),
+        discountPercent: usesPlanPromotion ? effectivePct : pct,
+        basePrice: base,
+        price: price,
+        priceStr: moneyStr(price),
+        baseStr: moneyStr(base),
+        note: usesPlanPromotion ? (planPromotion.code + (planPromotion.description ? ": " + planPromotion.description : "")) : (up.note || ""),
+        promoCode: usesPlanPromotion ? planPromotion.code : "",
+        promoDescription: usesPlanPromotion ? planPromotion.description || "" : up.note || "",
+        usesPlanPromotion: usesPlanPromotion,
+        usesUpgradeOffer: usesUpgradeOffer
+      };
     }
 
     function renderCurrentPackageFacts(plan) {
@@ -2068,7 +2444,7 @@
       facts.push({
         icon: cancellationScheduled || trialingNow ? "clock" : "check-circle",
         text: cancellationScheduled
-          ? (trialingNow ? "Trial ends " + parentDate(cancellationAccessUntil || trialEndsText()) : "Cancels " + parentDate(cancellationAccessUntil))
+          ? (trialingNow ? "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEndsText()) : "Cancels " + parentDate(cancellationAccessUntil))
           : trialingNow
           ? "Free trial · ends " + trialEndsText()
           : yearlyUpgradeScheduled
@@ -2079,7 +2455,7 @@
       // fact above already states — a "renews monthly" line would imply a charge
       // cycle that has not begun yet.
       if (trialingNow) {
-        facts.push({ icon: "credit-card", text: "Billing starts " + trialEndsText() });
+        facts.push({ icon: "credit-card", text: cancellationScheduled ? "No charge will be made" : "Billing starts " + trialEndsText() });
       }
       var renewalIso = yearlyUpgradeScheduled && yearlyUpgradeInfo && yearlyUpgradeInfo.yearlyNextRenewalAt
         ? new Date(Number(yearlyUpgradeInfo.yearlyNextRenewalAt) * 1000).toISOString()
@@ -2098,17 +2474,20 @@
     function renderRailPromo() {
       var el = document.getElementById("rail-yearly-promo");
       if (!el) return;
-      var show = paid && activePlanKey === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled && !onStripeTrial();
+      var show = paid && activePlanKey === "monthly" && !onNoCardTrial() && !cancellationScheduled && !yearlyUpgradeScheduled;
       el.classList.toggle("hidden", !show);
       if (!show) return;
       var o = yearlyUpgradeOffer();
       var copyEl = document.getElementById("rail-promo-copy");
+      var detailEl = document.getElementById("rail-promo-detail");
       if (copyEl) {
         var extras = [];
         if (o.bonusMonths > 0) extras.push(o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s"));
         if (o.discountPercent > 0) extras.push("save " + o.discountPercent + "%");
-        copyEl.textContent = "Switch to yearly for $" + o.priceStr + "/yr" + (extras.length ? " — " + extras.join(" + ") + "." : ".");
+        if (o.promoCode) extras.push("code " + o.promoCode);
+        copyEl.textContent = "Switch to yearly for $" + o.priceStr + "/yr" + (extras.length ? " · " + extras.join(" · ") : "");
       }
+      if (detailEl) detailEl.textContent = o.promoDescription || "Keep learning all year with one simple renewal.";
       renderIcons();
     }
 
@@ -2128,13 +2507,17 @@
 
     function openUpgradeModal() {
       var o = yearlyUpgradeOffer();
+      var trialing = onStripeTrial();
       var perks = document.getElementById("upgrade-perks");
       if (perks) {
-        perks.innerHTML =
-          "<li><i data-lucide='calendar-check'></i><span>A full <b>12 months</b> of KiddieGPT</span></li>" +
-          (o.bonusMonths > 0 ? "<li><i data-lucide='gift'></i><span><b>+" + o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s") + "</b> added on top</span></li>" : "") +
-          "<li><i data-lucide='clock'></i><span>The <b>unused days left in your current month</b> are carried over — you lose nothing</span></li>" +
-          "<li><i data-lucide='shield-check'></i><span>Your monthly plan is cancelled at period end, so you're <b>never double-charged</b></span></li>";
+        perks.innerHTML = trialing
+          ? "<li><i data-lucide='calendar-check'></i><span>Keep your current <b>free trial</b></span></li>" +
+            "<li><i data-lucide='clock'></i><span>Yearly billing begins on <b>" + text(trialEndsText()) + "</b></span></li>" +
+            "<li><i data-lucide='shield-check'></i><span><b>No charge today</b> — your card is billed when the trial ends</span></li>"
+          : "<li><i data-lucide='calendar-check'></i><span>A full <b>12 months</b> of KiddieGPT</span></li>" +
+            (o.bonusMonths > 0 ? "<li><i data-lucide='gift'></i><span><b>+" + o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s") + "</b> added on top</span></li>" : "") +
+            "<li><i data-lucide='clock'></i><span>The <b>unused days left in your current month</b> are carried over — you lose nothing</span></li>" +
+            "<li><i data-lucide='shield-check'></i><span>Your monthly plan is cancelled at period end, so you're <b>never double-charged</b></span></li>";
       }
       var priceRow = document.getElementById("upgrade-price-row");
       if (priceRow) {
@@ -2143,7 +2526,12 @@
           (o.discountPercent > 0 ? "<span class='save'>Save " + o.discountPercent + "%</span>" : "");
       }
       var noteEl = document.getElementById("upgrade-modal-note");
-      if (noteEl) { noteEl.textContent = o.note || ""; noteEl.hidden = !o.note; }
+      if (noteEl) {
+        noteEl.textContent = trialing
+          ? "Your first yearly charge starts when the trial ends on " + trialEndsText() + "."
+          : o.note || "";
+        noteEl.hidden = false;
+      }
       var modal = document.getElementById("upgrade-modal");
       if (modal) modal.hidden = false;
       renderIcons();
@@ -2156,29 +2544,34 @@
       paymentState.textContent = "Scheduling yearly upgrade";
       paymentState.className = "state-chip warning";
       try {
-        var response = await fetch("/api/stripe/upgrade-yearly", {
+        var response = await parentAuthFetch("/api/stripe/upgrade-yearly", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: formValue("email"),
             parentName: formValue("parentName"),
-            yearlyPriceId: plan.stripePriceId
+            yearlyPriceId: plan.stripePriceId,
+            promoCode: yearlyUpgradeOffer().promoCode
           })
         });
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Yearly upgrade failed");
+        var trialingResult = Boolean(result.trialing);
         yearlyUpgradeInfo = {
-          status: "scheduled",
-          accessMonths: result.accessMonths || 15,
+          status: trialingResult ? "trialing" : "scheduled",
+          accessMonths: result.accessMonths || (trialingResult ? 12 : 15),
           yearlyNextRenewalAt: result.yearlyNextRenewalAt || null,
           monthlyEndsAt: result.monthlyEndsAt || null,
-          chargedAt: new Date().toISOString()
+          chargedAt: trialingResult ? "" : new Date().toISOString(),
+          trialEndsAt: result.trialEndsAt || ""
         };
-        yearlyUpgradeScheduled = true;
-        setPaidPlan("yearly", "Yearly upgrade confirmed", result.message || yearlyUpgradeDetailText(yearlyUpgradeInfo));
-        paymentState.textContent = "Yearly upgrade confirmed";
+        yearlyUpgradeScheduled = !trialingResult;
+        setPaidPlan("yearly", trialingResult ? "Yearly billing selected" : "Yearly upgrade confirmed", result.message || yearlyUpgradeDetailText(yearlyUpgradeInfo));
+        paymentState.textContent = trialingResult ? "Yearly billing selected" : "Yearly upgrade confirmed";
         paymentState.className = "state-chip ok";
-        if (currentPackageNote) currentPackageNote.textContent = yearlyUpgradeDetailText(yearlyUpgradeInfo);
+        if (currentPackageNote) currentPackageNote.textContent = trialingResult
+          ? "Yearly billing starts when your trial ends on " + trialEndsText() + "."
+          : yearlyUpgradeDetailText(yearlyUpgradeInfo);
       } catch (error) {
         paymentState.textContent = "Upgrade needs attention";
         paymentState.className = "state-chip error";
@@ -2191,6 +2584,7 @@
     }
 
     upgradeYearly.addEventListener("click", openUpgradeModal);
+    if (upgradeYearlyTileButton) upgradeYearlyTileButton.addEventListener("click", openUpgradeModal);
     var railYearlyPromo = document.getElementById("rail-yearly-promo");
     if (railYearlyPromo) railYearlyPromo.addEventListener("click", function () { setParentTab("subscription"); openUpgradeModal(); });
     var upgradeConfirmBtn = document.getElementById("upgrade-confirm");
@@ -2201,6 +2595,22 @@
     if (upgradeCloseBtn) upgradeCloseBtn.addEventListener("click", closeUpgradeModal);
     var upgradeModalEl = document.getElementById("upgrade-modal");
     if (upgradeModalEl) upgradeModalEl.addEventListener("click", function (event) { if (event.target === upgradeModalEl) closeUpgradeModal(); });
+
+    if (cancelSwitchYearly) cancelSwitchYearly.addEventListener("click", function () {
+      closeUpgradeModal();
+      cancelFlow.classList.add("hidden");
+      subscriptionMain.classList.remove("hidden");
+      if (onNoCardTrial()) {
+        setParentTab("subscription");
+        setPlanChoice("yearly");
+        paymentState.textContent = "Choose yearly billing";
+        paymentState.className = "state-chip warning";
+        completionTitle.textContent = "Choose yearly billing";
+        completionText.textContent = "Complete checkout to keep access after your trial ends.";
+        return;
+      }
+      openUpgradeModal();
+    });
 
     cancelSubscription.addEventListener("click", function () {
       prepareCancellationFlow();
@@ -2232,7 +2642,7 @@
       paymentState.textContent = "Applying discount";
       paymentState.className = "state-chip warning";
       try {
-        var response = await fetch("/api/stripe/apply-retention-discount", {
+        var response = await parentAuthFetch("/api/stripe/apply-retention-discount", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2247,11 +2657,15 @@
         retentionOfferAccepted = true;
         cancelFlow.classList.add("hidden");
         subscriptionMain.classList.remove("hidden");
-        paymentState.textContent = result.alreadyApplied ? "50% off already applied" : "50% off applied";
+        var promo = cancellationPromoConfig();
+        var percentOff = Number(result.percentOff || promo.percentOff || 0);
+        paymentState.textContent = result.alreadyApplied ? percentOff + "% off already applied" : percentOff + "% off applied";
         paymentState.className = "state-chip ok";
         completionTitle.textContent = "Discount accepted";
-        completionText.textContent = result.message || "The 50% discount will be applied automatically to the next invoice. No code is needed.";
-        if (currentPackageNote) currentPackageNote.textContent = "Save offer accepted: 50% off will apply automatically to the next invoice.";
+        completionText.textContent = result.message || "The " + percentOff + "% discount will be applied automatically to the next invoice. No code is needed.";
+        if (currentPackageNote) currentPackageNote.textContent = onStripeTrial()
+          ? percentOff + "% off will apply when billing starts on " + trialEndsText() + ". Your current plan stays active."
+          : "Save offer accepted: " + percentOff + "% off will apply automatically to the next invoice.";
       } catch (error) {
         paymentState.textContent = "Discount needs attention";
         paymentState.className = "state-chip error";
@@ -2339,25 +2753,141 @@
       preview();
     });
 
-    addChild.addEventListener("click", function () {
+    function addBlankChildProfile() {
       var count = document.querySelectorAll(".child-profile").length;
       if (count >= 3) {
         completionTitle.textContent = "Family plan limit";
-        completionText.textContent = "The demo family plan includes up to 3 child profiles.";
+        completionText.textContent = "Your family plan includes up to 3 child profiles.";
         return;
       }
-      var clone = childTemplate.content.firstElementChild.cloneNode(true);
-      clone.dataset.childId = "child_" + makeId();
-      clone.querySelector("h3").textContent = "Child " + (count + 1);
+      var sourceSlide = studentSlides()[0];
+      if (!sourceSlide) return;
+      var clone = sourceSlide.cloneNode(true);
+      removeCloneIds(clone);
+      clone.dataset.slideIndex = String(count);
+      var profile = clone.querySelector(".child-profile");
+      profile.dataset.childId = "child_" + makeId();
+      profile.dataset.readingLevel = "";
+      profile.querySelector('[name="studentName"]').value = "";
+      profile.querySelector('[name="grade"]').value = "5";
+      var goalList = profile.querySelector(".goal-reward-list");
+      if (goalList) {
+        goalList.innerHTML = "";
+        goalList.appendChild(createGoalRow());
+      }
+      var progressList = clone.querySelector(".progress-list");
+      if (progressList) progressList.innerHTML = '<div class="progress-empty">Your child\'s activity from the KiddieGPT extension will show here.</div>';
       childList.appendChild(clone);
+      activeChildIndex = count;
       updateChildCards();
+      preview();
       renderIcons();
+      setTimeout(function () {
+        var nameInput = profile.querySelector('[name="studentName"]');
+        if (nameInput) nameInput.focus();
+      }, 50);
+    }
+
+    function closeDeleteProfileDialog() {
+      var modal = document.getElementById("delete-profile-modal");
+      if (modal) modal.hidden = true;
+      deleteProfileCandidate = null;
+    }
+
+    function openDeleteProfileDialog(profile) {
+      if (!profile || document.querySelectorAll(".child-profile").length <= 1) return;
+      deleteProfileCandidate = profile;
+      var nameInput = profile.querySelector('[name="studentName"]');
+      var name = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "this student";
+      var nameEl = document.getElementById("delete-profile-name");
+      if (nameEl) nameEl.textContent = name;
+      var modal = document.getElementById("delete-profile-modal");
+      if (!modal) return;
+      modal.hidden = false;
+      renderIcons();
+      var cancelButton = document.getElementById("cancel-delete-profile");
+      if (cancelButton) cancelButton.focus();
+    }
+
+    async function confirmDeleteProfile() {
+      var profile = deleteProfileCandidate;
+      if (!profile || document.querySelectorAll(".child-profile").length <= 1) {
+        closeDeleteProfileDialog();
+        return;
+      }
+      var confirmButton = document.getElementById("confirm-delete-profile");
+      var errorEl = document.getElementById("delete-profile-modal-error");
+      var childId = profile.dataset.childId || "";
+      if (confirmButton) confirmButton.disabled = true;
+      if (errorEl) errorEl.textContent = "";
+      try {
+        // Loaded profiles have a stable id and are removed from the backend now.
+        // New unsaved cards do not exist on the server yet, so those only need
+        // to be removed from the local workspace.
+        if (childId && parentToken()) await deleteChildOnBackend(childId);
+        var slide = profile.closest(".student-workspace-slide");
+        if (slide) slide.remove();
+        activeChildIndex = Math.min(activeChildIndex, document.querySelectorAll(".child-profile").length - 1);
+        closeDeleteProfileDialog();
+        updateChildCards();
+        preview();
+        if (profileSaveState) {
+          profileSaveState.textContent = "Profile removed";
+          setTimeout(function () { if (profileSaveState) profileSaveState.textContent = ""; }, 3500);
+        }
+        renderIcons();
+      } catch (error) {
+        if (errorEl) errorEl.textContent = error.message || "Unable to remove the student profile. Try again.";
+        if (confirmButton) confirmButton.disabled = false;
+      }
+    }
+
+    var deleteProfileModal = document.getElementById("delete-profile-modal");
+    var deleteProfileClose = document.getElementById("delete-profile-modal-close");
+    var deleteProfileCancel = document.getElementById("cancel-delete-profile");
+    var deleteProfileConfirm = document.getElementById("confirm-delete-profile");
+    if (deleteProfileClose) deleteProfileClose.addEventListener("click", closeDeleteProfileDialog);
+    if (deleteProfileCancel) deleteProfileCancel.addEventListener("click", closeDeleteProfileDialog);
+    if (deleteProfileConfirm) deleteProfileConfirm.addEventListener("click", confirmDeleteProfile);
+    if (deleteProfileModal) deleteProfileModal.addEventListener("click", function (event) {
+      if (event.target === deleteProfileModal) closeDeleteProfileDialog();
+    });
+
+    if (addChild) addChild.addEventListener("click", addBlankChildProfile);
+    var profileEditorToggle = document.getElementById("toggle-profile-editor");
+    var profileEditor = document.getElementById("profile-editor");
+    if (profileEditorToggle && profileEditor) {
+      profileEditorToggle.addEventListener("click", function () {
+        var open = profileEditor.hidden;
+        profileEditor.hidden = !open;
+        profileEditorToggle.classList.toggle("is-open", open);
+        var label = profileEditorToggle.querySelector("span");
+        if (label) label.textContent = open ? "Hide profile details" : "Edit profile details";
+        renderIcons();
+      });
+    }
+    if (previousChild) previousChild.addEventListener("click", function () {
+      if (activeChildIndex > 0) {
+        activeChildIndex -= 1;
+        updateChildCards();
+      }
+    });
+    if (nextChild) nextChild.addEventListener("click", function () {
+      var count = document.querySelectorAll(".child-profile").length;
+      if (activeChildIndex < count - 1) {
+        activeChildIndex += 1;
+        updateChildCards();
+      }
     });
 
     childList.addEventListener("click", function (event) {
       var addGoal = event.target.closest(".add-goal");
       if (addGoal) {
         var goalProfile = addGoal.closest(".child-profile");
+        if (goalProfile.querySelectorAll(".goal-reward-row").length >= 7) {
+          updateGoalRows(goalProfile);
+          return;
+        }
         goalProfile.querySelector(".goal-reward-list").appendChild(createGoalRow());
         updateGoalRows(goalProfile);
         renderIcons();
@@ -2385,23 +2915,24 @@
       var remove = event.target.closest(".remove-child");
       if (!remove) return;
       var profile = remove.closest(".child-profile");
-      if (document.querySelectorAll(".child-profile").length > 1) {
-        profile.remove();
-        preview();
-      }
+      openDeleteProfileDialog(profile);
     });
 
     childList.addEventListener("input", function () {
       preview();
     });
 
-    childList.addEventListener("change", function () {
+    childList.addEventListener("change", function (event) {
+      var goalComplete = event.target.closest('[name="goalComplete"]');
+      if (goalComplete) updateGoalRows(goalComplete.closest(".child-profile"));
+      var completedToggle = event.target.closest(".show-completed");
+      if (completedToggle) updateGoalRows(completedToggle.closest(".child-profile"));
       preview();
     });
 
     form.addEventListener("input", function (event) {
       if (event.target === form.elements.email) validateParentEmail();
-      if (event.target.closest("#child-list")) {
+      if (event.target.closest("#student-workspace-slides")) {
         return;
       }
       preview();
@@ -2638,7 +3169,7 @@
     var exceptionSearch = document.getElementById("exception-search");
     var exceptionStatusFilter = document.getElementById("exception-status-filter");
     var exceptionForm = document.getElementById("exception-form");
-    var exceptionParentSearch = document.getElementById("exception-parent-search");
+    var exceptionParentSearch = document.getElementById("exception-parent-search") || exceptionSearch;
     var exceptionFamilySelect = document.getElementById("exception-family-select");
     var exceptionActionSelect = document.getElementById("exception-action-select");
     var exceptionAmount = document.getElementById("exception-amount");
@@ -2669,6 +3200,12 @@
     var activePaymentTable = "payments";
     var activeFamilyTable = "accounts";
     var selectedExceptionFamilyId = "";
+    var customerDrawer = document.getElementById("customer-drawer");
+    var customerDrawerBackdrop = document.getElementById("customer-drawer-backdrop");
+    var customerDrawerBody = document.getElementById("customer-drawer-body");
+    var customerDrawerTitle = document.getElementById("customer-drawer-title");
+    var customerDrawerEmail = document.getElementById("customer-drawer-email");
+    var openCustomerFamilyId = "";
 
     function setAdminView(name) {
       var labels = {
@@ -2693,6 +3230,95 @@
       if (name === "logs") loadLogDigest();
       if (name === "email-studio") loadEmailStudio();
       renderIcons();
+    }
+
+    function closeCustomerDrawer() {
+      openCustomerFamilyId = "";
+      if (customerDrawer) {
+        customerDrawer.hidden = true;
+        customerDrawer.setAttribute("aria-hidden", "true");
+      }
+      if (customerDrawerBackdrop) customerDrawerBackdrop.hidden = true;
+      document.body.classList.remove("customer-drawer-open");
+    }
+
+    function customerTimelineMarkup(family) {
+      var timeline = selectedFamilyTimeline(family).slice(0, 12);
+      if (!timeline.length) return "<div class='drawer-empty'>No activity has been recorded for this family yet.</div>";
+      return timeline.map(function (item) {
+        return "<div class='drawer-timeline-item'><span>" + escapeHtml(rowDateTime(item.date)) + "</span><div><strong>" + escapeHtml(item.title) + "</strong><small>" + escapeHtml(item.kind + " · " + item.actor) + "</small><p>" + escapeHtml(item.detail) + "</p></div></div>";
+      }).join("");
+    }
+
+    function renderCustomerDrawer(family) {
+      if (!family || !customerDrawer || !customerDrawerBody) return;
+      var risk = familyRisk(family);
+      var action = familyNextAction(family);
+      var children = childrenOf(family);
+      var issues = reconciliationIssues(family);
+      var tags = Array.isArray(family.adminTags) ? family.adminTags.join(", ") : (family.adminTags || "");
+      var subscriptionActive = familySubscriptionActive(family);
+      var locked = familyLocked(family);
+      var latestPayment = latestPaymentForFamily(family);
+      customerDrawerTitle.textContent = family.parentName || "Parent details";
+      customerDrawerEmail.textContent = family.email || "";
+      customerDrawerBody.innerHTML =
+        "<div class='drawer-summary-grid'>" +
+          "<div><span>Plan</span><strong>" + escapeHtml(familySubscriptionLabel(family)) + "</strong><small>" + escapeHtml(family.subscriptionStatus || "pending") + "</small></div>" +
+          "<div><span>Risk</span>" + statusChip(risk.status) + "<small>" + escapeHtml(risk.label) + "</small></div>" +
+          "<div><span>Next action</span><strong>" + escapeHtml(action.label) + "</strong><small>" + escapeHtml(action.detail) + "</small></div>" +
+          "<div><span>Last extension use</span><strong>" + escapeHtml(rowDateTime(family.lastExtensionUseAt)) + "</strong><small>" + (daysSinceActivity(family) === 0 ? "Today" : daysSinceActivity(family) + " days ago") + "</small></div>" +
+        "</div>" +
+        "<div class='drawer-quick-actions'><span class='drawer-section-label'>Quick actions</span><div class='row-actions'>" +
+          "<button type='button' class='table-action' data-customer-action='email' data-family-id='" + escapeHtml(familyRowId(family)) + "'>Send email</button>" +
+          "<button type='button' class='table-action " + (locked ? "" : "danger") + "' data-customer-action='lock' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (locked ? "Unlock account" : "Lock account") + "</button>" +
+          "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-customer-action='subscription' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (subscriptionActive ? "End subscription" : "Start subscription") + "</button>" +
+          "<button type='button' class='table-action' data-customer-action='exception' data-family-id='" + escapeHtml(familyRowId(family)) + "'>Billing adjustment</button>" +
+        "</div></div>" +
+        (issues.length ? "<div class='drawer-alerts'><span class='drawer-section-label'>Needs review</span>" + issues.map(function (issue) { return "<div><i data-lucide='triangle-alert'></i><span>" + escapeHtml(issue) + "</span></div>"; }).join("") + "</div>" : "") +
+        "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Family</span><span class='muted-note'>" + children.length + " student" + (children.length === 1 ? "" : "s") + "</span></div>" +
+          "<div class='drawer-children'>" + children.map(function (child) { var usage = usageToday(child); return "<div><strong>" + escapeHtml(child.studentName || "Student") + "</strong><small>Grade " + escapeHtml(child.grade || "-") + " · " + escapeHtml(child.readingLevel || "-") + "</small><span>" + usage.math + " math today · " + usage.voiceMin + " min voice</span></div>"; }).join("") + "</div>" +
+        "</section>" +
+        "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Billing</span><a class='stripe-link' href='https://dashboard.stripe.com/test/customers/" + encodeURIComponent(family.stripeCustomerId || "") + "' target='_blank' rel='noreferrer'>Stripe customer</a></div>" +
+          "<div class='drawer-facts'><div><span>Payment status</span><strong>" + escapeHtml(paymentStatus(family)) + "</strong></div><div><span>Next renewal</span><strong>" + escapeHtml(familyNextRenewal(family)) + "</strong></div><div><span>Latest payment</span><strong>" + (latestPayment ? escapeHtml(moneyFromCents(latestPayment.amountCents)) : "-") + "</strong></div><div><span>Subscription ID</span><strong class='mono-text'>" + escapeHtml(family.stripeSubscriptionId || "-") + "</strong></div></div>" +
+        "</section>" +
+        "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Operator notes</span><span class='muted-note'>Saved to family record</span></div>" +
+          "<label class='drawer-field'>Notes<textarea data-customer-notes rows='3' placeholder='Add context for the next support or billing decision.'>" + escapeHtml(family.adminNote || "") + "</textarea></label>" +
+          "<label class='drawer-field'>Tags<input data-customer-tags value='" + escapeHtml(tags) + "' placeholder='billing, beta, high-touch'></label>" +
+          "<button type='button' class='button primary' data-customer-save data-family-id='" + escapeHtml(familyRowId(family)) + "'>Save notes</button>" +
+        "</section>" +
+        "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Recent timeline</span><span class='muted-note'>" + selectedFamilyTimeline(family).length + " events</span></div><div class='drawer-timeline'>" + customerTimelineMarkup(family) + "</div></section>";
+      customerDrawer.hidden = false;
+      customerDrawer.setAttribute("aria-hidden", "false");
+      if (customerDrawerBackdrop) customerDrawerBackdrop.hidden = false;
+      document.body.classList.add("customer-drawer-open");
+      renderIcons();
+    }
+
+    function openCustomerDrawer(familyId) {
+      var family = familyById(familyId);
+      if (!family) return;
+      openCustomerFamilyId = familyId;
+      renderCustomerDrawer(family);
+    }
+
+    function exportAdminTable(bodyId, fileName) {
+      var body = document.getElementById(bodyId);
+      var table = body && body.closest("table");
+      if (!table) return;
+      var headers = Array.from(table.querySelectorAll("thead th")).map(function (cell) { return (cell.innerText || "").trim(); });
+      var rows = Array.from(body.querySelectorAll(":scope > tr")).filter(function (row) { return !row.classList.contains("payment-detail-row") && !row.querySelector(".empty-state"); }).map(function (row) {
+        return Array.from(row.children).map(function (cell) { return (cell.innerText || "").replace(/\s+/g, " ").trim(); });
+      });
+      var csv = [headers].concat(rows).map(function (row) { return row.map(function (value) { return '"' + String(value).replace(/"/g, '""') + '"'; }).join(","); }).join("\n");
+      var url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = (fileName || "kiddiegpt-export") + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
     }
 
     // ---- Emails: provider settings + template gallery -------------------
@@ -3171,6 +3797,23 @@
       return "Hi " + firstName + ", I made a KiddieGPT account adjustment for your family. Thanks for giving us the chance to help.";
     }
 
+    function syncExceptionAdjustmentFields(action) {
+      var amountField = document.getElementById("exception-amount-field");
+      var monthsField = document.getElementById("exception-months-field");
+      var percentField = document.getElementById("exception-percent-field");
+      var daysField = document.getElementById("exception-days-field");
+      var showAmount = ["partial_refund", "credit_next_invoice"].includes(action);
+      var showMonths = action === "add_free_months";
+      var showPercent = action === "apply_discount";
+      var showDays = action === "extend_access";
+      if (amountField) amountField.hidden = !showAmount;
+      if (monthsField) monthsField.hidden = !showMonths;
+      if (percentField) percentField.hidden = !showPercent;
+      if (daysField) daysField.hidden = !showDays;
+      var conditionalFields = document.querySelector(".exception-conditional-fields");
+      if (conditionalFields) conditionalFields.classList.toggle("is-empty", !(showAmount || showMonths || showPercent || showDays));
+    }
+
     function selectedExceptionFamily() {
       var id = exceptionFamilySelect ? exceptionFamilySelect.value : selectedExceptionFamilyId;
       if (exceptionFamilySelect && !id) return null;
@@ -3331,6 +3974,7 @@
       if (!exceptionActionSelect || !exceptionEmailMessage) return;
       var family = selectedExceptionFamily();
       var action = exceptionActionSelect.value;
+      syncExceptionAdjustmentFields(action);
       if (exceptionReason) exceptionReason.value = exceptionReason.value || "Admin save desk";
       exceptionEmailMessage.value = exceptionEmailFor(action, family || {});
       if (exceptionActionState) {
@@ -3564,6 +4208,48 @@
       return "Monitor";
     }
 
+    function familyRisk(family) {
+      var health = familyHealth(family);
+      var issueCount = reconciliationIssues(family).length;
+      if (issueCount) return { label: issueCount + " billing " + (issueCount === 1 ? "check" : "checks"), status: "error" };
+      return { label: health.label, status: health.status };
+    }
+
+    function familyNextAction(family) {
+      var step = nextStep(family);
+      var detail = {
+        "Send payment retry": "Payment needs recovery",
+        "Nudge onboarding": "Checkout or setup is unfinished",
+        "Schedule restart": "Subscription is paused",
+        "Send winback": "Subscription has ended",
+        "Check billing note": "Refund needs a follow-up",
+        "Send usage tip": "No extension activity in 10+ days",
+        "Monitor": "No urgent action"
+      }[step] || "Review customer timeline";
+      return { label: step, detail: detail };
+    }
+
+    function reconciliationIssues(family) {
+      var issues = [];
+      if (!family) return issues;
+      if ((family.paymentStatus === "refunded" || family.paymentStatus === "partial_refunded") && familySubscriptionActive(family)) {
+        issues.push("Refunded payment with active access");
+      }
+      if (familyDeleted(family) && (family.stripeSubscriptionId || family.subscriptionStatus === "active")) {
+        issues.push("Deleted account still has billing reference");
+      }
+      if (familyDuplicateSubscriptionIds(family).length) issues.push("Duplicate Stripe subscription");
+      if (family.subscriptionStatus === "active" && family.paymentStatus === "failed") issues.push("Active account with failed payment");
+      if (family.subscriptionStatus === "pending" && hasEverPaid(family)) issues.push("Payment recorded but account is pending");
+      return issues;
+    }
+
+    function reconciliationIssuesForFamilies(families) {
+      return (families || []).reduce(function (total, family) {
+        return total + reconciliationIssues(family).length;
+      }, 0);
+    }
+
     function adminActions(families) {
       var actions = [];
       families.forEach(function (family) {
@@ -3628,7 +4314,7 @@
     function paymentDetailRow(family, action, paymentId, amountCents) {
       var templates = paymentEmailTemplates(family);
       var selected = action === "refund" ? templates.refund : paymentStatus(family) === "failed" ? templates.retry : templates.receipt;
-      return "<tr class='payment-detail-row'><td colspan='7'>" +
+      return "<tr class='payment-detail-row'><td colspan='8'>" +
         "<div class='payment-detail-panel'>" +
           "<div class='payment-detail-head'><div><span>" + (action === "refund" ? "Refund workflow" : "Email workflow") + "</span><strong>" + escapeHtml(family.parentName) + "</strong><small>" + escapeHtml(family.email) + " · " + escapeHtml(paymentId) + "</small></div>" +
           "<button type='button' class='table-action' data-payment-close>Close</button></div>" +
@@ -4095,20 +4781,20 @@
     function syncPricingForm() {
       var pricing = readPricing();
       syncPlanSetupFields();
-      if (pricingForm.elements.promoPlanKey) {
-        Array.from(pricingForm.elements.promoPlanKey.options).forEach(function (option) {
-          var plan = pricing[option.value] || {};
-          option.textContent = plan.label || (option.value === "yearly" ? "Yearly plan" : "Monthly plan");
-        });
-      }
-      if (pricingForm.elements.promoPlanKey) pricingForm.elements.promoPlanKey.value = promotionPlanKey(pricing.promotion);
+      if (pricingForm.elements.promotionEnabled) pricingForm.elements.promotionEnabled.checked = pricing.promotion.enabled !== false;
       pricingForm.elements.promoCode.value = pricing.promotion.code;
-      if (pricingForm.elements.promoPrice) pricingForm.elements.promoPrice.value = Number(pricing.promotion.price || promotionAmountForPlan(pricing.promotion, promotionPlanKey(pricing.promotion)) || 0);
+      if (pricingForm.elements.promoMonthlyPrice) pricingForm.elements.promoMonthlyPrice.value = Number(promotionAmountForPlan(pricing.promotion, "monthly") || 0);
+      if (pricingForm.elements.promoYearlyPrice) pricingForm.elements.promoYearlyPrice.value = Number(promotionAmountForPlan(pricing.promotion, "yearly") || 0);
       if (pricingForm.elements.promoDescription) pricingForm.elements.promoDescription.value = pricing.promotion.description || "";
       var upgrade = pricing.yearlyUpgrade || {};
       if (pricingForm.elements.upgradeBonusMonths) pricingForm.elements.upgradeBonusMonths.value = Number(upgrade.bonusMonths != null ? upgrade.bonusMonths : 3);
       if (pricingForm.elements.upgradeDiscountPercent) pricingForm.elements.upgradeDiscountPercent.value = Number(upgrade.discountPercent || 0);
       if (pricingForm.elements.upgradeNote) pricingForm.elements.upgradeNote.value = upgrade.note || "";
+      var cancellationPromo = pricing.cancellationPromo || {};
+      if (pricingForm.elements.cancellationPromoEnabled) pricingForm.elements.cancellationPromoEnabled.checked = cancellationPromo.enabled !== false;
+      if (pricingForm.elements.cancellationPromoPercentOff) pricingForm.elements.cancellationPromoPercentOff.value = Number(cancellationPromo.percentOff || 0);
+      if (pricingForm.elements.cancellationPromoDuration) pricingForm.elements.cancellationPromoDuration.value = cancellationPromo.duration === "repeating" ? "repeating" : "once";
+      if (pricingForm.elements.cancellationPromoDescription) pricingForm.elements.cancellationPromoDescription.value = cancellationPromo.description || "";
       if (stripeTestForm && stripeTestForm.elements.priceId) {
         stripeTestForm.elements.priceId.value = pricing.monthly.stripePriceId || "price_demo_monthly";
       }
@@ -4143,21 +4829,27 @@
     }
 
     function populateExceptionFamilies() {
-      var select = document.getElementById("exception-family");
+      var select = document.getElementById("exception-family-select");
       if (!select) return;
-      var families = readFamilies().filter(function (f) { return !familyDeleted(f); });
-      var prev = select.value;
+      var query = exceptionParentSearch ? exceptionParentSearch.value.trim().toLowerCase() : "";
+      var families = readFamilies().filter(function (f) {
+        if (familyDeleted(f)) return false;
+        var haystack = [f.parentName, f.email, f.studentName, f.plan].join(" ").toLowerCase();
+        return !query || haystack.indexOf(query) >= 0;
+      }).slice(0, 60);
+      var prev = select.value || selectedExceptionFamilyId;
       select.innerHTML = families.map(function (f) {
-        return "<option value='" + familyRowId(f) + "'>" + text((f.parentName || "Parent") + " (" + f.email + ")") + "</option>";
+        return "<option value='" + familyRowId(f) + "'>" + escapeHtml((f.parentName || "Parent") + " (" + f.email + ")") + "</option>";
       }).join("");
       if (prev) select.value = prev;
+      selectedExceptionFamilyId = select.value || "";
     }
 
     function renderExceptionLog() {
       var rows = [];
       readFamilies().forEach(function (f) {
         (f.billingExceptions || []).forEach(function (ex) {
-          rows.push({ name: f.parentName, email: f.email, ex: ex });
+          rows.push({ name: f.parentName, email: f.email, familyId: familyRowId(f), ex: ex });
         });
       });
       rows.sort(function (a, b) { return new Date(b.ex.createdAt || 0) - new Date(a.ex.createdAt || 0); });
@@ -4166,8 +4858,8 @@
         var amt = ex.amountCents ? "$" + (ex.amountCents / 100).toFixed(2)
           : ex.percentOff ? ex.percentOff + "%"
           : ex.creditCents ? "$" + (ex.creditCents / 100).toFixed(2) + " credit" : "—";
-        return "<tr><td>" + text(r.name || "Parent") + "<small>" + text(r.email) + "</small></td><td>" + text(labelForException(ex.action)) + "</td><td>" + amt + "</td><td>" + text(ex.reason || "") + "</td><td>" + rowDateTime(ex.createdAt) + "</td></tr>";
-      }).join("") : "<tr><td colspan='5' class='empty-state'>No exceptions applied yet.</td></tr>");
+        return "<tr><td>" + text(r.name || "Parent") + "<small>" + text(r.email) + "</small></td><td>" + text(labelForException(ex.action)) + "</td><td>" + amt + "</td><td>" + text(ex.reason || "") + "</td><td>" + rowDateTime(ex.createdAt) + "</td><td><button type='button' class='table-action' data-customer-open data-family-id='" + escapeHtml(r.familyId) + "'>View</button></td></tr>";
+      }).join("") : "<tr><td colspan='6' class='empty-state'>No exceptions applied yet.</td></tr>");
     }
 
     async function applyException() {
@@ -4378,9 +5070,14 @@
       var btn = document.getElementById("support-reply-btn");
       if (btn) btn.disabled = true;
       try {
-        await fetchJson("/api/admin/support/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, message: msg }) });
+        var replyResult = await fetchJson("/api/admin/support/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, message: msg }) });
         if (t) t.value = "";
         await loadSupportConversations();
+        // The parent only ever sees this reply by email, so a delivery failure
+        // must interrupt the operator rather than sit in a log.
+        if (replyResult && replyResult.delivered === false) {
+          window.alert(replyResult.warning || "Reply saved, but the email was not delivered. The parent has not been notified.");
+        }
       } catch (error) {
         if (btn) btn.disabled = false;
       }
@@ -4494,6 +5191,21 @@
       setMetric("payment-collected", money(monthlyRevenue));
       setMetric("payment-failed", money(failedPayments.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
       setMetric("payment-refunded", money(refunded.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
+      var collectedCents = paymentsCache.reduce(function (total, payment) {
+        return total + (Number(payment.amountCents || 0) > 0 && payment.status !== "refunded" ? Number(payment.amountCents || 0) : 0);
+      }, 0);
+      var refundedCents = paymentsCache.reduce(function (total, payment) {
+        return total + (payment.status === "refunded" ? Number(payment.amountCents || 0) : 0);
+      }, 0);
+      setMetric("net-collected", moneyFromCents(Math.max(0, collectedCents - refundedCents)));
+      setMetric("billing-net-collected", moneyFromCents(Math.max(0, collectedCents - refundedCents)));
+      setMetric("billing-follow-up", failedPayments.length);
+      setMetric("billing-refunded-active", families.filter(function (family) { return (family.paymentStatus === "refunded" || family.paymentStatus === "partial_refunded") && familySubscriptionActive(family); }).length);
+      setMetric("billing-reconciliation-alerts", reconciliationIssuesForFamilies(families));
+      setMetric("billing-alert-count", failedPayments.length + reconciliationIssuesForFamilies(families));
+      var allTrials = families.filter(function (family) { return family.subscriptionStatus === "trial" || family.subscriptionStatus === "trialing"; });
+      var cardTrials = allTrials.filter(function (family) { return family.subscriptionStatus === "trialing" || Boolean(family.stripeSubscriptionId && family.trialEndsAt); });
+      setMetric("trial-conversion-rate", percent(cardTrials.length, allTrials.length));
       setMetric("exception-save-count", exceptionFamilies.length);
       setMetric("payment-toggle-exceptions", exceptionFamilies.length);
       setMetric("exception-credit-total", "$" + Math.round(exceptionCreditTotal / 100));
@@ -4545,6 +5257,8 @@
             }).join("") + "</div>"
           : "<div class='family-detail-empty'>No student profiles yet.</div>";
         var planType = familySubscriptionLabel(family);
+        var risk = familyRisk(family);
+        var next = familyNextAction(family);
         return "<tr class='family-row' data-family-expand='" + rowId + "'>" +
           "<td class='expand-cell'><i data-lucide='chevron-right'></i></td>" +
           "<td>" + text(family.parentName) + "</td>" +
@@ -4554,15 +5268,18 @@
           "<td>" + planType + "</td>" +
           "<td>" + statusChip(locked ? "locked" : family.subscriptionStatus) + "</td>" +
           "<td>" + text(familyNextRenewal(family)) + "</td>" +
+          "<td>" + statusChip(risk.status) + "<small>" + escapeHtml(risk.label) + "</small></td>" +
+          "<td><strong class='next-action-label'>" + escapeHtml(next.label) + "</strong><small>" + escapeHtml(next.detail) + "</small></td>" +
           "<td>" + text(shortDate(family.createdAt)) + "</td>" +
           "<td>" + rowDateTime(family.lastLoginAt) + "</td>" +
           "<td>" + rowDateTime(family.lastExtensionUseAt) + "</td>" +
           "<td><div class='row-actions'>" +
+            "<button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'>View</button>" +
             "<button type='button' class='table-action " + (locked ? "" : "danger") + "' data-user-action='toggle-lock' data-family-id='" + rowId + "'" + (deleted ? " disabled" : "") + ">" + (locked ? "Unlock" : "Lock") + "</button>" +
             "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-user-subscription-toggle data-family-id='" + rowId + "' data-subscription-action='" + (subscriptionActive ? "end" : "start") + "'" + (deleted ? " disabled" : "") + ">" + (subscriptionActive ? "Pause" : "Start") + "</button>" +
           "</div></td>" +
         "</tr>" +
-        "<tr class='family-detail-row' data-family-detail='" + rowId + "' hidden><td colspan='13'>" + detail + "</td></tr>";
+        "<tr class='family-detail-row' data-family-detail='" + rowId + "' hidden><td colspan='14'>" + detail + "</td></tr>";
       }));
 
       populateExceptionFamilies();
@@ -4591,10 +5308,12 @@
           "<td>" + text(family.cancelReason || "Parent requested cancellation") + "</td>" +
           "<td>" + rowDateTime(family.cancelRequestedAt) + "</td>" +
           "<td>" + rowDateTime(family.cancelAccessUntil || family.cancellationAccessUntil) + "</td>" +
+          "<td>" + (family.retentionOffer && family.retentionOffer.status ? escapeHtml(family.retentionOffer.status) : String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Renewal only" : "Save offer") + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='https://dashboard.stripe.com/test/subscriptions/" + encodeURIComponent(subscriptionId) + "' target='_blank' rel='noreferrer'>" + text(subscriptionId || "-") + "</a></td>" +
           "<td>" + statusChip(family.cancellationStatus || family.subscriptionStatus) + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='7'>No scheduled cancellation requests.</td></tr>"]);
+      }) : ["<tr><td colspan='9'>No scheduled cancellation requests.</td></tr>"]);
 
       var yearlyUpgradeRows = families.filter(function (family) {
         var upgrade = family.yearlyUpgrade || {};
@@ -4612,8 +5331,10 @@
           "<td>" + stripeUnixDateTime(upgrade.monthlyEndsAt) + "</td>" +
           "<td>" + stripeUnixDateTime(upgrade.yearlyNextRenewalAt || upgrade.yearlyTrialEnd) + "</td>" +
           "<td>" + text(upgrade.accessMonths || 12 + Number(upgrade.bonusMonths || 0)) + " months</td>" +
+          "<td>" + statusChip(upgrade.status || "scheduled") + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='6'>No scheduled yearly upgrades.</td></tr>"]);
+      }) : ["<tr><td colspan='8'>No scheduled yearly upgrades.</td></tr>"]);
 
       var cancelledRows = families.filter(function (family) {
         return (family.subscriptionStatus === "cancelled" || family.cancellationStatus === "completed" || family.cancelledAt || family.cancellationCompletedAt) &&
@@ -4622,6 +5343,7 @@
       setMetric("payment-toggle-cancelled", cancelledRows.length);
       var renewalRows = upcomingRenewals(families);
       var renewalValue = renewalRows.reduce(function (total, row) { return total + row.amountCents; }, 0);
+      setMetric("renewal-value", money(renewalValue / 100));
       var renewalTotal = document.getElementById("renewal-total");
       if (renewalTotal) {
         renewalTotal.textContent = renewalRows.length
@@ -4643,8 +5365,9 @@
           // A comped trial collects nothing when it ends, so show why rather
           // than a misleading $0.
           "<td>" + (row.amountCents ? money(row.amountCents / 100) : "<span class='muted-cell'>no card</span>") + "</td>" +
+          "<td>" + (family.id ? "<button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button>" : "-") + "</td>" +
         "</tr>";
-      }) : ["<tr><td colspan='7'><div class='empty-state'>No renewals in this window.</div></td></tr>"]);
+      }) : ["<tr><td colspan='8'><div class='empty-state'>No renewals in this window.</div></td></tr>"]);
 
       renderRows("cancelled-subscription-table", cancelledRows.length ? cancelledRows.map(function (family) {
         var subscriptionId = family.cancellationSubscriptionId || family.stripeSubscriptionId || "";
@@ -4656,8 +5379,9 @@
           "<td>" + rowDateTime(family.cancelledAt || family.cancellationCompletedAt) + "</td>" +
           "<td>" + rowDateTime(family.cancelAccessUntil || family.cancellationAccessUntil) + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='https://dashboard.stripe.com/test/subscriptions/" + encodeURIComponent(subscriptionId) + "' target='_blank' rel='noreferrer'>" + text(subscriptionId || "-") + "</a></td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='7'>No cancelled subscriptions in this date range.</td></tr>"]);
+      }) : ["<tr><td colspan='8'>No cancelled subscriptions in this date range.</td></tr>"]);
 
       var paymentRows = filteredPaymentRecords(families);
       setMetric("payment-toggle-payments", paymentRows.length);
@@ -4675,6 +5399,7 @@
         var rowId = family.id ? familyRowId(family) : cleanStripeSuffix(payment.email || paymentId);
         var status = payment.status || "paid";
         var amountCents = Number(payment.amountCents || 0);
+        var reconciliation = reconciliationIssues(family);
         var row = "<tr class='" + (expandedPayment && expandedPayment.familyId === rowId ? "is-expanded" : "") + "'>" +
           "<td>" + rowDateTime(payment.createdAt) + "</td>" +
           "<td><strong>" + text(family.parentName || payment.email) + "</strong><small>" + text(family.email || payment.email) + "</small></td>" +
@@ -4682,13 +5407,14 @@
           "<td>" + moneyFromCents(amountCents) + "</td>" +
           "<td>" + statusChip(status) + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='" + stripePaymentUrl(paymentId) + "' target='_blank' rel='noreferrer'>" + paymentId + "</a></td>" +
-          "<td><div class='row-actions'><button type='button' class='table-action' data-payment-expand='email' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Email</button><button type='button' class='table-action danger' data-payment-expand='refund' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Refund</button></div></td>" +
+          "<td>" + (reconciliation.length ? statusChip("warning") + "<small>" + escapeHtml(reconciliation[0]) + "</small>" : "<span class='muted-cell'>Matched</span>") + "</td>" +
+          "<td><div class='row-actions'><button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">View</button><button type='button' class='table-action' data-payment-expand='email' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Email</button><button type='button' class='table-action danger' data-payment-expand='refund' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Refund</button></div></td>" +
         "</tr>";
         if (family.id && expandedPayment && expandedPayment.familyId === rowId) {
           return [row, paymentDetailRow(family, expandedPayment.action, paymentId, amountCents)];
         }
         return [row];
-      }).concat(paymentRows.length ? [] : ["<tr><td colspan='7'><div class='empty-state'>No payments yet. Real Stripe charges appear here once they are collected.</div></td></tr>"]));
+      }).concat(paymentRows.length ? [] : ["<tr><td colspan='8'><div class='empty-state'>No payments yet. Real Stripe charges appear here once they are collected.</div></td></tr>"]));
 
       renderRows("exception-table", filteredExceptions(families).map(function (family) {
         var rowId = familyRowId(family);
@@ -4699,6 +5425,7 @@
           "<td>" + statusChip(health.status) + "<small>" + health.label + "</small></td>" +
           "<td>" + exceptionStatusText(family) + "</td>" +
           "<td>" + recommendedException(family) + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'>View</button></td>" +
         "</tr>";
       }));
       populateExceptionFamilies();
@@ -4752,6 +5479,7 @@
         var status = deletionStatus(family);
         var billingRefs = [family.stripeCustomerId, family.stripeSubscriptionId, family.deletedEmail].filter(Boolean).map(escapeHtml).join("<small></small>") || "-";
         var actions = "<div class='row-actions privacy-row-actions'>" +
+          "<button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'>View</button>" +
           (!familyLocked(family) && status !== "anonymized" ? "<button type='button' class='table-action' data-user-action='lock' data-family-id='" + rowId + "'>Lock</button>" : "") +
           "<button type='button' class='table-action danger' data-privacy-action='anonymize' data-family-id='" + rowId + "'" + (status === "anonymized" ? " disabled" : "") + ">Anonymize</button>" +
         "</div>";
@@ -4778,8 +5506,9 @@
           "<td>" + rowDateTime(family.deletionRequestedAt) + "</td>" +
           "<td>" + rowDateTime(family.anonymizedAt || family.deletionCompletedAt) + "</td>" +
           "<td>" + billingRefs + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='5'><div class='empty-state'>No deleted accounts in this period.</div></td></tr>"]);
+      }) : ["<tr><td colspan='6'><div class='empty-state'>No deleted accounts in this period.</div></td></tr>"]);
 
       var signupRows = filteredSignups(families);
       renderRows("signup-table", signupRows.length ? signupRows.map(function (family) {
@@ -4795,8 +5524,10 @@
           "<td>" + text(shortDate(family.createdAt)) + "</td>" +
           "<td>" + (days === null ? "—" : days === 0 ? "Today" : days + (days === 1 ? " day" : " days")) + "</td>" +
           "<td>" + text(family.lastLoginAt ? shortDate(family.lastLoginAt) : "Never") + "</td>" +
+          "<td>" + escapeHtml(familyNextAction(family).label) + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='8'><div class='empty-state'>No signups waiting to subscribe.</div></td></tr>"]);
+      }) : ["<tr><td colspan='10'><div class='empty-state'>No signups waiting to subscribe.</div></td></tr>"]);
 
       renderRows("trial-table", trialFamilies.length ? trialFamilies.map(function (family) {
         // Anything Stripe owns — including a cancelled trial still running out
@@ -5123,6 +5854,93 @@
     var supportToEl = document.getElementById("support-to");
     if (supportToEl) supportToEl.addEventListener("change", function () { supportTo = supportToEl.value; renderSupportList(); });
 
+    document.addEventListener("click", async function (event) {
+      var exportButton = event.target.closest ? event.target.closest("[data-export-table]") : null;
+      if (exportButton) {
+        exportAdminTable(exportButton.dataset.exportTable, exportButton.dataset.exportName);
+        return;
+      }
+      var closeButton = event.target.closest ? event.target.closest("[data-customer-close]") : null;
+      if (closeButton || event.target === customerDrawerBackdrop) {
+        closeCustomerDrawer();
+        return;
+      }
+      var openButton = event.target.closest ? event.target.closest("[data-customer-open]") : null;
+      if (openButton) {
+        openCustomerDrawer(openButton.dataset.familyId);
+        return;
+      }
+      var saveButton = event.target.closest ? event.target.closest("[data-customer-save]") : null;
+      if (saveButton) {
+        var saveFamily = familyById(saveButton.dataset.familyId);
+        if (!saveFamily) return;
+        var drawerNotes = customerDrawerBody && customerDrawerBody.querySelector("[data-customer-notes]");
+        var drawerTags = customerDrawerBody && customerDrawerBody.querySelector("[data-customer-tags]");
+        saveButton.disabled = true;
+        try {
+          var saved = await patchFamilyOnBackend(familyRowId(saveFamily), {
+            adminNote: drawerNotes ? drawerNotes.value.trim() : "",
+            adminTags: drawerTags ? drawerTags.value.split(",").map(function (tag) { return tag.trim(); }).filter(Boolean) : []
+          });
+          if (!saved) throw new Error("Could not save notes.");
+          await loadBackendState();
+          renderAdmin();
+          openCustomerDrawer(familyRowId(saveFamily));
+          writeDevOutput("Customer notes saved", { familyId: saveFamily.id, email: saveFamily.email });
+        } catch (error) {
+          writeDevOutput("Customer notes failed", error);
+        } finally {
+          saveButton.disabled = false;
+        }
+        return;
+      }
+      var customerActionButton = event.target.closest ? event.target.closest("[data-customer-action]") : null;
+      if (!customerActionButton) return;
+      var actionFamily = familyById(customerActionButton.dataset.familyId);
+      if (!actionFamily) return;
+      var customerAction = customerActionButton.dataset.customerAction;
+      if (customerAction === "exception") {
+        closeCustomerDrawer();
+        activePaymentTable = "exceptions";
+        setAdminView("billing");
+        renderAdmin();
+        selectedExceptionFamilyId = familyRowId(actionFamily);
+        if (exceptionFamilySelect) exceptionFamilySelect.value = selectedExceptionFamilyId;
+        refreshExceptionComposer();
+        return;
+      }
+      customerActionButton.disabled = true;
+      try {
+        if (customerAction === "email") {
+          await fetchJson("/api/admin/trigger-email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: actionFamily.email, template: "Admin triggered parent email" })
+          });
+          writeDevOutput("Customer email sent", { email: actionFamily.email });
+        } else if (customerAction === "lock") {
+          await fetchJson("/api/admin/users/" + encodeURIComponent(familyRowId(actionFamily)) + "/lock", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locked: !familyLocked(actionFamily) })
+          });
+          await loadBackendState();
+          renderAdmin();
+          openCustomerDrawer(familyRowId(actionFamily));
+        } else if (customerAction === "subscription") {
+          var subscriptionAction = familySubscriptionActive(actionFamily) ? "end" : "start";
+          await fetchJson("/api/admin/users/" + encodeURIComponent(familyRowId(actionFamily)) + "/subscription-toggle", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: subscriptionAction })
+          });
+          await loadBackendState();
+          renderAdmin();
+          openCustomerDrawer(familyRowId(actionFamily));
+        }
+      } catch (error) {
+        writeDevOutput("Customer action failed", error);
+      } finally {
+        customerActionButton.disabled = false;
+      }
+      refreshDevStatus();
+    });
+
     if (table) {
       table.addEventListener("click", function (event) {
         if (event.target.closest("button, a, input, .row-actions")) return; // don't hijack action buttons
@@ -5144,8 +5962,8 @@
         var monthlyPlan = Object.assign({}, pricing.monthly);
         var yearlyPlan = Object.assign({}, pricing.yearly);
         var targetPlan = setupKey === "yearly" ? yearlyPlan : monthlyPlan;
-        var promoKey = pricingForm.elements.promoPlanKey ? pricingForm.elements.promoPlanKey.value : "monthly";
-        var promoPrice = Number(pricingForm.elements.promoPrice ? pricingForm.elements.promoPrice.value : 0) || 0;
+        var promoMonthlyPrice = Number(pricingForm.elements.promoMonthlyPrice ? pricingForm.elements.promoMonthlyPrice.value : 0) || 0;
+        var promoYearlyPrice = Number(pricingForm.elements.promoYearlyPrice ? pricingForm.elements.promoYearlyPrice.value : 0) || 0;
         targetPlan.amount = Number(pricingForm.elements.planAmount.value) || Number(targetPlan.amount || 19);
         targetPlan.stripePriceId = pricingForm.elements.planStripePriceId.value.trim();
         targetPlan.familyMemberCount = Number(pricingForm.elements.planFamilyMemberCount.value) || Number(targetPlan.familyMemberCount || 3);
@@ -5153,11 +5971,12 @@
           monthly: monthlyPlan,
           yearly: yearlyPlan,
           promotion: {
-            planKey: promoKey,
+            enabled: pricingForm.elements.promotionEnabled ? pricingForm.elements.promotionEnabled.checked : true,
+            planKey: promoYearlyPrice > 0 && promoMonthlyPrice <= 0 ? "yearly" : "monthly",
             code: pricingForm.elements.promoCode.value.trim(),
-            price: promoPrice,
-            monthlyAmount: promoKey === "monthly" ? promoPrice : 0,
-            yearlyAmount: promoKey === "yearly" ? promoPrice : 0,
+            price: promoMonthlyPrice || promoYearlyPrice,
+            monthlyAmount: promoMonthlyPrice,
+            yearlyAmount: promoYearlyPrice,
             description: pricingForm.elements.promoDescription ? pricingForm.elements.promoDescription.value.trim() : "",
             showAfterDays: 0,
             durationDays: 0
@@ -5166,6 +5985,12 @@
             bonusMonths: Number(pricingForm.elements.upgradeBonusMonths ? pricingForm.elements.upgradeBonusMonths.value : 3) || 0,
             discountPercent: Number(pricingForm.elements.upgradeDiscountPercent ? pricingForm.elements.upgradeDiscountPercent.value : 0) || 0,
             note: pricingForm.elements.upgradeNote ? pricingForm.elements.upgradeNote.value.trim() : ""
+          },
+          cancellationPromo: {
+            enabled: pricingForm.elements.cancellationPromoEnabled ? pricingForm.elements.cancellationPromoEnabled.checked : true,
+            percentOff: Number(pricingForm.elements.cancellationPromoPercentOff ? pricingForm.elements.cancellationPromoPercentOff.value : 50) || 0,
+            duration: pricingForm.elements.cancellationPromoDuration ? pricingForm.elements.cancellationPromoDuration.value : "once",
+            description: pricingForm.elements.cancellationPromoDescription ? pricingForm.elements.cancellationPromoDescription.value.trim() : ""
           }
         });
         writeDevOutput("Pricing saved", readPricing());
