@@ -1407,8 +1407,20 @@
         document.querySelector('[data-plan-note="' + key + '"]').textContent = promo
           ? promo.code + ": " + (promo.description || "Limited-time promotion")
           : key === "yearly"
-          ? "Best value for steady learning all year. Up to " + Number(plan.familyMemberCount || 3) + " family members."
-          : "Flexible family access. Up to " + Number(plan.familyMemberCount || 3) + " family members.";
+          ? "Best value for steady learning all year."
+          : "Flexible family access, cancel any time.";
+        // Meta rows mirror the yearly-upgrade tile so both plan surfaces read
+        // the same way: an icon, a short fact, nothing longer.
+        var metaEl = document.querySelector('[data-plan-meta="' + key + '"]');
+        if (metaEl) {
+          var seats = Number(plan.familyMemberCount || 3);
+          var rows = key === "yearly"
+            ? [["users-round", "Up to " + seats + " family members"], ["gift", "Two months free vs monthly"]]
+            : [["users-round", "Up to " + seats + " family members"], ["refresh-cw", "Switch or cancel any time"]];
+          metaEl.innerHTML = rows.map(function (row) {
+            return "<span><i data-lucide='" + row[0] + "'></i><b>" + row[1] + "</b></span>";
+          }).join("");
+        }
       });
     }
 

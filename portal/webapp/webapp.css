@@ -8338,3 +8338,74 @@ body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta .cta-arrow {
   .upgrade-modal-actions { flex-direction: column-reverse; }
   .upgrade-modal-actions .button { width: 100%; }
 }
+
+/* ---- Plan chooser as big tiles --------------------------------------------
+   The initial "Choose your plan" step used small radio chips while the yearly
+   upgrade used a large tile, so the same decision looked like two different
+   products. These match the upgrade tile: full-height card, prominent price,
+   icon meta rows, and a solid green treatment on the selected plan. */
+body.parent-mockup .parent-portal-live .plan-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+body.parent-mockup .parent-portal-live .plan-tile {
+  min-height: 0;
+  padding: 20px;
+  gap: 6px;
+  align-content: start;
+  border: 1px solid var(--mock-line);
+  border-radius: 16px;
+  background: var(--mock-surface);
+  box-shadow: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+body.parent-mockup .parent-portal-live .plan-tile:hover { border-color: var(--mock-green-2); }
+body.parent-mockup .parent-portal-live .plan-tile strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--mock-text);
+}
+body.parent-mockup .parent-portal-live .plan-tile b[data-plan-price] {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 2px 0 4px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--mock-text);
+}
+body.parent-mockup .parent-portal-live .plan-tile b[data-plan-price] span { font-size: 12px; font-weight: 600; color: var(--mock-muted); }
+body.parent-mockup .parent-portal-live .plan-tile b[data-plan-price] s { font-size: 15px; font-weight: 600; color: var(--mock-muted); }
+body.parent-mockup .parent-portal-live .plan-tile small { color: var(--mock-muted); font-size: 11px; line-height: 1.5; }
+
+body.parent-mockup .parent-portal-live .plan-tile-meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--mock-line);
+}
+body.parent-mockup .parent-portal-live .plan-tile-meta span { display: flex; align-items: center; gap: 7px; }
+body.parent-mockup .parent-portal-live .plan-tile-meta svg { width: 14px; height: 14px; flex: none; color: var(--mock-green-2); }
+body.parent-mockup .parent-portal-live .plan-tile-meta b { font-size: 10.5px; font-weight: 600; color: var(--mock-muted); }
+
+/* Selected plan takes the same solid-green treatment as the upgrade tile. */
+body.parent-mockup .parent-portal-live .plan-tile.is-selected {
+  border-color: var(--mock-green-2);
+  background: var(--mock-green-2);
+  box-shadow: none;
+}
+body.parent-mockup .parent-portal-live .plan-tile.is-selected strong,
+body.parent-mockup .parent-portal-live .plan-tile.is-selected b[data-plan-price],
+body.parent-mockup .parent-portal-live .plan-tile.is-selected b[data-plan-price] span,
+body.parent-mockup .parent-portal-live .plan-tile.is-selected small,
+body.parent-mockup .parent-portal-live .plan-tile.is-selected .plan-tile-meta b { color: #fff; }
+body.parent-mockup .parent-portal-live .plan-tile.is-selected b[data-plan-price] s { color: rgba(255, 255, 255, .7); }
+body.parent-mockup .parent-portal-live .plan-tile.is-selected .plan-tile-meta { border-top-color: rgba(255, 255, 255, .28); }
+body.parent-mockup .parent-portal-live .plan-tile.is-selected .plan-tile-meta svg { color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .plan-tile.is-selected .plan-radio {
+  background: #fff;
+  box-shadow: inset 0 0 0 6px var(--mock-green-2), inset 0 0 0 7px #fff;
+}
