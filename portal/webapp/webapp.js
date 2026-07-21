@@ -1431,6 +1431,64 @@
       updatePlanTiles();
     }
 
+      function applySignupPlanCards() {
+        var pricingNow = readPricing();
+        var monthlyPromo = eligiblePromotion('monthly');
+        var yearlyPromo = eligiblePromotion('yearly');
+        var monthlyBase = Number((pricingNow.monthly || {}).amount || 0);
+        var yearlyBase = Number((pricingNow.yearly || {}).amount || 0);
+        var monthlyNow = promotionAmountForPlan(monthlyPromo, 'monthly') || monthlyBase;
+        var yearlyNow = promotionAmountForPlan(yearlyPromo, 'yearly') || yearlyBase;
+        var seats = Number((pricingNow.monthly || {}).familyMemberCount || 3);
+      
+        var badge = currentPackageCard ? currentPackageCard.querySelector('.plan-badge') : null;
+        if (badge) badge.textContent = 'Pay monthly';
+        if (currentPackageName) currentPackageName.textContent = planLabelForKey('monthly');
+        if (currentPackagePrice) currentPackagePrice.innerHTML = (monthlyNow < monthlyBase ? "<s>$" + monthlyBase + "</s> " : "") + "$" + monthlyNow;
+        var monthlyInterval = document.getElementById('current-package-interval');
+        if (monthlyInterval) monthlyInterval.textContent = '/ month';
+        if (currentPackageNote) currentPackageNote.textContent = monthlyNow < monthlyBase
+          ? (monthlyPromo && monthlyPromo.description) || 'Limited-time monthly price.'
+          : 'Flexible family access. Cancel any time.';
+        var factsEl = document.getElementById('current-package-facts');
+        if (factsEl) {
+          factsEl.innerHTML = [
+            { icon: 'users-round', text: 'Up to ' + seats + ' family members' },
+            { icon: 'puzzle', text: 'Chrome extension unlocked' },
+            { icon: 'refresh-cw', text: 'Switch or cancel any time' }
+          ].map(function (f) { return "<li><i data-lucide='" + f.icon + "'></i>" + text(f.text) + "</li>"; }).join('');
+        }
+        if (upgradeYearly) {
+          upgradeYearly.classList.remove('hidden');
+          upgradeYearly.innerHTML = "<i data-lucide='credit-card'></i>Continue with monthly";
+        }
+      
+        if (upgradePlanKicker) upgradePlanKicker.textContent = yearlyNow < yearlyBase ? 'Limited-time offer' : 'Best value';
+        if (upgradePlanTitle) upgradePlanTitle.textContent = 'Pay yearly';
+        if (upgradeYearlyName) upgradeYearlyName.textContent = planLabelForKey('yearly');
+        if (upgradeYearlyPrice) {
+          upgradeYearlyPrice.innerHTML = (yearlyNow < yearlyBase ? "<s>$" + yearlyBase + "</s>" : "") +
+            "<b>$" + yearlyNow + "</b><span>/year</span>";
+        }
+        if (upgradeYearlyPromo) {
+          var code = yearlyPromo && yearlyPromo.code;
+          upgradeYearlyPromo.textContent = code ? 'Code ' + code : 'Best value';
+          upgradeYearlyPromo.classList.toggle('hidden', !code);
+        }
+        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = yearlyNow < yearlyBase
+          ? (yearlyPromo && yearlyPromo.description) || 'Save on your first year.'
+          : 'Best value for steady learning all year.';
+        if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = monthlyBase && yearlyNow
+          ? 'Save $' + Math.max(0, Math.round(monthlyBase * 12 - yearlyNow)) + ' vs monthly'
+          : 'Best value';
+        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = 'Up to ' + seats + ' family members';
+        if (upgradeYearlyTileButton) {
+          upgradeYearlyTileButton.classList.remove('hidden');
+          upgradeYearlyTileButton.innerHTML = "<i data-lucide='credit-card'></i>Continue with yearly";
+        }
+        renderIcons();
+      }
+
     function renderSubscriptionState() {
       var plan = paid ? activePlan() : selectedPlan();
       if (subscriptionTitle) subscriptionTitle.textContent = (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
@@ -1440,11 +1498,15 @@
       // current package instead of the initial plan picker.
       var needsCheckout = !paid || onNoCardTrial();
       var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled;
-      if (currentPackageCard) currentPackageCard.classList.toggle("hidden", needsCheckout);
-      if (planTileGrid) planTileGrid.classList.toggle("hidden", !needsCheckout);
-      if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile));
-      if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !showUpgradeTile);
-      if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile);
+      // Both states use the SAME two-card layout: base plan in the white card on
+      // the left, best-value plan in the green card on the right. For a signup the
+      // left card is the Monthly option rather than a current package, so the two
+      // screens no longer look like different products.
+      if (currentPackageCard) currentPackageCard.classList.remove("hidden");
+      if (planTileGrid) planTileGrid.classList.add("hidden");
+      if (planSelectionSurface) planSelectionSurface.classList.remove("hidden");
+      if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
+      if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile || needsCheckout);
       // The large right-hand tile is the single upgrade action for a current
       // monthly package; keep the legacy action in the current card hidden.
       if (upgradeYearly) upgradeYearly.classList.add("hidden");
@@ -1522,6 +1584,15 @@
         // "trialing" shares the green active treatment — a trial is an entitled
         // state, and the label carries the distinction.
         paymentState.className = "state-chip " + (chipTrialing ? "trialing" : "ok");
+      }
+      // Last, so the generic current-package rendering above cannot overwrite the
+      // signup content.
+      if (needsCheckout) applySignupPlanCards();
+      else {
+        // Restore the subscriber wording: the signup pass may have run first while
+        // the entitlement was still loading, and it rewrites this badge.
+        var pkgBadge = currentPackageCard ? currentPackageCard.querySelector(".plan-badge") : null;
+        if (pkgBadge) pkgBadge.textContent = "Current package";
       }
     }
 
@@ -2595,8 +2666,21 @@
       preview();
     }
 
-    upgradeYearly.addEventListener("click", openUpgradeModal);
-    if (upgradeYearlyTileButton) upgradeYearlyTileButton.addEventListener("click", openUpgradeModal);
+    // Same buttons serve both states: for a subscriber they open the upgrade
+    // modal; for a signup they pick that plan and go straight to Checkout.
+    function choosePlanAndCheckout(key) {
+      setPlanChoice(key);
+      updatePlanTiles();
+      if (paymentButton) paymentButton.click();
+    }
+    upgradeYearly.addEventListener("click", function () {
+      if (!paid || onNoCardTrial()) return choosePlanAndCheckout("monthly");
+      openUpgradeModal();
+    });
+    if (upgradeYearlyTileButton) upgradeYearlyTileButton.addEventListener("click", function () {
+      if (!paid || onNoCardTrial()) return choosePlanAndCheckout("yearly");
+      openUpgradeModal();
+    });
     var railYearlyPromo = document.getElementById("rail-yearly-promo");
     if (railYearlyPromo) railYearlyPromo.addEventListener("click", function () { setParentTab("subscription"); openUpgradeModal(); });
     var upgradeConfirmBtn = document.getElementById("upgrade-confirm");

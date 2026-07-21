@@ -8480,3 +8480,19 @@ body[data-page="admin"] .plan-promo-controls .segmented-plan-toggle label {
   font-size: 13px;
   white-space: nowrap;
 }
+
+/* Signup uses the same two-card subscription layout as a subscriber, so the
+   green "best value" card needs its own CTA styled against the green fill. */
+body.parent-mockup .parent-portal-live .upgrade-plan.is-upgrade-only .primary-button {
+  background: #fff;
+  color: var(--mock-green, #0b665d);
+}
+body.parent-mockup .parent-portal-live .upgrade-plan.is-upgrade-only .primary-button:hover {
+  background: #f2fbf6;
+}
+/* Struck-through base price on the white monthly card. */
+body.parent-mockup .parent-portal-live .current-plan .plan-price s {
+  margin-right: 6px;
+  color: var(--mock-muted, #75828a);
+  font-weight: 600;
+}
