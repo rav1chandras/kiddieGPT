@@ -712,13 +712,17 @@
       var agg = aggregateProgress(selected.progress);
       var t = agg.totals;
       var totalActions = t.lessons + t.cardsReviewed + t.mathSolved + t.tutorLessons + t.explains + t.writingChecks + t.quizzes;
-      var percent = totalActions ? Math.min(100, Math.max(8, Math.round((totalActions / 7) * 100))) : 0;
-      var goalCount = Math.max(7, totalActions);
-      var completedCount = Math.min(goalCount, totalActions);
-      var message = totalActions
-        ? text(selected.name || "Your child") + " has completed " + completedCount + " of " + goalCount + " planned learning sessions."
-        : "Your child's first learning session will appear here.";
       var keys = progressLast7Keys();
+      // There is no configured weekly target, and the old copy invented one:
+      // goalCount = max(7, totalActions) with completedCount = min(goalCount,
+      // totalActions) always printed "X of X" at 100%. Report days active,
+      // which is a real number out of a real denominator.
+      var daysActive = keys.filter(function (key) { return (agg.byDate[key] || 0) > 0; }).length;
+      var percent = Math.round((daysActive / keys.length) * 100);
+      var message = totalActions
+        ? text(selected.name || "Your child") + " was active on " + daysActive + " of the last " + keys.length +
+          " days, with " + totalActions + " learning action" + (totalActions === 1 ? "" : "s") + "."
+        : "Your child's first learning session will appear here.";
       var maxActions = Math.max(1, Math.max.apply(null, keys.map(function (key) { return agg.byDate[key] || 0; })));
       var bars = keys.map(function (key) {
         var actions = agg.byDate[key] || 0;
@@ -732,7 +736,7 @@
         var icon = index === 0 ? "calculator" : index === 1 ? "file-text" : "lightbulb";
         return '<div class="activity-item"><span class="activity-icon ' + (index === 1 ? 'violet' : index === 2 ? 'orange' : 'green') + '"><i data-lucide="' + icon + '"></i></span><span><strong>' + text(quiz.title || "Quiz completed") + '</strong><small>' + text(quiz.score) + '/' + text(quiz.total) + ' · ' + pct + '%</small></span><time>' + relativeSince(quiz.ts ? new Date(quiz.ts).toISOString() : "") + '</time></div>';
       }).join("") : '<div class="progress-empty">No quizzes yet this week.</div>';
-      list.innerHTML = '<div class="progress-focus"><div class="donut" style="--progress:' + percent + '%" aria-label="' + percent + ' percent weekly goal completion"><span><strong>' + percent + '%</strong><small>weekly goal</small></span></div><div class="focus-copy"><strong>' + (percent >= 70 ? 'Nice momentum' : percent ? 'A good start' : 'Ready when you are') + '</strong><p>' + message + '</p><span class="focus-note">' + (percent >= 85 ? "This week's goal is nearly complete." : "One more session keeps the week moving.") + '</span></div></div><div class="mini-bars" aria-label="Weekly activity by day">' + bars + '</div><div class="focus-footer"><span><i data-lucide="clock-3"></i> ' + (totalActions * 12) + ' min learning time</span><span><i data-lucide="trending-up"></i> ' + (totalActions ? 'This week' : 'No activity yet') + '</span></div><div class="embedded-activity"><div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>' + recent.length + ' ' + (recent.length === 1 ? 'session' : 'sessions') + '</span></div><div class="activity-list">' + activity + '</div></div>';
+      list.innerHTML = '<div class="progress-focus"><div class="donut" style="--progress:' + percent + '%" aria-label="Active on ' + daysActive + ' of the last ' + keys.length + ' days"><span><strong>' + daysActive + '/' + keys.length + '</strong><small>days active</small></span></div><div class="focus-copy"><strong>' + (percent >= 70 ? 'Nice momentum' : percent ? 'A good start' : 'Ready when you are') + '</strong><p>' + message + '</p><span class="focus-note">' + (percent >= 85 ? 'A steady week — most days had a session.' : 'One more session keeps the week moving.') + '</span></div></div><div class="mini-bars" aria-label="Weekly activity by day">' + bars + '</div><div class="focus-footer"><span><i data-lucide="activity"></i> ' + totalActions + ' learning action' + (totalActions === 1 ? '' : 's') + '</span><span><i data-lucide="trending-up"></i> ' + (totalActions ? 'This week' : 'No activity yet') + '</span></div><div class="embedded-activity"><div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>' + recent.length + ' ' + (recent.length === 1 ? 'session' : 'sessions') + '</span></div><div class="activity-list">' + activity + '</div></div>';
       var streak = document.querySelector("[data-learning-streak]");
       if (streak) {
         var streakDays = Math.min(7, Math.max(1, Object.keys(agg.byDate).length));
@@ -2287,12 +2291,17 @@
       });
       var studentCount = document.querySelector("[data-student-count]");
       if (studentCount) studentCount.textContent = profiles.length + " active " + (profiles.length === 1 ? "profile" : "profiles");
-      if (childPosition) childPosition.textContent = (profiles.length ? activeChildIndex + 1 : 0) + " of 3";
+      // The counter sits between prev/next arrows, so it is a carousel position:
+      // "1 of 3" beside two students was simply wrong. The seat cap is a plan
+      // setting (familyMemberCount), not a constant 3, so read it rather than
+      // hardcoding one — an admin raising the limit had no effect here.
+      if (childPosition) childPosition.textContent = (profiles.length ? activeChildIndex + 1 : 0) + " of " + profiles.length;
       if (previousChild) previousChild.disabled = profiles.length < 2 || activeChildIndex === 0;
       if (nextChild) nextChild.disabled = profiles.length < 2 || activeChildIndex >= profiles.length - 1;
       if (addChild) {
-        addChild.disabled = profiles.length >= 3;
-        addChild.title = profiles.length >= 3 ? "Maximum of 3 child profiles" : "Add child profile";
+        var seatCap = Math.max(1, Number((readPricing()[activePlanKey === "yearly" ? "yearly" : "monthly"] || {}).familyMemberCount) || 3);
+        addChild.disabled = profiles.length >= seatCap;
+        addChild.title = profiles.length >= seatCap ? "Maximum of " + seatCap + " child profiles" : "Add child profile";
       }
       renderLiveProfile();
       if (lastProgressData) renderProgress(lastProgressData);
