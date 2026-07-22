@@ -1421,7 +1421,22 @@ function refundWindowFor(family) {
 
 function markCancellationScheduled(family, subscription, reason = "") {
   if (!family) return family;
-  const accessUntil = unixToIso(subscription?.current_period_end || subscription?.cancel_at || 0) || family.cancelAccessUntil || family.cancellationAccessUntil || "";
+  // A yearly upgrade is paid in full up front and bundles bonus months plus the
+  // unused days carried over from the monthly plan. Stripe's period end on the
+  // subscription being cancelled can still be the old monthly boundary, so take
+  // the LATEST paid-through date — otherwise cancelling silently forfeits time
+  // the parent has already paid for.
+  const candidates = [
+    unixToIso(subscription?.current_period_end || subscription?.cancel_at || 0),
+    hasConfirmedYearlyUpgrade(family) ? unixToIso(family.yearlyUpgrade.yearlyNextRenewalAt) || family.yearlyUpgrade.yearlyNextRenewalAt : "",
+    family.currentPeriodEnd,
+    family.cancelAccessUntil,
+    family.cancellationAccessUntil
+  ].filter(Boolean).map((value) => ({ value, at: new Date(value).getTime() }))
+   .filter((item) => Number.isFinite(item.at));
+  const accessUntil = candidates.length
+    ? candidates.reduce((latest, item) => (item.at > latest.at ? item : latest)).value
+    : "";
   family.subscriptionStatus = "cancel_scheduled";
   // Do not invent a payment. Cancelling during a trial charges nothing, so
   // forcing "paid" here would both lose the trial state and drop the family into

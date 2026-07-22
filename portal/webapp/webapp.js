@@ -1520,7 +1520,9 @@
       // screens no longer look like different products.
       if (currentPackageCard) currentPackageCard.classList.remove("hidden");
       if (planTileGrid) planTileGrid.classList.add("hidden");
-      if (planSelectionSurface) planSelectionSurface.classList.remove("hidden");
+      // Nothing to offer a yearly subscriber, so do not leave an empty "Choose
+      // your plan" card sitting next to the current package.
+      if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile));
       if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
       if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile || needsCheckout);
       // The large right-hand tile is the single upgrade action for a current
@@ -1561,7 +1563,9 @@
       if (currentPackageName) currentPackageName.textContent = plan.name;
       if (currentPackagePrice) currentPackagePrice.textContent = "$" + (plan.amount || "—");
       var currentPackageInterval = document.getElementById("current-package-interval");
-      if (currentPackageInterval) currentPackageInterval.textContent = "/ " + (plan.interval === "year" ? "year" : "month");
+      // Pricing stores "mo"/"yr", so an exact "year" match always fell through to
+      // "month" — a yearly plan rendered as "$149 / month".
+      if (currentPackageInterval) currentPackageInterval.textContent = "/ " + (String(plan.interval || "").charAt(0) === "y" ? "year" : "month");
       if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
