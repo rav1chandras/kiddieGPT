@@ -1513,7 +1513,13 @@
       // a card-based trial, gets a dedicated yearly upgrade tile beside the
       // current package instead of the initial plan picker.
       var needsCheckout = !paid || onNoCardTrial();
-      var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" && !cancellationScheduled && !yearlyUpgradeScheduled;
+      // A monthly family that has cancelled but still has paid access left should
+      // still see the yearly offer — that is the moment they are most likely to
+      // reconsider, and upgrading clears the pending cancellation.
+      var cancellingWithAccess = cancellationScheduled && cancellationAccessUntil &&
+        new Date(cancellationAccessUntil).getTime() > Date.now();
+      var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" &&
+        (!cancellationScheduled || cancellingWithAccess) && !yearlyUpgradeScheduled;
       // Both states use the SAME two-card layout: base plan in the white card on
       // the left, best-value plan in the green card on the right. For a signup the
       // left card is the Monthly option rather than a current package, so the two

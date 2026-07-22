@@ -4866,6 +4866,12 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       }
       if (!next) return null;
       next.subscriptionStatus = "active";
+      // Upgrading is an explicit renewal, so any pending cancellation is off.
+      next.cancellationRequested = false;
+      next.cancellationStatus = "";
+      next.cancelAtPeriodEnd = false;
+      next.cancelAccessUntil = "";
+      next.cancellationAccessUntil = "";
       next.paymentStatus = "paid";
       const keepYearlyUpgrade = hasConfirmedYearlyUpgrade(next);
       next.plan = keepYearlyUpgrade ? "Family Yearly" : metadata.planName || next.pendingPlanName || next.plan;
@@ -5248,7 +5254,11 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
     return res.status(404).json({ error: "Family account not found." });
   }
   const trialing = family.subscriptionStatus === "trialing";
-  if (!trialing && family.subscriptionStatus !== "active") {
+  // A family that has cancelled but still has paid access left is the best
+  // win-back audience there is — let them upgrade instead of waiting to lapse.
+  // Upgrading is an explicit renewal, so it clears the pending cancellation.
+  const cancellingWithAccess = family.subscriptionStatus === "cancel_scheduled" && cancellationStillActive(family);
+  if (!trialing && !cancellingWithAccess && family.subscriptionStatus !== "active") {
     return res.status(400).json({ error: "Yearly upgrade requires an active monthly subscription or card-upfront trial." });
   }
 
@@ -5400,6 +5410,12 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
       const monthlySubscriptionIds = next.stripeSubscriptionId ? [next.stripeSubscriptionId] : [];
       next.plan = yearlyPlan.label || "Family Yearly";
       next.subscriptionStatus = "active";
+      // Upgrading is an explicit renewal, so any pending cancellation is off.
+      next.cancellationRequested = false;
+      next.cancellationStatus = "";
+      next.cancelAtPeriodEnd = false;
+      next.cancelAccessUntil = "";
+      next.cancellationAccessUntil = "";
       next.paymentStatus = "paid";
       next.stripeCustomerId = next.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
       next.stripePreviousMonthlySubscriptionIds = monthlySubscriptionIds;
@@ -5587,6 +5603,12 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
       if (!next) return null;
       next.plan = yearlyPlan.label || "Family Yearly";
       next.subscriptionStatus = "active";
+      // Upgrading is an explicit renewal, so any pending cancellation is off.
+      next.cancellationRequested = false;
+      next.cancellationStatus = "";
+      next.cancelAtPeriodEnd = false;
+      next.cancelAccessUntil = "";
+      next.cancellationAccessUntil = "";
       next.paymentStatus = "paid";
       next.stripeCustomerId = primaryMonthly.customer || next.stripeCustomerId;
       next.stripeSubscriptionId = yearlySubscription.id;
