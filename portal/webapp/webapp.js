@@ -1680,7 +1680,7 @@
           : cancellationScheduled
           ? "Cancels " + parentDate(cancellationAccessUntil)
           : retentionOfferAccepted
-          ? "50% off next invoice"
+          ? "$" + cancellationPromoConfig().amountOff + " off next invoice"
           : plan.name + " active";
         // "trialing" shares the green active treatment — a trial is an entitled
         // state, and the label carries the distinction.
@@ -1775,7 +1775,9 @@
         if (saveOffer) saveOffer.classList.toggle("yearly-cancel", !promoAvailable);
         return;
       }
-      if (cancelFlowLabel) cancelFlowLabel.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Upgrade refund" : refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
+      // "Save offer" only makes sense when there is an offer — with the promo
+      // switched off in admin the monthly flow is a plain cancellation.
+      if (cancelFlowLabel) cancelFlowLabel.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Upgrade refund" : refundable ? "Full refund" : yearly ? "Renewal cancellation" : promoAvailable ? "Save offer" : "Renewal cancellation";
       if (cancelFlowTitle) {
         cancelFlowTitle.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Refund your yearly upgrade"
           : refundable
