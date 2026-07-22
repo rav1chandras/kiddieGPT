@@ -3465,6 +3465,8 @@
     var exceptionContextState = document.getElementById("exception-context-state");
     var seedButton = document.getElementById("seed-data");
     var pricingForm = document.getElementById("pricing-form");
+    // False until syncPricingForm() has loaded live values into the inputs.
+    var pricingFormSynced = false;
     var aiSettingsForm = document.getElementById("ai-settings-form");
     var clearOpenaiKey = document.getElementById("clear-openai-key");
     var aiSettingsState = document.getElementById("ai-settings-state");
@@ -5060,6 +5062,7 @@
 
     function syncPricingForm() {
       var pricing = readPricing();
+      pricingFormSynced = true;
       syncPlanSetupFields();
       if (pricingForm.elements.promotionEnabled) pricingForm.elements.promotionEnabled.checked = pricing.promotion.enabled !== false;
       pricingForm.elements.promoCode.value = pricing.promotion.code;
@@ -6431,6 +6434,13 @@
     pricingForm.addEventListener("submit", async function (event) {
       event.preventDefault();
       var saveButton = pricingForm.querySelector('button[type="submit"]');
+      // Saving a form that never loaded would write its blank defaults over the
+      // live configuration. Repopulate and make the admin press Save again.
+      if (!pricingFormSynced) {
+        syncPricingForm();
+        setPricingSaveState("Reloaded — review and save again", "warning");
+        return;
+      }
       setPricingSaveState("Saving", "warning");
       if (saveButton) saveButton.disabled = true;
       try {
@@ -6447,17 +6457,18 @@
         await writePricing({
           monthly: monthlyPlan,
           yearly: yearlyPlan,
-          promotion: {
+          // Merge onto the stored promotion rather than rebuilding it: fields
+          // with no input on this screen (showAfterDays, durationDays) were
+          // being reset to 0 by every unrelated save.
+          promotion: Object.assign({}, pricing.promotion, {
             enabled: pricingForm.elements.promotionEnabled ? pricingForm.elements.promotionEnabled.checked : true,
             planKey: promoYearlyPrice > 0 && promoMonthlyPrice <= 0 ? "yearly" : "monthly",
             code: pricingForm.elements.promoCode.value.trim(),
             price: promoMonthlyPrice || promoYearlyPrice,
             monthlyAmount: promoMonthlyPrice,
             yearlyAmount: promoYearlyPrice,
-            description: pricingForm.elements.promoDescription ? pricingForm.elements.promoDescription.value.trim() : "",
-            showAfterDays: 0,
-            durationDays: 0
-          },
+            description: pricingForm.elements.promoDescription ? pricingForm.elements.promoDescription.value.trim() : ""
+          }),
           yearlyUpgrade: {
             bonusMonths: Number(pricingForm.elements.upgradeBonusMonths ? pricingForm.elements.upgradeBonusMonths.value : 3) || 0,
             discountAmount: Number(pricingForm.elements.upgradeDiscountAmount ? pricingForm.elements.upgradeDiscountAmount.value : 0) || 0,
@@ -7043,8 +7054,11 @@
 
     setupAdminLoginGate().then(function () {
       loadBackendState().then(function () {
+        // syncPricingForm() must not be gated on loadAiSettings(): if that
+        // rejects, the pricing form keeps its blank HTML defaults, and the next
+        // Save writes an unchecked promotion and $0 prices over real config.
+        syncPricingForm();
         loadAiSettings().then(function () {
-          syncPricingForm();
           renderAdmin();
         });
         loadAutopilotRules();
