@@ -19,6 +19,7 @@
       "active": true
     },
     "promotion": {
+      "enabled": true,
       "code": "SAVE50",
       "monthlyAmount": 10,
       "yearlyAmount": 75,
@@ -27,6 +28,14 @@
       "description": "Limited-time family starter offer",
       "showAfterDays": 3,
       "durationDays": 7
+    },
+    "cancellationPromo": {
+      "enabled": true,
+      "amountOff": 10,
+      "duration": "once",
+      "description": "Keep your plan and get $10 off the next renewal.",
+      "stripeCouponId": "",
+      "stripeCouponPercentOff": 0
     }
   },
   "users": [],

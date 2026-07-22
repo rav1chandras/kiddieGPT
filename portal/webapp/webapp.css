@@ -8205,40 +8205,79 @@ body.parent-mockup .parent-portal-live .mockup-footer { display: none; }
   body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta { min-width: 0; padding: 10px 11px; }
 }
 
-/* Keep the extension action prominent without making the overview feel heavy. */
+/* Citrus on a near-white page: the CTA is the only warm surface in the header,
+   so it reads as the action without needing extra weight or a heavy shadow. */
 body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta {
+  position: relative;
+  overflow: hidden;
   min-width: 250px;
   min-height: 64px;
-  padding: 13px 16px;
-  gap: 11px;
-  border: 1px solid rgba(255, 255, 255, .18);
+  padding: 13px 18px;
+  gap: 12px;
+  border: 1px solid rgba(11, 102, 93, .16);
   border-radius: 16px;
-  background: linear-gradient(135deg, #0b665d 0%, #138962 100%);
-  box-shadow: 0 12px 24px rgba(8, 96, 75, .18);
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  background: linear-gradient(135deg, #edf67b 0%, #e2f065 100%);
+  color: var(--mock-green, #0b665d);
+  box-shadow: 0 10px 22px rgba(150, 178, 40, .28);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+/* Sheen that sweeps across on hover — a nudge, not a disco. */
+body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .65), transparent);
+  transform: skewX(-18deg);
+  transition: left 520ms ease;
+  pointer-events: none;
+}
+
+body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta:hover::after {
+  left: 115%;
 }
 
 body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 30px rgba(8, 96, 75, .24);
+  filter: saturate(1.06);
+  box-shadow: 0 16px 30px rgba(150, 178, 40, .36);
 }
 
-body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta > i:first-child {
-  width: 22px;
-  height: 22px;
-  stroke-width: 1.8;
+body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(150, 178, 40, .3);
+}
+
+/* The glyph gets a white chip so it reads as a product mark. Selector is
+   tag-agnostic on purpose: lucide swaps the <i> for an <svg> once it renders,
+   so an `i:first-child` rule silently stops matching after first paint. */
+body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta > :first-child {
+  flex: 0 0 auto;
+  box-sizing: content-box;
+  width: 19px;
+  height: 19px;
+  padding: 7px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .72);
+  color: var(--mock-green, #0b665d);
+  stroke-width: 2;
+  box-shadow: 0 2px 6px rgba(11, 102, 93, .12);
 }
 
 body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta b {
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--mock-green, #0b665d);
 }
 
 body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta small {
   margin-top: 2px;
-  font-size: 10px;
-  opacity: .86;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(11, 102, 93, .72);
+  opacity: 1;
 }
 
 body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta .cta-arrow {
@@ -8258,6 +8297,140 @@ body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta .cta-arrow {
   body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta small { font-size: 9px; }
 }
 
+/* Email-first support inbox mockup. The provider delivers messages; this is
+   the operator's daily workspace for triage, reply, and account context. */
+body[data-page="admin"] .support-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  margin: 0 0 16px;
+}
+body[data-page="admin"] .support-intro h2 { margin: 0; color: var(--ink); font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+body[data-page="admin"] .support-intro > div:first-child > p:last-child { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+body[data-page="admin"] .support-inbox-summary { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+body[data-page="admin"] .support-inbox-summary > span:not(.support-channel-chip) { display: grid; gap: 1px; }
+body[data-page="admin"] .support-inbox-summary strong { color: var(--ink); font-size: 16px; font-weight: 600; }
+body[data-page="admin"] .support-channel-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid #cce7d7; border-radius: 999px; background: #eff9f2; color: #1e805b; font-weight: 600; }
+body[data-page="admin"] .support-channel-chip svg { width: 13px; height: 13px; }
+body[data-page="admin"] .support-email-shell { grid-template-columns: 342px minmax(0, 1fr); gap: 14px; height: calc(100vh - 238px); min-height: 590px; }
+body[data-page="admin"] .support-email-shell .support-sidebar,
+body[data-page="admin"] .support-email-shell .support-conversation { border-color: #dfe9e3; border-radius: 14px; box-shadow: 0 8px 22px rgba(16, 63, 47, .04); }
+body[data-page="admin"] .support-email-shell .support-filters { gap: 12px; padding: 16px; background: #fbfdfb; }
+body[data-page="admin"] .support-sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+body[data-page="admin"] .support-sidebar-heading .eyebrow { margin: 0; }
+body[data-page="admin"] .support-sidebar-heading h3 { margin: 1px 0 0; color: var(--ink); font-size: 16px; font-weight: 600; }
+body[data-page="admin"] .support-sidebar-heading .icon-button { display: inline-grid; width: 29px; height: 29px; padding: 0; place-items: center; border: 1px solid #dce8e1; border-radius: 9px; background: #fff; color: #5e7770; }
+body[data-page="admin"] .support-sidebar-heading .icon-button svg { width: 14px; height: 14px; }
+body[data-page="admin"] .support-sidebar-heading .icon-button:hover { color: var(--green); border-color: #b9d9c6; }
+body[data-page="admin"] .support-sidebar-heading .icon-button.is-loading svg { animation: support-spin .7s linear infinite; }
+@keyframes support-spin { to { transform: rotate(360deg); } }
+body[data-page="admin"] .support-email-shell .support-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+body[data-page="admin"] .support-email-shell .support-pill { display: flex; align-items: center; justify-content: space-between; min-height: 31px; padding: 6px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; text-align: left; }
+body[data-page="admin"] .support-email-shell .support-pill span { min-width: 17px; padding: 2px 4px; border-radius: 999px; background: #edf3ef; color: #688079; font-size: 9px; text-align: center; }
+body[data-page="admin"] .support-email-shell .support-pill.active span { background: rgba(255,255,255,.18); color: #fff; }
+body[data-page="admin"] .support-search-field { position: relative; display: flex; align-items: center; }
+body[data-page="admin"] .support-search-field svg { position: absolute; left: 10px; width: 14px; height: 14px; color: #8aa098; pointer-events: none; }
+body[data-page="admin"] .support-search-field input { width: 100%; min-height: 36px; margin: 0; padding: 0 10px 0 31px; border: 1px solid #dce8e1; border-radius: 9px; background: #fff; font-size: 10px; }
+body[data-page="admin"] .support-search-field input:focus { border-color: #9cc8aa; box-shadow: 0 0 0 3px rgba(22,154,108,.08); outline: 0; }
+body[data-page="admin"] .support-email-shell .support-filters select,
+body[data-page="admin"] .support-email-shell .support-date-range input { min-height: 34px; border-color: #dce8e1; background: #fff; font-size: 10px; }
+body[data-page="admin"] .support-email-shell .support-list { background: #fff; }
+body[data-page="admin"] .support-email-shell .support-list-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 9px; width: 100%; padding: 13px 14px; border: 0; border-bottom: 1px solid #edf2ee; background: transparent; color: inherit; text-align: left; }
+body[data-page="admin"] .support-email-shell .support-list-item:hover { background: #f7fbf8; }
+body[data-page="admin"] .support-email-shell .support-list-item.active { background: #eef7f1; box-shadow: inset 3px 0 0 #1b9a6c; }
+body[data-page="admin"] .support-ticket-avatar { display: inline-grid; width: 30px; height: 30px; place-items: center; border-radius: 10px; background: #e9f0ff; color: #6077a8; font-size: 10px; font-weight: 700; }
+body[data-page="admin"] .support-ticket-avatar.needs-reply { background: #edf6b8; color: #657018; }
+body[data-page="admin"] .support-ticket-copy { display: grid; min-width: 0; gap: 2px; }
+body[data-page="admin"] .support-email-shell .sli-top { min-width: 0; }
+body[data-page="admin"] .support-email-shell .support-list-item .name { overflow: hidden; color: var(--ink); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-ticket-time,
+body[data-page="admin"] .support-email-shell .ticket-time { flex: 0 0 auto; color: #91a09b; font-size: 9px; }
+body[data-page="admin"] .support-ticket-subject { overflow: hidden; color: #294b44; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-email-shell .support-list-item .email { overflow: hidden; color: #7b8e88; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-email-shell .support-list-item .preview { margin-top: 2px; color: #93a09c; font-size: 9px; }
+body[data-page="admin"] .support-ticket-status { align-self: center; padding: 4px 6px; border-radius: 999px; background: #f0f3f1; color: #87958f; font-size: 8px; font-weight: 600; }
+body[data-page="admin"] .support-ticket-status.open { background: #fff5d9; color: #9a701b; }
+body[data-page="admin"] .support-ticket-status.waiting { background: #eaf3ff; color: #55739b; }
+body[data-page="admin"] .support-ticket-status.resolved { background: #eff8f1; color: #34805c; }
+body[data-page="admin"] .support-email-shell .support-list-empty { display: grid; place-items: center; gap: 8px; min-height: 190px; color: #81928b; font-size: 10px; }
+body[data-page="admin"] .support-email-shell .support-list-empty svg { width: 22px; height: 22px; color: #b9c9c0; }
+body[data-page="admin"] .support-email-shell .support-conversation { min-width: 0; }
+body[data-page="admin"] .support-email-shell .support-conv-head { align-items: flex-start; padding: 17px 19px 15px; }
+body[data-page="admin"] .support-conv-title { min-width: 0; }
+body[data-page="admin"] .support-ticket-id { color: #6c9882; font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+body[data-page="admin"] .support-email-shell .support-conv-head h3 { overflow: hidden; margin: 3px 0 3px; color: var(--ink); font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-email-shell .support-conv-head p { margin: 0; color: #7b8d87; font-size: 10px; }
+body[data-page="admin"] .support-email-shell .support-conv-head p span { margin: 0 4px; color: #b2beb8; }
+body[data-page="admin"] .support-conv-actions { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+body[data-page="admin"] .support-detail-status { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 999px; background: #fff6dd; color: #9a701b; font-size: 9px; font-weight: 600; white-space: nowrap; }
+body[data-page="admin"] .support-detail-status svg { width: 12px; height: 12px; }
+body[data-page="admin"] .support-detail-status.waiting { background: #eaf3ff; color: #55739b; }
+body[data-page="admin"] .support-detail-status.resolved { background: #eff8f1; color: #34805c; }
+body[data-page="admin"] .support-ticket-body { display: grid; grid-template-columns: minmax(0, 1fr) 208px; min-height: 0; flex: 1; overflow: hidden; }
+body[data-page="admin"] .support-email-column { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+body[data-page="admin"] .support-email-thread { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 11px; overflow-y: auto; padding: 18px; background: #f7faf8; }
+body[data-page="admin"] .support-email-message { padding: 13px 14px; border: 1px solid #e2ebe5; border-radius: 11px; background: #fff; box-shadow: 0 3px 10px rgba(25,65,48,.025); }
+body[data-page="admin"] .support-email-message.admin { border-color: #cfe7d7; background: #fbfffc; }
+body[data-page="admin"] .support-email-message-head { display: flex; align-items: center; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid #eef3ef; }
+body[data-page="admin"] .support-email-message-head > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+body[data-page="admin"] .support-email-message-head strong { color: #294a42; font-size: 10px; font-weight: 600; }
+body[data-page="admin"] .support-email-message-head small { color: #93a09b; font-size: 8px; }
+body[data-page="admin"] .support-message-avatar { display: inline-grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: #e8efff; color: #6077a8; font-size: 9px; font-weight: 700; }
+body[data-page="admin"] .support-message-avatar.admin { background: #dff2e5; color: #1a805c; }
+body[data-page="admin"] .support-message-more { display: inline-grid; width: 24px; height: 24px; margin-left: auto; padding: 0; place-items: center; border: 0; background: transparent; color: #9aa8a1; }
+body[data-page="admin"] .support-message-more svg { width: 14px; height: 14px; }
+body[data-page="admin"] .support-email-message > p { margin: 10px 0 0; color: #445a54; font-size: 10px; line-height: 1.55; white-space: pre-wrap; }
+body[data-page="admin"] .support-composer { display: grid; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid #e7efea; background: #fff; }
+body[data-page="admin"] .support-quick-replies { display: flex; align-items: center; gap: 6px; overflow-x: auto; }
+body[data-page="admin"] .support-quick-replies > span { margin-right: 2px; color: #8b9b94; font-size: 9px; white-space: nowrap; }
+body[data-page="admin"] .support-quick-replies button { padding: 5px 7px; border: 1px solid #d9e8de; border-radius: 7px; background: #f8fcf9; color: #38755b; font-size: 9px; white-space: nowrap; }
+body[data-page="admin"] .support-quick-replies button:hover { border-color: #9cc8aa; background: #eff9f2; }
+body[data-page="admin"] .support-email-shell .support-composer textarea { width: 100%; min-height: 66px; max-height: 140px; padding: 10px; border-color: #d5e4da; border-radius: 9px; font-size: 10px; }
+body[data-page="admin"] .support-email-shell .support-composer textarea:focus { border-color: #97c8a7; box-shadow: 0 0 0 3px rgba(22,154,108,.08); outline: 0; }
+body[data-page="admin"] .support-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body[data-page="admin"] .support-composer-foot small { display: inline-flex; align-items: center; gap: 5px; color: #91a099; font-size: 9px; }
+body[data-page="admin"] .support-composer-foot small svg { width: 12px; height: 12px; color: #4d9874; }
+body[data-page="admin"] .support-composer-foot .button { min-height: 31px; padding: 0 10px; border-radius: 8px; font-size: 10px; }
+body[data-page="admin"] .support-composer-foot .button svg { width: 13px; height: 13px; }
+body[data-page="admin"] .support-context { min-width: 0; padding: 16px; border-left: 1px solid #e6eee8; background: #fcfefc; overflow-y: auto; }
+body[data-page="admin"] .support-context-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+body[data-page="admin"] .support-context-head .eyebrow { margin: 0; }
+body[data-page="admin"] .support-context-head .text-button { padding: 0; color: #36815f; font-size: 9px; }
+body[data-page="admin"] .support-family-card { display: grid; grid-template-columns: 29px minmax(0, 1fr); align-items: center; gap: 3px 8px; margin: 14px 0; padding-bottom: 13px; border-bottom: 1px solid #e7efea; }
+body[data-page="admin"] .support-family-avatar { display: inline-grid; grid-row: span 2; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: #e8efff; color: #6077a8; font-size: 9px; font-weight: 700; }
+body[data-page="admin"] .support-family-card strong { overflow: hidden; color: #2d4b43; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-family-card small { overflow: hidden; color: #91a099; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="admin"] .support-context-facts { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid #e7efea; }
+body[data-page="admin"] .support-context-facts > div,
+body[data-page="admin"] .support-context-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body[data-page="admin"] .support-context-facts span,
+body[data-page="admin"] .support-context-line span { color: #8b9b94; font-size: 9px; }
+body[data-page="admin"] .support-context-facts strong,
+body[data-page="admin"] .support-context-line strong { color: #425a53; font-size: 9px; font-weight: 600; text-align: right; }
+body[data-page="admin"] .support-access-ok { color: #29815b !important; }
+body[data-page="admin"] .support-context-section { display: grid; gap: 9px; margin-top: 15px; padding-bottom: 14px; border-bottom: 1px solid #e7efea; }
+body[data-page="admin"] .support-context-section:last-child { border-bottom: 0; }
+body[data-page="admin"] .support-context-section .eyebrow { margin: 0; }
+body[data-page="admin"] .support-priority.high { color: #ad7132 !important; }
+body[data-page="admin"] .support-internal-note { min-height: 66px; padding: 8px; border: 1px solid #dce8e1; border-radius: 8px; background: #fffef4; color: #53645d; font-size: 9px; resize: vertical; }
+body[data-page="admin"] .support-note-button { justify-self: start; padding: 5px 7px; font-size: 9px; }
+
+@media (max-width: 1050px) {
+  body[data-page="admin"] .support-ticket-body { grid-template-columns: minmax(0, 1fr) 185px; }
+  body[data-page="admin"] .support-email-shell { grid-template-columns: 300px minmax(0, 1fr); }
+}
+
+@media (max-width: 820px) {
+  body[data-page="admin"] .support-intro { align-items: flex-start; flex-direction: column; }
+  body[data-page="admin"] .support-inbox-summary { flex-wrap: wrap; }
+  body[data-page="admin"] .support-email-shell { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  body[data-page="admin"] .support-email-shell .support-sidebar { min-height: 340px; }
+  body[data-page="admin"] .support-email-shell .support-conversation { min-height: 650px; }
+  body[data-page="admin"] .support-ticket-body { grid-template-columns: 1fr; }
+  body[data-page="admin"] .support-context { border-top: 1px solid #e6eee8; border-left: 0; }
+}
+
 /* ---- Yearly upgrade modal -------------------------------------------------
    The markup and JS for this modal shipped without any styling, so it rendered
    as a static block below the fold: clicking "Upgrade to yearly" appeared to do
@@ -8274,6 +8447,63 @@ body.parent-mockup .parent-portal-live .mockup-header .get-ext-cta .cta-arrow {
   backdrop-filter: blur(2px);
 }
 .upgrade-modal-backdrop[hidden] { display: none; }
+
+/* Support toolbar: keep triage controls in one place above the ticket list. */
+body[data-page="admin"] .support-toolbar {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 13px 15px 11px;
+  border: 1px solid #dfe9e3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(16, 63, 47, .035);
+}
+body[data-page="admin"] .support-toolbar-main {
+  display: grid;
+  grid-template-columns: auto minmax(270px, 1.35fr) minmax(190px, 1fr) minmax(160px, .8fr) 30px;
+  align-items: center;
+  gap: 10px;
+}
+body[data-page="admin"] .support-toolbar-title { min-width: 75px; }
+body[data-page="admin"] .support-toolbar-title .eyebrow { margin: 0; }
+body[data-page="admin"] .support-toolbar-title h2 { margin: 1px 0 0; color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+body[data-page="admin"] .support-toolbar-main .support-pills { display: flex; min-width: 0; gap: 5px; }
+body[data-page="admin"] .support-toolbar-main .support-pill { flex: 1 1 auto; min-width: 0; min-height: 30px; padding: 6px 7px; border-radius: 8px; font-size: 9px; font-weight: 600; white-space: nowrap; }
+body[data-page="admin"] .support-toolbar-main .support-pill span { min-width: 16px; padding: 2px 4px; border-radius: 999px; background: #edf3ef; color: #688079; font-size: 8px; text-align: center; }
+body[data-page="admin"] .support-toolbar-main .support-pill.active span { background: rgba(255,255,255,.18); color: #fff; }
+body[data-page="admin"] .support-toolbar .support-search-field input { min-height: 33px; font-size: 10px; }
+body[data-page="admin"] .support-toolbar .support-date-range { display: flex; min-width: 0; gap: 5px; }
+body[data-page="admin"] .support-toolbar .support-date-range input { min-width: 0; min-height: 33px; padding: 0 6px; border-color: #dce8e1; border-radius: 8px; background: #fff; font-size: 9px; }
+body[data-page="admin"] .support-toolbar-main > .icon-button { display: inline-grid; width: 30px; height: 30px; padding: 0; place-items: center; border: 1px solid #dce8e1; border-radius: 8px; background: #fff; color: #5e7770; }
+body[data-page="admin"] .support-toolbar-main > .icon-button svg { width: 14px; height: 14px; }
+body[data-page="admin"] .support-toolbar-main > .icon-button:hover { color: var(--green); border-color: #b9d9c6; }
+body[data-page="admin"] .support-toolbar-main > .icon-button.is-loading svg { animation: support-spin .7s linear infinite; }
+body[data-page="admin"] .support-topic-pills { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding-top: 1px; }
+body[data-page="admin"] .support-topic-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 27px; padding: 5px 9px; border: 1px solid #e0eae3; border-radius: 999px; background: #f9fcfa; color: #638079; font-size: 9px; font-weight: 600; white-space: nowrap; }
+body[data-page="admin"] .support-topic-pill span { min-width: 15px; padding: 2px 4px; border-radius: 999px; background: #e9f1eb; color: #71877e; font-size: 8px; text-align: center; }
+body[data-page="admin"] .support-topic-pill:hover { border-color: #b8d8c2; color: #286c58; }
+body[data-page="admin"] .support-topic-pill.active { border-color: #176d61; background: #176d61; color: #fff; }
+body[data-page="admin"] .support-topic-pill.active span { background: rgba(255,255,255,.18); color: #fff; }
+body[data-page="admin"] .support-email-shell { height: calc(100vh - 210px); min-height: 500px; }
+body[data-page="admin"] .support-email-shell .support-sidebar { min-height: 0; }
+
+@media (max-width: 1050px) {
+  body[data-page="admin"] .support-toolbar-main { grid-template-columns: auto minmax(0, 1fr) auto; }
+  body[data-page="admin"] .support-toolbar-main .support-pills { grid-column: 2; }
+  body[data-page="admin"] .support-toolbar-main .support-search-field { grid-column: 1 / -1; }
+  body[data-page="admin"] .support-toolbar-main .support-date-range { grid-column: 1 / 3; }
+  body[data-page="admin"] .support-email-shell { height: calc(100vh - 245px); }
+}
+
+@media (max-width: 820px) {
+  body[data-page="admin"] .support-toolbar-main { grid-template-columns: 1fr auto; }
+  body[data-page="admin"] .support-toolbar-title { grid-column: 1; }
+  body[data-page="admin"] .support-toolbar-main .support-pills { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body[data-page="admin"] .support-toolbar-main .support-search-field,
+  body[data-page="admin"] .support-toolbar-main .support-date-range { grid-column: 1 / -1; }
+  body[data-page="admin"] .support-email-shell { height: auto; min-height: 0; }
+}
 
 .upgrade-modal {
   position: relative;
@@ -8608,4 +8838,54 @@ body[data-page="admin"] .pricing-help {
   font-size: 12px;
   line-height: 1.5;
   text-wrap: pretty;
+}
+
+/* ---- "Keep my plan" pill in the current-plan card ------------------------ */
+/* Lives inside the card it acts on, not the billing footer: when a plan is set
+   to cancel this is the one action worth making loud, so it is a solid pill
+   against the card's white surface rather than another quiet list row. */
+body[data-page="parent"] .current-plan .resume-plan-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding: 13px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mock-green, #0b665d);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(11, 102, 93, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+body[data-page="parent"] .current-plan .resume-plan-pill:hover {
+  background: #0a5850;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(11, 102, 93, 0.34);
+}
+
+body[data-page="parent"] .current-plan .resume-plan-pill:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 16px rgba(11, 102, 93, 0.26);
+}
+
+body[data-page="parent"] .current-plan .resume-plan-pill:focus-visible {
+  outline: 3px solid rgba(11, 102, 93, 0.35);
+  outline-offset: 3px;
+}
+
+body[data-page="parent"] .current-plan .resume-plan-pill i,
+body[data-page="parent"] .current-plan .resume-plan-pill svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 2.4;
+}
+
+body[data-page="parent"] .current-plan .resume-plan-pill[hidden] {
+  display: none;
 }

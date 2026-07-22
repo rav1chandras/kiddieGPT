@@ -321,7 +321,16 @@
 
     function parentDate(value) {
       if (!value) return "the end of the paid period";
-      return new Date(value).toLocaleDateString([], {
+      // A unix-seconds timestamp read as milliseconds lands in January 1970, and
+      // an unparseable one renders "Invalid Date" — neither belongs in front of
+      // a parent, so treat both as "no known date".
+      var raw = typeof value === "number" || /^\d+$/.test(String(value).trim())
+        ? Number(value) * 1000
+        : value;
+      var when = new Date(raw);
+      var stamp = when.getTime();
+      if (!Number.isFinite(stamp) || stamp < 86400000) return "the end of the paid period";
+      return when.toLocaleDateString([], {
         month: "long",
         day: "numeric",
         year: "numeric"
@@ -518,18 +527,19 @@
         panel.classList.toggle("active", active);
         panel.classList.toggle("is-active", active);
       });
+      // The kicker ("Family overview" / "Family workspace") repeated what the
+      // sidebar already said, so each page is just title + subtitle now. Support
+      // took over the heading its own screen used to duplicate below the fold.
       var pageCopy = {
-        overview: ["Family overview", "Good evening, " + ((formValue("parentName") || "there").split(" ")[0]) + "", "Here is the latest on your child's learning journey."],
-        subscription: ["Family workspace", "Manage subscription", "Billing, access, and renewals in one place."],
-        support: ["Family workspace", "Help for your family", "Password, profile changes, and privacy requests all live here."]
+        overview: ["Good evening, " + ((formValue("parentName") || "there").split(" ")[0]) + "", "Here is the latest on your child's learning journey."],
+        subscription: ["Manage subscription", "Billing, access, and renewals in one place."],
+        support: ["Account help", "Password, profile changes, and privacy requests all live here."]
       }[name];
       if (pageCopy) {
-        var kicker = document.getElementById("live-page-kicker");
         var title = document.getElementById("live-page-title");
         var subtitle = document.getElementById("live-page-subtitle");
-        if (kicker) kicker.textContent = pageCopy[0];
-        if (title) title.textContent = pageCopy[1];
-        if (subtitle) subtitle.textContent = pageCopy[2];
+        if (title) title.textContent = pageCopy[0];
+        if (subtitle) subtitle.textContent = pageCopy[1];
       }
       if (name === "overview" || name === "progress") { loadProgress(); }
       if (name === "support") { loadSupport(); }
@@ -1558,10 +1568,46 @@
         if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = onStripeTrial()
           ? ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Keep your free trial, then switch to yearly billing when it ends.")
           : ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Get a full year of access with your unused monthly time carried over.");
-        if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = onStripeTrial()
-          ? "No charge today"
-          : "+" + tileOffer.bonusMonths + " bonus month" + (tileOffer.bonusMonths === 1 ? "" : "s");
-        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = onStripeTrial() ? "Starts " + trialEndsText() : "No double billing";
+        // "+0 bonus months" reads as a downgrade. With no bonus configured, sell
+        // the reason to upgrade instead: the money saved against paying monthly.
+        if (upgradeYearlyBonus) {
+          var bonusPill = onStripeTrial()
+            ? { icon: "gift", text: "No charge today" }
+            : tileOffer.bonusMonths > 0
+            ? { icon: "gift", text: "+" + tileOffer.bonusMonths + " bonus month" + (tileOffer.bonusMonths === 1 ? "" : "s") }
+            : tileOffer.annualSavings > 0
+            ? { icon: "piggy-bank", text: "Save $" + moneyStr(tileOffer.annualSavings) + " a year" }
+            : { icon: "calendar-check", text: "One payment, all year" };
+          upgradeYearlyBonus.textContent = bonusPill.text;
+          // lucide swaps <i data-lucide> for an <svg> on first render, so put a
+          // fresh <i> back rather than trying to retarget the old element.
+          var bonusHost = upgradeYearlyBonus.parentNode;
+          var bonusIcon = bonusHost && bonusHost.firstElementChild;
+          if (bonusHost && bonusIcon !== upgradeYearlyBonus) {
+            var freshIcon = document.createElement("i");
+            freshIcon.setAttribute("data-lucide", bonusPill.icon);
+            if (bonusIcon) bonusHost.replaceChild(freshIcon, bonusIcon);
+            else bonusHost.insertBefore(freshIcon, upgradeYearlyBonus);
+          }
+        }
+        // "No double billing" answered a worry instead of giving a reason to
+        // upgrade. Reassurance belongs in the fine print; this slot sells.
+        if (upgradeYearlyBillingNote) {
+          var billingPill = onStripeTrial()
+            ? { icon: "shield-check", text: "Starts " + trialEndsText() }
+            : tileOffer.freeMonths >= 1
+            ? { icon: "sparkles", text: tileOffer.freeMonths + " months free vs monthly" }
+            : { icon: "lock", text: "Price locked for 12 months" };
+          upgradeYearlyBillingNote.textContent = billingPill.text;
+          var billingHost = upgradeYearlyBillingNote.parentNode;
+          var billingIcon = billingHost && billingHost.firstElementChild;
+          if (billingHost && billingIcon !== upgradeYearlyBillingNote) {
+            var freshBillingIcon = document.createElement("i");
+            freshBillingIcon.setAttribute("data-lucide", billingPill.icon);
+            if (billingIcon) billingHost.replaceChild(freshBillingIcon, billingIcon);
+            else billingHost.insertBefore(freshBillingIcon, upgradeYearlyBillingNote);
+          }
+        }
         if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = onStripeTrial()
           ? "Choose yearly billing<i data-lucide='arrow-up-right'></i>"
           : "Upgrade to yearly<i data-lucide='arrow-up-right'></i>";
@@ -1596,9 +1642,13 @@
           ? "Cancellation scheduled: your child keeps extension access until " + parentDate(cancellationAccessUntil) + "."
           : retentionOfferAccepted
           ? "$" + cancellationPromoConfig().amountOff + " off will apply automatically to the next invoice."
+          // The upgrade pitch lives on the yearly tile now; repeating it on the
+          // current-plan card sold the same thing twice.
           : plan.key === "monthly"
-          ? "Upgrade to yearly and get 3 bonus months. Monthly renewal is cancelled at period end, so the paid month is honored."
+          ? ""
           : "Your yearly package is active. Child profiles and extension access stay unlocked.";
+        // An empty <p> still occupies its margins, leaving a gap above the pill.
+        currentPackageNote.hidden = !currentPackageNote.textContent;
       }
       if (upgradeYearly) {
         upgradeYearly.classList.add("hidden");
@@ -2567,8 +2617,19 @@
         ? configuredPrice
         : upgradePrice > 0 ? upgradePrice : base;
       var effectiveOff = base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0;
+      // What a year on this plan costs versus twelve monthly charges — the
+      // headline reason to upgrade when no bonus months are configured.
+      var monthlyAmount = Number((pricing.monthly || {}).amount || 0);
+      var annualSavings = monthlyAmount > 0 && price > 0
+        ? Math.max(0, Math.round((monthlyAmount * 12 - price) * 100) / 100)
+        : 0;
+      // The same saving expressed as months — "5 months free" lands harder than
+      // a dollar figure. Floored, so the claim is never larger than the truth.
+      var freeMonths = monthlyAmount > 0 ? Math.floor(annualSavings / monthlyAmount) : 0;
       return {
+        freeMonths: freeMonths,
         bonusMonths: Math.max(0, Number(up.bonusMonths || 0)),
+        annualSavings: annualSavings,
         discountAmount: usesPlanPromotion ? effectiveOff : off,
         basePrice: base,
         price: price,
@@ -5212,7 +5273,7 @@
       renderIcons();
     }
 
-    // ---- Support helpdesk (grouped chat by parent) ----------------------
+    // ---- Support helpdesk (email tickets grouped by parent) -------------
     var supportConvos = [];
     var selectedSupportEmail = "";
     var supportFilter = "unread";
@@ -5220,6 +5281,93 @@
     var supportTopic = "all";
     var supportFrom = "";
     var supportTo = "";
+    var supportMockMode = false;
+
+    function demoSupportConversations() {
+      var now = Date.now();
+      return [
+        {
+          ticketId: "KG-1042", email: "maya.patel@gmail.com", name: "Maya Patel", familyId: "fam_demo_parent",
+          subject: "I was charged after changing my plan", categories: ["Billing"], priority: "High", open: true, lastFrom: "parent",
+          mock: true,
+          lastAt: new Date(now - 2 * 3600000).toISOString(), lastMessage: "Can you confirm which plan is active now?",
+          turns: [
+            { from: "parent", message: "Hi, I upgraded to yearly but I am not sure which plan is active now. Can you check?", at: new Date(now - 3 * 3600000).toISOString(), category: "Billing" },
+            { from: "admin", message: "Hi Maya, I’m checking the subscription record and will confirm the active plan for you.", at: new Date(now - 2.5 * 3600000).toISOString() },
+            { from: "parent", message: "Thanks. Can you also confirm whether my unused monthly days were carried over?", at: new Date(now - 2 * 3600000).toISOString(), category: "Billing" }
+          ]
+        },
+        {
+          ticketId: "KG-1041", email: "jordan.lee@yahoo.com", name: "Jordan Lee", familyId: "fam_demo_jordan",
+          subject: "Extension is ready to install", categories: ["Extension"], priority: "Normal", open: true, lastFrom: "admin",
+          mock: true,
+          lastAt: new Date(now - 20 * 3600000).toISOString(), lastMessage: "You can install it from the Chrome Web Store here.",
+          turns: [
+            { from: "parent", message: "We paid for the Family plan. Where do we install the extension?", at: new Date(now - 25 * 3600000).toISOString(), category: "Extension" },
+            { from: "admin", message: "You can install it from the Chrome Web Store here. Once installed, sign in with this parent email.", at: new Date(now - 20 * 3600000).toISOString() }
+          ]
+        },
+        {
+          ticketId: "KG-1038", email: "priya.shah@outlook.com", name: "Priya Shah", familyId: "fam_demo_priya",
+          subject: "Password reset completed", categories: ["Login"], priority: "Normal", open: false, lastFrom: "admin",
+          mock: true,
+          lastAt: new Date(now - 3 * 86400000).toISOString(), lastMessage: "Glad you’re back in. Reply here if anything else comes up.",
+          turns: [
+            { from: "parent", message: "The password reset code never arrived.", at: new Date(now - 4 * 86400000).toISOString(), category: "Login" },
+            { from: "admin", message: "I re-sent the verification email. Glad you’re back in. Reply here if anything else comes up.", at: new Date(now - 3 * 86400000).toISOString() }
+          ]
+        }
+      ];
+    }
+
+    function normaliseSupportConversation(conversation, index) {
+      var c = Object.assign({}, conversation || {});
+      c.ticketId = c.ticketId || "KG-" + String(1042 - index).padStart(4, "0");
+      c.subject = c.subject || ((c.categories || ["Support"])[0] + " question");
+      c.priority = c.priority || "Normal";
+      c.turns = Array.isArray(c.turns) ? c.turns : [];
+      c.lastFrom = c.lastFrom || ((c.turns[c.turns.length - 1] || {}).from || "parent");
+      c.open = Boolean(c.open);
+      c.mock = Boolean(c.mock);
+      return c;
+    }
+
+    function selectedSupportConversation() {
+      return supportConvos.find(function (c) { return c.email === selectedSupportEmail; }) || null;
+    }
+
+    function supportStatus(c) {
+      if (!c.open) return "resolved";
+      return c.lastFrom === "admin" ? "waiting" : "open";
+    }
+
+    function supportStatusLabel(c) {
+      var status = supportStatus(c);
+      return status === "resolved" ? "Resolved" : status === "waiting" ? "Waiting on parent" : "Needs reply";
+    }
+
+    function updateSupportSummary() {
+      var needsReply = supportConvos.filter(function (c) { return supportStatus(c) === "open"; }).length;
+      var waiting = supportConvos.filter(function (c) { return supportStatus(c) === "waiting"; }).length;
+      ["support-open-count", "support-needs-reply-count"].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.textContent = needsReply;
+      });
+      ["support-waiting-count", "support-waiting-pill-count"].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.textContent = waiting;
+      });
+      updateSupportTopicCounts();
+    }
+    function updateSupportTopicCounts() {
+      var topicIds = { all: "all", Billing: "billing", Login: "login", "Math tool": "math", Extension: "extension", Other: "other" };
+      Object.keys(topicIds).forEach(function (topic) {
+        var count = supportConvos.filter(function (c) {
+          if (supportStatus(c) !== "open") return false;
+          return topic === "all" || (c.categories || []).indexOf(topic) >= 0;
+        }).length;
+        var el = document.getElementById("support-topic-count-" + topicIds[topic]);
+        if (el) el.textContent = count;
+      });
+    }
     function setSupportBadge(count) {
       var badge = document.getElementById("support-nav-badge");
       if (!badge) return;
@@ -5231,7 +5379,9 @@
       var fromT = supportFrom ? new Date(supportFrom + "T00:00:00").getTime() : 0;
       var toT = supportTo ? new Date(supportTo + "T23:59:59").getTime() : 0;
       return supportConvos.filter(function (c) {
-        if (supportFilter === "unread" && !c.open) return false;
+        if (supportFilter === "unread" && supportStatus(c) !== "open") return false;
+        if (supportFilter === "waiting" && supportStatus(c) !== "waiting") return false;
+        if (supportFilter === "resolved" && supportStatus(c) !== "resolved") return false;
         if (q && (c.name || "").toLowerCase().indexOf(q) < 0 && (c.email || "").toLowerCase().indexOf(q) < 0) return false;
         if (supportTopic !== "all" && (c.categories || []).indexOf(supportTopic) < 0) return false;
         var last = c.lastAt ? new Date(c.lastAt).getTime() : 0;
@@ -5243,27 +5393,53 @@
     async function loadSupportConversations() {
       try {
         var data = await fetchJson("/api/admin/support/conversations");
-        supportConvos = data.conversations || [];
-        setSupportBadge(data.openCount || 0);
+        var conversations = Array.isArray(data.conversations) ? data.conversations : [];
+        var shouldShowLocalPreview = window.location.hostname === "localhost" && !conversations.some(function (c) { return c.open; });
+        supportMockMode = !conversations.length || shouldShowLocalPreview;
+        supportConvos = (supportMockMode ? conversations.concat(demoSupportConversations()) : conversations).map(normaliseSupportConversation);
+        updateSupportSummary();
+        setSupportBadge(supportConvos.filter(function (c) { return supportStatus(c) === "open"; }).length);
         var visible = filteredSupportConvos();
         if (selectedSupportEmail && !visible.some(function (c) { return c.email === selectedSupportEmail; })) selectedSupportEmail = "";
         if (!selectedSupportEmail && visible.length) selectedSupportEmail = visible[0].email;
         renderSupportList();
         renderSupportConversation();
-      } catch (error) { /* ignore */ }
+      } catch (error) {
+        supportMockMode = true;
+        supportConvos = demoSupportConversations().map(normaliseSupportConversation);
+        updateSupportSummary();
+        setSupportBadge(supportConvos.filter(function (c) { return supportStatus(c) === "open"; }).length);
+        if (!selectedSupportEmail) selectedSupportEmail = supportConvos[0].email;
+        renderSupportList();
+        renderSupportConversation();
+      }
     }
     function renderSupportList() {
       var list = document.getElementById("support-list");
       if (!list) return;
       var visible = filteredSupportConvos();
       list.innerHTML = visible.length ? visible.map(function (c) {
-        var preview = (c.lastFrom === "admin" ? "You: " : "") + (c.lastMessage || "");
-        return "<div class='support-list-item" + (c.email === selectedSupportEmail ? " active" : "") + "' data-support-email='" + text(c.email) + "'>" +
-          "<div class='sli-top'><span class='name'>" + text(c.name || c.email) + "</span>" + (c.open ? "<span class='dot' title='Open'></span>" : "") + "</div>" +
-          "<div class='email'>" + text(c.email) + "</div>" +
-          "<div class='preview'>" + text(preview) + "</div>" +
-        "</div>";
-      }).join("") : "<div class='support-list-empty'>" + (supportFilter === "unread" ? "No unread messages." : "No messages yet.") + "</div>";
+        var status = supportStatus(c);
+        var preview = c.lastMessage || "No message preview";
+        var initials = (c.name || c.email || "P").split(/\s+/).map(function (part) { return part.charAt(0); }).join("").slice(0, 2).toUpperCase();
+        return "<button type='button' class='support-list-item" + (c.email === selectedSupportEmail ? " active" : "") + "' data-support-email='" + escapeHtml(c.email) + "'>" +
+          "<span class='support-ticket-avatar " + (status === "open" ? "needs-reply" : "") + "'>" + escapeHtml(initials) + "</span>" +
+          "<span class='support-ticket-copy'><span class='sli-top'><strong class='name'>" + escapeHtml(c.name || c.email) + "</strong><small class='ticket-time'>" + escapeHtml(relativeTicketTime(c.lastAt)) + "</small></span>" +
+          "<span class='support-ticket-subject'>" + escapeHtml(c.subject) + "</span><span class='email'>" + escapeHtml(c.email) + "</span><span class='preview'>" + escapeHtml(preview) + "</span></span>" +
+          "<span class='support-ticket-status " + status + "'>" + escapeHtml(status === "open" ? "Reply" : status === "waiting" ? "Waiting" : "Done") + "</span>" +
+        "</button>";
+      }).join("") : "<div class='support-list-empty'><i data-lucide='inbox'></i><span>" + (supportFilter === "unread" ? "No tickets need a reply." : "No tickets match these filters.") + "</span></div>";
+      renderIcons();
+    }
+
+    function relativeTicketTime(iso) {
+      var t = iso ? new Date(iso).getTime() : 0;
+      if (!t) return "";
+      var hours = Math.max(0, Math.floor((Date.now() - t) / 3600000));
+      if (hours < 1) return "now";
+      if (hours < 24) return hours + "h";
+      var days = Math.floor(hours / 24);
+      return days + "d";
     }
     function renderSupportConversation() {
       var pane = document.getElementById("support-conversation");
@@ -5274,21 +5450,33 @@
         renderIcons();
         return;
       }
-      var bubbles = c.turns.map(function (t) {
-        var cat = (t.from === "parent" && t.category) ? "<span class='cat'>" + text(t.category) + "</span>" : "";
-        return "<div class='support-bubble " + (t.from === "admin" ? "admin" : "parent") + "'>" + cat + text(t.message) + "<div class='meta'>" + rowDateTime(t.at) + "</div></div>";
+      var status = supportStatus(c);
+      var category = (c.categories || ["Other"])[0] || "Other";
+      var family = (familiesCache || []).find(function (item) { return item.id === c.familyId || item.email === c.email; });
+      var turns = c.turns.map(function (t) {
+        var isAdmin = t.from === "admin";
+        var sender = isAdmin ? "KiddieGPT Support" : (c.name || c.email);
+        var recipient = isAdmin ? c.email : "support@kiddiegpt.com";
+        return "<article class='support-email-message " + (isAdmin ? "admin" : "parent") + "'><div class='support-email-message-head'><span class='support-message-avatar " + (isAdmin ? "admin" : "parent") + "'>" + (isAdmin ? "K" : escapeHtml((c.name || "P").charAt(0).toUpperCase())) + "</span><span><strong>" + escapeHtml(sender) + "</strong><small>" + escapeHtml(recipient) + " · " + escapeHtml(rowDateTime(t.at)) + "</small></span><button class='support-message-more' type='button' aria-label='More email actions'><i data-lucide='more-horizontal'></i></button></div><p>" + escapeHtml(t.message) + "</p></article>";
       }).join("");
+      var quickReply = category === "Billing" ? "Thanks for reaching out. I’m reviewing your subscription and payment history now and will follow up with the exact next step." : category === "Extension" ? "Thanks for reaching out. I’ll help you get the KiddieGPT extension installed and signed in." : "Thanks for reaching out. I’m looking into this now and will follow up shortly.";
       pane.innerHTML =
-        "<div class='support-conv-head'><div><strong>" + text(c.name || c.email) + "</strong><small>" + text(c.email) + "</small></div>" +
-          "<button type='button' class='table-action' id='support-resolve-btn'>" + (c.open ? "Mark resolved" : "Reopen") + "</button></div>" +
-        "<div class='support-messages' id='support-messages'>" + bubbles + "</div>" +
-        "<div class='support-composer'><textarea id='support-reply-text' placeholder='Type a reply — sent to the parent by email…'></textarea><button type='button' class='button primary' id='support-reply-btn'>Send</button></div>";
+        "<div class='support-conv-head'><div class='support-conv-title'><div class='support-ticket-id'>" + escapeHtml(c.ticketId) + " · " + escapeHtml(category) + "</div><h3>" + escapeHtml(c.subject) + "</h3><p>" + escapeHtml(c.name || c.email) + " <span>·</span> " + escapeHtml(c.email) + "</p></div><div class='support-conv-actions'><span class='support-detail-status " + status + "'><i data-lucide='" + (status === "resolved" ? "check-circle-2" : status === "waiting" ? "clock-3" : "circle-dot") + "'></i>" + escapeHtml(supportStatusLabel(c)) + "</span><button type='button' class='table-action' id='support-resolve-btn'>" + (c.open ? "Resolve ticket" : "Reopen ticket") + "</button></div></div>" +
+        "<div class='support-ticket-body'><div class='support-email-column'><div class='support-email-thread' id='support-messages'>" + turns + "</div><div class='support-composer'><div class='support-quick-replies'><span>Saved replies</span><button type='button' data-support-quick-reply='" + escapeHtml(quickReply) + "'>" + escapeHtml(category === "Billing" ? "Billing check-in" : category === "Extension" ? "Install help" : "First reply") + "</button><button type='button' data-support-quick-reply='Could you reply with the parent email and a screenshot or exact error message? That will help me check this quickly.'>Need more details</button><button type='button' data-support-quick-reply='Please sign out of the extension and sign back in with the parent email used for your KiddieGPT account. Reply here if the issue continues.'>Sign-in steps</button><button type='button' data-support-quick-reply='I’ve completed the requested update. Please reply here if you need anything else.'>Resolution follow-up</button></div><textarea id='support-reply-text' placeholder='Write an email reply to " + escapeHtml(c.name || "the parent") + "…'></textarea><div class='support-composer-foot'><small><i data-lucide='mail'></i>Reply will be sent by email</small><button type='button' class='button primary' id='support-reply-btn'><i data-lucide='send'></i>Send reply</button></div></div></div>" +
+        "<aside class='support-context'><div class='support-context-head'><p class='eyebrow'>Family context</p><button type='button' class='text-button'>Open family</button></div><div class='support-family-card'><span class='support-family-avatar'>" + escapeHtml((c.name || "P").split(/\s+/).map(function (part) { return part.charAt(0); }).join("").slice(0, 2).toUpperCase()) + "</span><strong>" + escapeHtml(c.name || "Parent") + "</strong><small>" + escapeHtml(c.email) + "</small></div><div class='support-context-facts'><div><span>Plan</span><strong>" + escapeHtml(family ? (family.plan || "Family Monthly") : "Family Monthly") + "</strong></div><div><span>Access</span><strong class='support-access-ok'>Unlocked</strong></div><div><span>Students</span><strong>" + (family && family.children ? family.children.length : "1") + " profile</strong></div></div><div class='support-context-section'><p class='eyebrow'>Ticket details</p><div class='support-context-line'><span>Category</span><strong>" + escapeHtml(category) + "</strong></div><div class='support-context-line'><span>Priority</span><strong class='support-priority " + (c.priority === "High" ? "high" : "") + "'>" + escapeHtml(c.priority) + "</strong></div><div class='support-context-line'><span>Channel</span><strong>Email</strong></div></div><div class='support-context-section'><p class='eyebrow'>Internal note</p><textarea class='support-internal-note' placeholder='Only visible to your team…'></textarea><button type='button' class='table-action support-note-button'>Save note</button></div></aside></div>";
       var msgs = document.getElementById("support-messages");
       if (msgs) msgs.scrollTop = msgs.scrollHeight;
       var replyBtn = document.getElementById("support-reply-btn");
       if (replyBtn) replyBtn.addEventListener("click", function () { sendSupportReply(c.email); });
       var resolveBtn = document.getElementById("support-resolve-btn");
       if (resolveBtn) resolveBtn.addEventListener("click", function () { resolveSupportConversation(c.email); });
+      Array.prototype.forEach.call(pane.querySelectorAll("[data-support-quick-reply]"), function (button) {
+        button.addEventListener("click", function () {
+          var reply = document.getElementById("support-reply-text");
+          if (reply) { reply.value = button.dataset.supportQuickReply; reply.focus(); }
+        });
+      });
+      renderIcons();
     }
     async function sendSupportReply(email) {
       var t = document.getElementById("support-reply-text");
@@ -5297,6 +5485,21 @@
       var btn = document.getElementById("support-reply-btn");
       if (btn) btn.disabled = true;
       try {
+        if (selectedSupportConversation() && selectedSupportConversation().mock) {
+          var mockConversation = supportConvos.find(function (c) { return c.email === email; });
+          if (mockConversation) {
+            mockConversation.turns.push({ from: "admin", message: msg, at: new Date().toISOString() });
+            mockConversation.lastFrom = "admin";
+            mockConversation.lastAt = new Date().toISOString();
+            mockConversation.lastMessage = msg;
+          }
+          if (t) t.value = "";
+          updateSupportSummary();
+          setSupportBadge(supportConvos.filter(function (c) { return supportStatus(c) === "open"; }).length);
+          renderSupportList();
+          renderSupportConversation();
+          return;
+        }
         var replyResult = await fetchJson("/api/admin/support/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email, message: msg }) });
         if (t) t.value = "";
         await loadSupportConversations();
@@ -5311,6 +5514,19 @@
     }
     async function resolveSupportConversation(email) {
       try {
+        if (selectedSupportConversation() && selectedSupportConversation().mock) {
+          var mockConversation = supportConvos.find(function (c) { return c.email === email; });
+          if (mockConversation) {
+            mockConversation.open = !mockConversation.open;
+            mockConversation.lastFrom = mockConversation.open ? "parent" : "admin";
+            mockConversation.lastAt = new Date().toISOString();
+          }
+          updateSupportSummary();
+          setSupportBadge(supportConvos.filter(function (c) { return supportStatus(c) === "open"; }).length);
+          renderSupportList();
+          renderSupportConversation();
+          return;
+        }
         await fetchJson("/api/admin/support/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) });
         await loadSupportConversations();
       } catch (error) { /* ignore */ }
@@ -6074,12 +6290,28 @@
       supportSearch = supportSearchEl.value;
       renderSupportList();
     });
-    var supportTopicEl = document.getElementById("support-topic-filter");
-    if (supportTopicEl) supportTopicEl.addEventListener("change", function () { supportTopic = supportTopicEl.value; renderSupportList(); });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-support-topic]"), function (pill) {
+      pill.addEventListener("click", function () {
+        supportTopic = pill.dataset.supportTopic;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-support-topic]"), function (p) {
+          p.classList.toggle("active", p === pill);
+        });
+        selectedSupportEmail = "";
+        var visible = filteredSupportConvos();
+        if (visible.length) selectedSupportEmail = visible[0].email;
+        renderSupportList();
+        renderSupportConversation();
+      });
+    });
     var supportFromEl = document.getElementById("support-from");
     if (supportFromEl) supportFromEl.addEventListener("change", function () { supportFrom = supportFromEl.value; renderSupportList(); });
     var supportToEl = document.getElementById("support-to");
     if (supportToEl) supportToEl.addEventListener("change", function () { supportTo = supportToEl.value; renderSupportList(); });
+    var supportRefreshButton = document.getElementById("support-refresh");
+    if (supportRefreshButton) supportRefreshButton.addEventListener("click", function () {
+      supportRefreshButton.classList.add("is-loading");
+      loadSupportConversations().finally(function () { supportRefreshButton.classList.remove("is-loading"); });
+    });
 
     document.addEventListener("click", async function (event) {
       var exportButton = event.target.closest ? event.target.closest("[data-export-table]") : null;

@@ -1342,6 +1342,15 @@ function unixToIso(timestamp) {
   return seconds ? new Date(seconds * 1000).toISOString() : "";
 }
 
+// Accepts either a unix-seconds timestamp or a date string and normalises to
+// ISO. Anything that does not parse comes back empty rather than "Invalid Date".
+function isoDateOrEmpty(value) {
+  if (!value) return "";
+  if (typeof value === "number" || /^\d+$/.test(String(value).trim())) return unixToIso(value);
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : "";
+}
+
 function cancellationStillActive(family) {
   if (family?.subscriptionStatus !== "cancel_scheduled") return false;
   const accessUntil = new Date(family.cancelAccessUntil || family.cancellationAccessUntil || 0).getTime();
@@ -4583,7 +4592,10 @@ app.get("/api/entitlements/me", (req, res) => {
     createdAt: family.createdAt || "",
     paymentStatus: family.paymentStatus || "",
     overrideUntil: family.entitlementOverrideUntil || "",
-    renewalAt: (family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) || family.currentPeriodEnd || family.nextRenewalAt || "",
+    // yearlyNextRenewalAt is unix seconds (straight off Stripe) while the other
+    // two are ISO strings. Emitting the raw mix made the client do
+    // new Date(1900000000) -> "January 23, 1970"; always hand back ISO.
+    renewalAt: isoDateOrEmpty((family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) || family.currentPeriodEnd || family.nextRenewalAt || ""),
     cancelAccessUntil: family.cancelAccessUntil || family.cancellationAccessUntil || "",
     cancellationStatus: family.cancellationStatus || "",
     cancelReason: family.cancelReason || "",

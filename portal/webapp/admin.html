@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=168">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=172">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row .expand-cell { width: 26px; color: #6a827d; }
@@ -727,27 +727,33 @@
       </section>
 
       <section class="admin-view" data-admin-panel="support">
-        <div class="support-shell">
-          <aside class="support-sidebar">
-            <div class="support-filters">
-              <div class="support-pills">
-                <button type="button" class="support-pill active" data-support-filter="unread">Unread</button>
-                <button type="button" class="support-pill" data-support-filter="all">All</button>
-              </div>
-              <input type="search" id="support-search" placeholder="Search parent name or email">
-              <select id="support-topic-filter" aria-label="Filter by topic">
-                <option value="all">All topics</option>
-                <option value="Billing">Billing</option>
-                <option value="Login">Login</option>
-                <option value="Math tool">Math tool</option>
-                <option value="Extension">Extension</option>
-                <option value="Other">Other</option>
-              </select>
-              <div class="support-date-range">
-                <input type="date" id="support-from" aria-label="From date">
-                <input type="date" id="support-to" aria-label="To date">
-              </div>
+        <div class="support-toolbar">
+          <div class="support-toolbar-main">
+            <div class="support-toolbar-title"><p class="eyebrow">Inbox</p><h2>Tickets</h2></div>
+            <div class="support-pills" role="tablist" aria-label="Ticket status">
+              <button type="button" class="support-pill active" data-support-filter="unread">Needs reply <span id="support-needs-reply-count">3</span></button>
+              <button type="button" class="support-pill" data-support-filter="waiting">Waiting <span id="support-waiting-pill-count">1</span></button>
+              <button type="button" class="support-pill" data-support-filter="resolved">Resolved</button>
+              <button type="button" class="support-pill" data-support-filter="all">All</button>
             </div>
+            <label class="support-search-field"><i data-lucide="search"></i><input type="search" id="support-search" placeholder="Search tickets, parents, email"></label>
+            <div class="support-date-range">
+              <input type="date" id="support-from" aria-label="From date">
+              <input type="date" id="support-to" aria-label="To date">
+            </div>
+            <button type="button" class="icon-button" id="support-refresh" aria-label="Refresh support tickets" title="Refresh tickets"><i data-lucide="refresh-cw"></i></button>
+          </div>
+          <div class="support-topic-pills" role="tablist" aria-label="Ticket topics">
+            <button type="button" class="support-topic-pill active" data-support-topic="all">All topics <span id="support-topic-count-all">0</span></button>
+            <button type="button" class="support-topic-pill" data-support-topic="Billing">Billing <span id="support-topic-count-billing">0</span></button>
+            <button type="button" class="support-topic-pill" data-support-topic="Login">Login <span id="support-topic-count-login">0</span></button>
+            <button type="button" class="support-topic-pill" data-support-topic="Math tool">Math tool <span id="support-topic-count-math">0</span></button>
+            <button type="button" class="support-topic-pill" data-support-topic="Extension">Extension <span id="support-topic-count-extension">0</span></button>
+            <button type="button" class="support-topic-pill" data-support-topic="Other">Other <span id="support-topic-count-other">0</span></button>
+          </div>
+        </div>
+        <div class="support-shell support-email-shell">
+          <aside class="support-sidebar">
             <div class="support-list" id="support-list">
               <div class="support-list-empty">No messages yet.</div>
             </div>
@@ -859,6 +865,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=168"></script>
+  <script src="/webapp/webapp.js?v=180"></script>
 </body>
 </html>

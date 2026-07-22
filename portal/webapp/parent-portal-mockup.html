@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT Family Overview Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/parent-portal-mockup.css">
+</head>
+<body class="parent-mockup">
+  <div class="mockup-shell">
+    <aside class="mockup-sidebar" aria-label="Family navigation">
+      <a class="mockup-brand" href="/index.html">
+        <span class="brand-mark"><img src="/icons/logo-mascot.png" alt=""></span>
+        <span>
+          <strong>KiddieGPT</strong>
+          <small>Family workspace</small>
+        </span>
+      </a>
+
+      <div class="family-switcher">
+        <span class="avatar avatar-parent">MP</span>
+        <span class="family-switcher-copy">
+          <small>Signed in as</small>
+          <strong>Maya Patel</strong>
+        </span>
+        <i data-lucide="chevrons-up-down" aria-hidden="true"></i>
+      </div>
+
+      <nav class="mockup-nav" aria-label="Parent portal sections">
+        <button class="nav-item is-active" type="button" data-screen-target="overview">
+          <i data-lucide="layout-dashboard" aria-hidden="true"></i><span>Overview</span>
+        </button>
+        <button class="nav-item" type="button" data-screen-target="subscription">
+          <i data-lucide="credit-card" aria-hidden="true"></i><span>Subscription</span>
+        </button>
+        <button class="nav-item" type="button" data-screen-target="support">
+          <i data-lucide="life-buoy" aria-hidden="true"></i><span>Support</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-plan-stack">
+        <div class="sidebar-plan-card">
+          <div class="sidebar-plan-label"><span>Current plan</span><span class="sidebar-status"><span class="status-dot"></span>Active</span></div>
+          <strong>Family Monthly</strong>
+          <div class="sidebar-plan-price"><b>$30</b><span>/ month</span></div>
+          <small>Renews Aug 19, 2026</small>
+        </div>
+        <button class="sidebar-upgrade-card" type="button" data-screen-target="subscription">
+          <span class="sidebar-upgrade-top"><span>Best value</span><i data-lucide="arrow-up-right" aria-hidden="true"></i></span>
+          <strong>Save with yearly</strong>
+          <small>$149/year + 3 bonus months</small>
+        </button>
+      </div>
+
+      <div class="sidebar-bottom">
+        <button class="sidebar-link" type="button" data-screen-target="support">
+          <i data-lucide="circle-help" aria-hidden="true"></i>Help center
+        </button>
+        <a class="sidebar-link" href="/index.html">
+          <i data-lucide="log-out" aria-hidden="true"></i>Sign out
+        </a>
+      </div>
+    </aside>
+
+    <main class="mockup-main">
+      <header class="mockup-header">
+        <div>
+          <p class="page-kicker">Family overview</p>
+          <h1 data-page-title>Good evening, Maya</h1>
+          <p class="page-subtitle" data-page-subtitle>Here is the latest on Ava's learning journey.</p>
+        </div>
+        <div class="header-actions">
+          <span class="demo-pill"><span class="status-dot"></span>Demo account</span>
+          <button class="icon-button" type="button" aria-label="Notifications" title="Notifications">
+            <i data-lucide="bell" aria-hidden="true"></i><span class="notification-dot"></span>
+          </button>
+          <span class="avatar avatar-parent avatar-large">MP</span>
+        </div>
+      </header>
+
+      <section class="screen is-active" data-screen="overview">
+        <div class="metric-row" aria-label="Family summary">
+          <article class="metric-card">
+            <span class="metric-icon mint"><i data-lucide="users-round" aria-hidden="true"></i></span>
+            <span class="metric-copy"><small>Students</small><strong data-student-count>1 active profile</strong></span>
+            <i class="metric-arrow" data-lucide="arrow-up-right" aria-hidden="true"></i>
+          </article>
+          <article class="metric-card">
+            <span class="metric-icon yellow"><i data-lucide="flame" aria-hidden="true"></i></span>
+            <span class="metric-copy"><small>Learning streak</small><strong>4 days</strong></span>
+            <span class="metric-trend">+2 this week</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-icon blue"><i data-lucide="calendar-clock" aria-hidden="true"></i></span>
+            <span class="metric-copy"><small>Next renewal</small><strong>Aug 19, 2026</strong></span>
+            <span class="metric-trend quiet">Monthly plan</span>
+          </article>
+        </div>
+
+        <div class="overview-grid">
+          <section class="surface plan-surface">
+            <div class="surface-heading profile-surface-heading">
+              <div>
+                <p class="section-kicker">Students</p>
+                <h2>Learning profiles</h2>
+              </div>
+              <div class="profile-controls">
+                <span class="profile-count" data-profile-count>1 of 3</span>
+                <button class="icon-button small" type="button" data-profile-prev aria-label="Previous student" title="Previous student" disabled><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                <button class="icon-button small" type="button" data-profile-next aria-label="Next student" title="Next student" disabled><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+                <button class="add-profile-button" type="button" data-open-profile-modal aria-label="Add student profile" title="Add student profile"><i data-lucide="plus" aria-hidden="true"></i></button>
+              </div>
+            </div>
+
+            <div class="student-summary">
+              <span class="avatar avatar-student" data-profile-initials>AP</span>
+              <div class="student-summary-copy">
+                <strong data-profile-name>Ava Patel</strong>
+                <span data-profile-details>Grade 6 <b>•</b> Confident reader</span>
+              </div>
+              <span class="status-label" data-profile-status>On track</span>
+            </div>
+
+            <div class="student-plan-label"><span>Learning plan</span><span data-profile-goal-count>3 goals</span></div>
+            <div class="goal-list" data-profile-goals>
+              <div class="goal-row">
+                <span class="goal-check is-done"><i data-lucide="check" aria-hidden="true"></i></span>
+                <span class="goal-copy"><strong>Finish two science explanations</strong><small>Completed yesterday</small></span>
+                <span class="goal-state done">Done</span>
+              </div>
+              <div class="goal-row">
+                <span class="goal-check"><i data-lucide="book-open" aria-hidden="true"></i></span>
+                <span class="goal-copy"><strong>Practice fractions for 15 minutes</strong><small>Next up in Math Step Tutor</small></span>
+                <span class="goal-state">Today</span>
+              </div>
+              <div class="goal-row">
+                <span class="goal-check"><i data-lucide="message-circle" aria-hidden="true"></i></span>
+                <span class="goal-copy"><strong>Ask one thoughtful question</strong><small>Build curiosity through chat</small></span>
+                <span class="goal-state">This week</span>
+              </div>
+            </div>
+
+            <div class="reward-strip">
+              <span class="reward-icon"><i data-lucide="gift" aria-hidden="true"></i></span>
+              <span><small>Working toward</small><strong data-profile-reward>Movie night with Mom</strong></span>
+              <span class="reward-progress" data-profile-reward-progress>2 of 3 goals</span>
+            </div>
+          </section>
+
+          <section class="surface focus-surface">
+            <div class="surface-heading">
+              <div>
+                <p class="section-kicker">This week</p>
+                <h2>Progress snapshot</h2>
+              </div>
+              <button class="icon-button small" type="button" aria-label="More progress options" title="More progress options"><i data-lucide="more-horizontal" aria-hidden="true"></i></button>
+            </div>
+            <div class="progress-focus">
+              <div class="donut" aria-label="72 percent weekly goal completion"><span><strong>72%</strong><small>weekly goal</small></span></div>
+              <div class="focus-copy"><strong>Nice momentum</strong><p data-focus-message>Ava has completed 5 of 7 planned learning sessions.</p><span class="focus-note">One more session reaches this week's goal.</span></div>
+            </div>
+            <div class="mini-bars" aria-label="Weekly activity by day">
+              <span class="bar-day"><i style="height: 52%"></i><small>M</small></span>
+              <span class="bar-day"><i style="height: 76%"></i><small>T</small></span>
+              <span class="bar-day"><i style="height: 38%"></i><small>W</small></span>
+              <span class="bar-day"><i style="height: 90%"></i><small>T</small></span>
+              <span class="bar-day"><i style="height: 68%"></i><small>F</small></span>
+              <span class="bar-day"><i style="height: 22%"></i><small>S</small></span>
+              <span class="bar-day"><i class="empty" style="height: 12%"></i><small>S</small></span>
+            </div>
+            <div class="focus-footer"><span><i data-lucide="clock-3" aria-hidden="true"></i> 68 min learning time</span><span><i data-lucide="trending-up" aria-hidden="true"></i> 12% vs last week</span></div>
+            <div class="embedded-activity">
+              <div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>3 sessions</span></div>
+              <div class="activity-list">
+                <div class="activity-item"><span class="activity-icon green"><i data-lucide="calculator" aria-hidden="true"></i></span><span><strong>Math Step Tutor</strong><small>Fractions and equivalent numbers</small></span><time>Today, 4:20 PM</time></div>
+                <div class="activity-item"><span class="activity-icon violet"><i data-lucide="file-text" aria-hidden="true"></i></span><span><strong>PDF Explainer</strong><small>Read a chapter on ecosystems</small></span><time>Yesterday, 6:05 PM</time></div>
+                <div class="activity-item"><span class="activity-icon orange"><i data-lucide="lightbulb" aria-hidden="true"></i></span><span><strong>Ask &amp; Explain</strong><small>Why do shadows change length?</small></span><time>Mon, 5:41 PM</time></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="subscription">
+        <div class="screen-heading"><div><p class="page-kicker">Subscription</p><h2>Your family plan</h2><p>Manage access, billing, and the next renewal in one place.</p></div><span class="active-chip"><span class="status-dot"></span>Active</span></div>
+        <div class="subscription-grid"><section class="surface current-plan"><div class="plan-badge">Current package</div><h3>Family Monthly</h3><div class="plan-price"><strong>$30</strong><span> / month</span></div><p>Renews August 19, 2026</p><div class="plan-features"><span><i data-lucide="check" aria-hidden="true"></i>Up to 3 student profiles</span><span><i data-lucide="check" aria-hidden="true"></i>All learning tools</span><span><i data-lucide="check" aria-hidden="true"></i>Parent progress view</span></div></section><section class="surface upgrade-plan"><span class="best-value">Best value</span><h3>Family Yearly</h3><div class="plan-price"><strong>$149</strong><span> / year</span></div><p>Save more and receive 3 bonus months on upgrade.</p><button class="primary-button" type="button"><i data-lucide="arrow-up-right" aria-hidden="true"></i>Upgrade to yearly</button><small>Billing is handled securely by Stripe.</small></section></div>
+      </section>
+
+      <section class="screen" data-screen="support">
+        <div class="screen-heading"><div><p class="page-kicker">Support</p><h2>Account help</h2><p>Password, profile changes, and privacy requests all live here.</p></div></div>
+        <div class="support-grid"><section class="surface support-contact"><span class="support-icon"><i data-lucide="message-circle" aria-hidden="true"></i></span><h3>Send a message</h3><p>Our team usually replies within one business day.</p><button class="primary-button" type="button">Start a conversation <i data-lucide="arrow-right" aria-hidden="true"></i></button></section><section class="surface account-settings"><p class="section-kicker">Account settings</p><h3>Manage your account</h3><div class="account-setting-row"><span class="setting-icon"><i data-lucide="key-round" aria-hidden="true"></i></span><span><strong>Change password</strong><small>Update the password used to sign in.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row"><span class="setting-icon"><i data-lucide="mail" aria-hidden="true"></i></span><span><strong>Change email</strong><small>Keep login and extension access current.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row danger-setting"><span class="setting-icon"><i data-lucide="user-round-x" aria-hidden="true"></i></span><span><strong>Request account deletion</strong><small>We will review the request before closing access.</small></span><button class="text-button" type="button">Request <i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section></div>
+      </section>
+
+      <footer class="mockup-footer"><span><span class="status-dot"></span>Extension access is unlocked</span><span>Last synced just now</span><a href="/index.html">Back to current portal</a></footer>
+    </main>
+  </div>
+  <div class="modal-backdrop" id="profile-modal" hidden>
+    <div class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+      <button class="modal-close" type="button" data-close-profile-modal aria-label="Close add student dialog" title="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+      <p class="page-kicker">New student</p>
+      <h2 id="profile-modal-title">Build a learning profile</h2>
+      <p class="modal-intro">Add the student details and a first learning plan to get started.</p>
+      <form id="profile-form">
+        <div class="modal-field-grid">
+          <label>Student name<input name="studentName" type="text" placeholder="e.g. Noah Patel" required></label>
+          <label>Grade<select name="grade" required><option value="">Select grade</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option></select></label>
+        </div>
+        <label>Reading level<select name="readingLevel" required><option value="">Select reading level</option><option>Building confidence</option><option>Confident reader</option><option>Advanced reader</option></select></label>
+        <label>Learning plan<textarea name="learningPlan" rows="3" placeholder="e.g. Practice fractions for 15 minutes" required></textarea></label>
+        <div class="modal-actions"><button class="quiet-button" type="button" data-close-profile-modal>Cancel</button><button class="primary-button" type="submit"><i data-lucide="plus" aria-hidden="true"></i>Add profile</button></div>
+      </form>
+    </div>
+  </div>
+  <script src="/webapp/parent-portal-mockup.js" defer></script>
+</body>
+</html>
