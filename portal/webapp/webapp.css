@@ -7213,6 +7213,35 @@ body[data-page="admin"] .admin-table-card thead th.sorted-desc::after {
   color: var(--green);
   font-weight: 800;
 }
+/* Per-tile "7-day free trial" flag: the first thing the eye lands on in each
+   signup card. Filled citrus so it reads as the offer, not another quiet label. */
+.free-trial-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 14px rgba(0, 79, 72, 0.22);
+}
+.free-trial-flag[hidden] { display: none; }
+.free-trial-flag i,
+.free-trial-flag svg {
+  width: 14px;
+  height: 14px;
+}
+/* On the green yearly card the solid-green pill would vanish, so invert it. */
+.upgrade-plan .free-trial-flag {
+  background: var(--mock-yellow, #edf67b);
+  color: var(--green);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.14);
+}
 body[data-page="admin"] .muted-note {
   color: var(--muted);
   font-size: 12px;

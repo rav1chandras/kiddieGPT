@@ -1509,9 +1509,29 @@
             { icon: 'refresh-cw', text: 'Switch or cancel any time' }
           ].map(function (f) { return "<li><i data-lucide='" + f.icon + "'></i>" + text(f.text) + "</li>"; }).join('');
         }
+        // Free-trial-first: when the family is still eligible, both plan tiles
+        // lead with the free week and the buttons sell the trial, not the plan.
+        // trialInfo() is the server's per-account eligibility, so a family that
+        // already used its week correctly falls back to plain checkout copy.
+        var signupTrial = trialInfo();
+        var trialEligible = signupTrial ? signupTrial.eligible : !paid;
+        var trialDays = Number(signupTrial && signupTrial.days) || 7;
+        var flagText = trialDays + "-day free trial";
+        // "free week" only reads right at 7; anything else says the day count.
+        var trialCta = trialDays === 7 ? "Start my free week" : "Start " + trialDays + "-day free trial";
+        var monthlyFlag = document.getElementById('monthly-trial-flag');
+        var yearlyFlag = document.getElementById('yearly-trial-flag');
+        [monthlyFlag, yearlyFlag].forEach(function (flag) {
+          if (!flag) return;
+          flag.hidden = !trialEligible;
+          flag.innerHTML = "<i data-lucide='gift'></i>" + text(flagText);
+        });
+
         if (upgradeYearly) {
           upgradeYearly.classList.remove('hidden');
-          upgradeYearly.innerHTML = "<i data-lucide='credit-card'></i>Continue with monthly";
+          upgradeYearly.innerHTML = trialEligible
+            ? "<i data-lucide='gift'></i>" + text(trialCta)
+            : "<i data-lucide='credit-card'></i>Continue with monthly";
         }
       
         if (upgradePlanKicker) upgradePlanKicker.textContent = yearlyNow < yearlyBase ? 'Limited-time offer' : 'Best value';
@@ -1535,7 +1555,9 @@
         if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = 'Up to ' + seats + ' family members';
         if (upgradeYearlyTileButton) {
           upgradeYearlyTileButton.classList.remove('hidden');
-          upgradeYearlyTileButton.innerHTML = "<i data-lucide='credit-card'></i>Continue with yearly";
+          upgradeYearlyTileButton.innerHTML = trialEligible
+            ? "<i data-lucide='gift'></i>" + text(trialCta)
+            : "<i data-lucide='credit-card'></i>Continue with yearly";
         }
         renderIcons();
       }
