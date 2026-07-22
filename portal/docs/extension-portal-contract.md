@@ -77,6 +77,71 @@ Server behavior:
 - Increments today's counters and updates `lastExtensionUseAt`, per-tool tallies.
 - Returns updated `remaining`.
 
+### POST /api/progress  — required for the parent portal's Progress snapshot
+
+**This is a separate feed from `/api/usage/report`, and nothing derives one from
+the other.** `/api/usage/report` fills the per-tool stat tiles, the favourite-tool
+line and the cap counters. The **Progress snapshot** on the parent Overview — the
+days-active ring, the seven-day bar chart and the Recent activity list — reads
+only `db.studentProgress`, and `POST /api/progress` is its sole writer. An
+extension that reports usage but never posts progress leaves that card showing
+"Your child's activity from the KiddieGPT extension will show here."
+
+`requireParent`. Request:
+```
+{ childId?: string,          // must belong to this parent; omitted -> family's first child
+  date: "YYYY-MM-DD",        // required; anything else -> 400 { error: "bad_date" }
+  bucket: {
+    lessons?: number,        // missions built
+    cardsReviewed?: number,  // flashcards reviewed
+    mathSolved?: number,     // math problems solved
+    tutorLessons?: number,   // tutor sessions
+    explains?: number,       // Explain runs
+    writingChecks?: number,  // writing checks
+    lastLesson?: string,     // <=100 chars, shown as the latest topic
+    quizzes?: [              // <=12 per day
+      { title: string,       // <=100 chars
+        score: number,
+        total: number,
+        ts?: number,         // epoch ms; defaults to now
+        missed?: [ { q: string,       // <=100 chars
+                     answer: string,  // <=60
+                     chosen: string } ]   // <=60, <=12 entries
+      }
+    ]
+  } }
+```
+
+**Upsert, not increment — the one real footgun here.** The row is keyed on
+`(childId, date)` and each POST *replaces* it. So send the running total for
+that day, not the delta. This is the opposite of `/api/usage/report`, which
+increments. Posting `{ mathSolved: 1 }` five times leaves the day at 1, not 5.
+
+Cadence: post the current day's bucket after each session, or on a short timer
+while the side panel is open. Re-posting the same day is free.
+
+Server behavior:
+- Counters clamp to 0..100000; strings truncate rather than reject.
+- `childId` not belonging to the caller -> `403 { error: "not_your_child" }`.
+  It is never silently reattributed to another child.
+- Rows older than 120 days are pruned on write; total rows cap at 2000.
+- The snapshot reads the last 7 days; `GET /api/account/progress` returns them
+  per child alongside `stats`, `goals`, `remaining` and `favoriteTool`.
+
+Which field drives what:
+
+| Portal element | Source |
+| --- | --- |
+| Days-active ring (`5/7 days active`) | days in the last 7 with any bucket activity |
+| Seven-day bar chart | per-day sum of all six counters + quiz count |
+| "N learning actions" | same sum across the week |
+| Recent activity list | `bucket.quizzes`, newest first |
+| Latest topic | `bucket.lastLesson` |
+| Stat tiles, favourite tool, last seen | `/api/usage/report` (not this endpoint) |
+
+`scripts/seed-progress.js` posts a realistic week for two students through these
+same endpoints — useful as a reference payload and for checking the view.
+
 ## Data model additions (per family, or per child in family.children[])
 ```
 usage: {
