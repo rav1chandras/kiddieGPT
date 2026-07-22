@@ -150,9 +150,19 @@
         enabled: true,
         amountOff: 0,
         duration: "once",
-        description: "Keep your plan and get 50% off the next renewal."
+        description: "Keep your plan and save on the next renewal."
       }
     };
+  }
+
+  // Keep in step with legacyAmountOff() in lib/app.js.
+  function legacyAmountOff(amount, legacyPercent, planAmount) {
+    var dollars = Math.max(0, Number(amount) || 0);
+    if (dollars > 0) return dollars;
+    var percent = Math.max(0, Math.min(100, Number(legacyPercent) || 0));
+    var base = Math.max(0, Number(planAmount) || 0);
+    if (percent <= 0 || base <= 0) return 0;
+    return Math.round(base * percent) / 100;
   }
 
   function normalisePricingForClient(pricing) {
@@ -184,10 +194,15 @@
     delete promotion.endDate;
     var yearlyUpgrade = Object.assign({}, defaults.yearlyUpgrade, rawYearlyUpgrade);
     yearlyUpgrade.bonusMonths = Math.max(0, Math.round(Number(yearlyUpgrade.bonusMonths) || 0));
-    yearlyUpgrade.discountAmount = Math.max(0, Number(yearlyUpgrade.discountAmount) || 0);
+    // Mirrors legacyAmountOff() on the server. The server normalises what it
+    // serves, but pricing is cached in localStorage, so a copy stored before the
+    // dollar-discount switch can still reach this code with a percentage.
+    yearlyUpgrade.discountAmount = legacyAmountOff(yearlyUpgrade.discountAmount, yearlyUpgrade.discountPercent, yearly.amount);
+    delete yearlyUpgrade.discountPercent;
     yearlyUpgrade.note = String(yearlyUpgrade.note || "");
     cancellationPromo.enabled = cancellationPromo.enabled !== false;
-    cancellationPromo.amountOff = Math.max(0, Number(cancellationPromo.amountOff) || 0);
+    cancellationPromo.amountOff = legacyAmountOff(cancellationPromo.amountOff, cancellationPromo.percentOff, monthly.amount);
+    delete cancellationPromo.percentOff;
     cancellationPromo.duration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
     cancellationPromo.description = String(cancellationPromo.description || "");
     return { monthly: monthly, yearly: yearly, promotion: promotion, yearlyUpgrade: yearlyUpgrade, cancellationPromo: cancellationPromo };

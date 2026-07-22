@@ -113,9 +113,22 @@ function defaultPricing() {
       enabled: true,
       amountOff: 0,
       duration: "once",
-      description: "Keep your plan and get 50% off the next renewal."
+      description: "Keep your plan and save on the next renewal."
     }
   };
+}
+
+// Discounts used to be stored as percentages. An install that upgrades with a
+// percentage still in its DB would read `amountOff` as 0 and silently stop
+// discounting, so convert the legacy field against the plan price on read. A
+// save then writes the dollar shape and the old field stops being consulted.
+function legacyAmountOff(amount, legacyPercent, planAmount) {
+  const dollars = Math.max(0, Number(amount) || 0);
+  if (dollars > 0) return dollars;
+  const percent = Math.max(0, Math.min(100, Number(legacyPercent) || 0));
+  const base = Math.max(0, Number(planAmount) || 0);
+  if (percent <= 0 || base <= 0) return 0;
+  return Math.round(base * percent) / 100;
 }
 
 function normalisePricing(pricing = {}) {
@@ -147,13 +160,13 @@ function normalisePricing(pricing = {}) {
   const rawUpgrade = pricing.yearlyUpgrade || {};
   const yearlyUpgrade = {
     bonusMonths: Math.max(0, Math.round(Number(rawUpgrade.bonusMonths ?? defaults.yearlyUpgrade.bonusMonths) || 0)),
-    discountAmount: Math.max(0, Number(rawUpgrade.discountAmount) || 0),
+    discountAmount: legacyAmountOff(rawUpgrade.discountAmount, rawUpgrade.discountPercent, yearly.amount),
     note: String(rawUpgrade.note || "")
   };
   const rawCancellationPromo = pricing.cancellationPromo || {};
   const cancellationPromo = {
     enabled: rawCancellationPromo.enabled !== false,
-    amountOff: Math.max(0, Number(rawCancellationPromo.amountOff) || 0),
+    amountOff: legacyAmountOff(rawCancellationPromo.amountOff, rawCancellationPromo.percentOff, monthly.amount),
     duration: rawCancellationPromo.duration === "repeating" ? "repeating" : "once",
     description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
     stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
