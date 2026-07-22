@@ -5124,8 +5124,29 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       family.refundedAt = nowIso();
       family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
       family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: "refund_window", createdAt: nowIso() });
-      markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
-      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt }, email);
+      // Refunding a yearly UPGRADE only undoes the upgrade — the monthly period
+      // underneath it was paid for separately and earlier, so ending access now
+      // would confiscate time the parent already owns. Fall back to the monthly
+      // plan and let it run out its term instead.
+      const monthlyEndsIso = hasConfirmedYearlyUpgrade(family)
+        ? (unixToIso(family.yearlyUpgrade.monthlyEndsAt) || family.yearlyUpgrade.monthlyEndsAt || "")
+        : "";
+      const monthlyRemaining = monthlyEndsIso && new Date(monthlyEndsIso).getTime() > Date.now();
+      if (monthlyRemaining) {
+        retireYearlyUpgrade(family);
+        family.plan = "Family Monthly";
+        family.currentPeriodEnd = monthlyEndsIso;
+        family.subscriptionStatus = "cancel_scheduled";
+        family.cancellationRequested = true;
+        family.cancellationStatus = "scheduled";
+        family.cancelAtPeriodEnd = true;
+        family.cancelReason = reason || "Yearly upgrade refunded";
+        family.cancelAccessUntil = monthlyEndsIso;
+        family.cancellationAccessUntil = monthlyEndsIso;
+      } else {
+        markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      }
+      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
       monitor(db, "info", "billing", "Cancelled inside refund window — full refund issued", { email, refundId, windowDays: refundWindow.windowDays }, email);
       return family;
     });
@@ -5137,7 +5158,9 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       status: updated?.subscriptionStatus || "cancelled",
       cancelAccessUntil: updated?.cancelAccessUntil || "",
       refundWindow,
-      message: `Cancelled within the ${refundWindow.windowDays}-day refund window. Your payment has been refunded in full and access has ended.`
+      message: updated?.subscriptionStatus === "cancel_scheduled"
+        ? `Your yearly upgrade was refunded in full. Your monthly plan continues until ${updated.cancelAccessUntil ? new Date(updated.cancelAccessUntil).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "the end of the paid period"}, then access ends.`
+        : `Cancelled within the ${refundWindow.windowDays}-day refund window. Your payment has been refunded in full and access has ended.`
     });
   }
 
