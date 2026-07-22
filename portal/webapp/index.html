@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=166">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=167">
   <link rel="stylesheet" href="/webapp/parent-portal-mockup.css?v=6">
 </head>
 <body data-page="parent" class="parent-mockup parent-locked">
@@ -111,7 +111,7 @@
                 <li><i data-lucide="shield-check"></i><span><strong>Parent controls</strong>Daily limits, grade level and safety settings you set.</span></li>
               </ul>
             </section>
-            <div class="billing-management-row subscription-fineprint"><button class="billing-management-action" type="button" id="update-payment-method"><i data-lucide="wallet-cards"></i><span><strong>Change billing card</strong><small>Open the secure Stripe billing portal</small></span><i data-lucide="arrow-up-right"></i></button><button class="billing-management-action quiet-danger" type="button" id="cancel-subscription"><i data-lucide="calendar-x"></i><span><strong>Cancel renewal</strong><small>Review access dates and available offers</small></span><i data-lucide="chevron-right"></i></button></div>
+            <div class="billing-management-row subscription-fineprint"><button class="billing-management-action" type="button" id="update-payment-method"><i data-lucide="wallet-cards"></i><span><strong>Change billing card</strong><small>Open the secure Stripe billing portal</small></span><i data-lucide="arrow-up-right"></i></button><button class="billing-management-action" type="button" id="resume-subscription" hidden><i data-lucide="rotate-ccw"></i><span><strong>Keep my plan</strong><small>Turn auto-renewal back on</small></span><i data-lucide="chevron-right"></i></button><button class="billing-management-action quiet-danger" type="button" id="cancel-subscription"><i data-lucide="calendar-x"></i><span><strong>Cancel renewal</strong><small>Review access dates and available offers</small></span><i data-lucide="chevron-right"></i></button></div>
           </div>
           <div class="surface cancel-flow" id="cancel-flow"><div class="screen-heading"><div><p class="page-kicker">Cancellation</p><h2>Before you cancel</h2></div><button class="quiet-button" type="button" id="back-to-subscription"><i data-lucide="arrow-left"></i>Back</button></div><label class="cancel-reason-label">What is the main reason?<select id="cancel-reason"><option>Too expensive</option><option>Not using it enough</option><option>Child no longer needs it</option><option>Missing a feature</option><option>Other</option></select></label><div class="save-offer" id="save-offer"><span id="cancel-flow-label">Save offer</span><strong id="cancel-flow-title">50% off your next month</strong><p id="cancel-flow-copy">We will apply the discount automatically to the next invoice.</p><div class="subscription-actions"><button class="primary-button" type="button" id="accept-discount">Keep plan with 50% off</button><button class="quiet-button danger" type="button" id="confirm-cancel">Continue cancellation</button></div></div><div class="cancellation-alternative" id="cancellation-yearly-option"><div><strong>Prefer yearly?</strong><small>Keep learning and switch this renewal to yearly billing.</small></div><button class="quiet-button" type="button" id="cancel-switch-yearly">Switch to yearly<i data-lucide="arrow-up-right"></i></button></div></div>
         </section>
@@ -132,6 +132,6 @@
 
   <div class="modal-backdrop delete-profile-modal-backdrop" id="delete-profile-modal" hidden><div class="profile-modal delete-profile-modal" role="dialog" aria-modal="true" aria-labelledby="delete-profile-modal-title" aria-describedby="delete-profile-modal-copy"><button class="modal-close" type="button" id="delete-profile-modal-close" aria-label="Close confirmation"><i data-lucide="x"></i></button><span class="delete-profile-icon"><i data-lucide="user-round-minus"></i></span><p class="eyebrow">Remove profile</p><h2 id="delete-profile-modal-title">Remove this student profile?</h2><p class="modal-intro" id="delete-profile-modal-copy">You are about to remove <strong id="delete-profile-name">this student</strong>'s profile from your family account.</p><div class="delete-profile-warning"><i data-lucide="triangle-alert"></i><span>The profile's learning goals, rewards, and progress will also be removed. This action cannot be undone.</span></div><p class="delete-profile-modal-error" id="delete-profile-modal-error" role="alert"></p><div class="modal-actions"><button class="quiet-button" type="button" id="cancel-delete-profile">Cancel</button><button class="primary-button delete-profile-confirm" type="button" id="confirm-delete-profile"><i data-lucide="trash-2"></i>Delete profile</button></div></div></div>
 
-  <script src="/webapp/webapp.js?v=172"></script>
+  <script src="/webapp/webapp.js?v=173"></script>
 </body>
 </html>

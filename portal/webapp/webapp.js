@@ -389,6 +389,7 @@
     var subscriptionMain = document.getElementById("subscription-main");
     var cancelFlow = document.getElementById("cancel-flow");
     var cancelSubscription = document.getElementById("cancel-subscription");
+    var resumeSubscription = document.getElementById("resume-subscription");
     var backToSubscription = document.getElementById("back-to-subscription");
     var saveOffer = document.getElementById("save-offer");
     var cancelFlowLabel = document.getElementById("cancel-flow-label");
@@ -1512,7 +1513,10 @@
       // tiles and checkout button on screen. A paid monthly subscriber, including
       // a card-based trial, gets a dedicated yearly upgrade tile beside the
       // current package instead of the initial plan picker.
-      var needsCheckout = !paid || onNoCardTrial();
+      // past_due is a billing problem, not a missing subscription: Stripe is still
+      // retrying, so show billing actions rather than the signup plan picker.
+      var pastDueNow = parentEntitlement && parentEntitlement.status === "past_due";
+      var needsCheckout = (!paid || onNoCardTrial()) && !pastDueNow;
       // A monthly family that has cancelled but still has paid access left should
       // still see the yearly offer — that is the moment they are most likely to
       // reconsider, and upgrading clears the pending cancellation.
@@ -1564,8 +1568,15 @@
         renderIcons();
       }
       renderPromotionOffer();
-      if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !paid);
+      if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !(paid || pastDueNow));
       if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid);
+      // One-click undo while the paid period is still running — the cheapest
+      // revenue there is, and the moment a parent is most likely to reconsider.
+      if (resumeSubscription) {
+        var canResume = paid && cancellationScheduled && cancellationAccessUntil &&
+          new Date(cancellationAccessUntil).getTime() > Date.now();
+        resumeSubscription.hidden = !canResume;
+      }
       if (currentPackageName) currentPackageName.textContent = plan.name;
       if (currentPackagePrice) currentPackagePrice.textContent = "$" + (plan.amount || "—");
       var currentPackageInterval = document.getElementById("current-package-interval");
@@ -1819,12 +1830,16 @@
             paymentState.className = "state-chip warning";
           }
         } else {
+          var pastDue = entitlement.status === "past_due";
           setUnpaidSubscription(
-            entitlement.reason === "locked" ? "Account locked" : "Choose a family plan",
-            entitlement.reason === "locked"
+            pastDue ? "Payment failed"
+              : entitlement.reason === "locked" ? "Account locked" : "Choose a family plan",
+            pastDue
+              ? "Your last payment did not go through, so tools are paused. Update your billing card and access returns as soon as it clears — no need to sign up again."
+              : entitlement.reason === "locked"
               ? "This account is locked. Contact KiddieGPT support to restore access."
               : "This parent account does not have an active package yet. Choose monthly or yearly to unlock the extension.",
-            entitlement.reason === "locked" ? "Account locked" : "Payment pending"
+            pastDue ? "Payment failed" : entitlement.reason === "locked" ? "Account locked" : "Payment pending"
           );
         }
         return true;
@@ -2757,6 +2772,32 @@
       }
       openUpgradeModal();
     });
+
+    if (resumeSubscription) {
+      resumeSubscription.addEventListener("click", async function () {
+        resumeSubscription.disabled = true;
+        paymentState.textContent = "Restoring";
+        paymentState.className = "state-chip warning";
+        try {
+          var response = await parentAuthFetch("/api/stripe/resume-subscription", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({})
+          });
+          var result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not restore the plan.");
+          cancellationScheduled = false;
+          cancellationAccessUntil = "";
+          await syncSubscriptionFromEntitlement().catch(function () {});
+          setPaidPlan(activePlanKey, "Plan restored", result.message || "Your plan will continue.");
+        } catch (error) {
+          paymentState.textContent = "Could not restore";
+          paymentState.className = "state-chip error";
+          completionTitle.textContent = "Plan not restored";
+          completionText.textContent = error.message;
+        } finally {
+          resumeSubscription.disabled = false;
+        }
+      });
+    }
 
     cancelSubscription.addEventListener("click", function () {
       prepareCancellationFlow();

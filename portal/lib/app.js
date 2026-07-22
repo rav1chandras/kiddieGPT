@@ -1360,6 +1360,8 @@ const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 
 // which carries subscriptionStatus "trial"; a Stripe trial is "trialing", so
 // the local sweep that expires no-card trials never touches one Stripe owns.
 const TRIAL_PERIOD_DAYS = Math.max(0, Number(process.env.TRIAL_PERIOD_DAYS || 7));
+// How many days before a trial ends to warn the parent that billing starts.
+const TRIAL_ENDING_NOTICE_DAYS = Math.max(1, Number(process.env.TRIAL_ENDING_NOTICE_DAYS || 2));
 
 // Map a Stripe subscription status onto ours. Stripe is the source of truth for
 // anything it bills, so this is a direct translation rather than a judgement.
@@ -2167,7 +2169,7 @@ ${o.signoff ? `<p style="margin:8px 0 0;color:#6a827d;font-size:14px">${escHtml(
 const EMAIL_SAMPLE = {
   parentName: "Meena Ravi", childName: "Ava", planName: "Family Monthly", amount: "$19.00",
   date: "August 14, 2026", nextDate: "August 14, 2027", code: "402913", bonusMonths: 3,
-  discountPercent: 20, email: "meena@example.com", trialDays: 14, trialEndsAt: "August 28, 2026",
+  discountPercent: 20, email: "meena@example.com", trialDays: 14, trialEndsAt: "August 28, 2026", cardOnFile: true,
   supportReply: "Yes — the Family plan covers up to 3 children. Open the Student tab to add another profile."
 };
 
@@ -2222,7 +2224,7 @@ const EMAIL_TEMPLATES = [
   { key: "trial_started", name: "Free trial started", stage: "Free trial", subject: (d) => `Your ${d.trialDays}-day KiddieGPT trial is live`,
     build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b> — no card needed.`, "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
   { key: "trial_ending", name: "Free trial ending soon", stage: "Free trial", subject: () => "Your KiddieGPT trial ends soon",
-    build: (d) => ({ chip: "Ending soon", title: "Your trial ends in a few days", greeting: `Hi ${d.parentName},`, paragraphs: [`Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>. Pick a plan to keep your child's tools unlocked — their profiles and progress stay exactly as they are.`], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Ending soon", title: "Your trial ends in a few days", greeting: `Hi ${d.parentName},`, paragraphs: [d.cardOnFile ? `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>, and your card will be charged for the plan you chose unless you cancel before then. Nothing has been charged so far.` : `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>. Pick a plan to keep your child's tools unlocked — their profiles and progress stay exactly as they are.`], ctaText: d.cardOnFile ? "Review your plan" : "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "trial_ended", name: "Free trial ended", stage: "Free trial", subject: () => "Your KiddieGPT trial has ended",
     build: (d) => ({ chip: "Ended", title: "Your free trial has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["The extension tools are locked for now. Your child's profiles, goals, and progress are saved — choose a plan anytime to pick up where they left off."], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
@@ -6457,8 +6459,31 @@ async function runLifecycleSweep(trigger = "cron") {
     let winbacks = 0;
     let summaries = 0;
     let trialsEnded = 0;
+    let trialNotices = 0;
     (db.families || []).forEach((family) => {
       if (family.anonymizedAt || family.deletionRequestedAt) return;
+
+      // --- Free trial ending reminder ---
+      // A card-upfront trial charges automatically on day 7. Charging with no
+      // warning is one of the most common reasons a parent disputes rather than
+      // cancels, so tell them first. Sent once, flagged so a re-run cannot repeat it.
+      const trialingNow = family.subscriptionStatus === "trialing" || family.subscriptionStatus === "trial";
+      if (trialingNow && family.trialEndsAt && !family.trialEndingNoticeAt) {
+        const endsAt = new Date(family.trialEndsAt).getTime();
+        const daysToEnd = Math.ceil((endsAt - now) / 86400000);
+        if (Number.isFinite(endsAt) && endsAt > now && daysToEnd <= TRIAL_ENDING_NOTICE_DAYS) {
+          family.trialEndingNoticeAt = nowIso();
+          trialNotices += 1;
+          const tpl = renderTemplate("trial_ending", {
+            parentName: family.parentName || "there",
+            trialEndsAt: family.trialEndsAt,
+            // Only a card-upfront trial actually bills; a comped one just ends.
+            cardOnFile: Boolean(family.stripeSubscriptionId)
+          });
+          audit(db, "trial.ending_notice", { familyId: family.id, email: family.email, trialEndsAt: family.trialEndsAt }, "autopilot");
+          queueEmail(family, "Trial ending", tpl.text);
+        }
+      }
 
       // --- Free trial expiry ---
       // Trials end themselves: no card is on file, so there is nothing to charge
@@ -6542,7 +6567,7 @@ async function runLifecycleSweep(trigger = "cron") {
       }
     });
     monitor(db, "info", "autopilot", "Lifecycle sweep ran", { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries });
-    return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, trialsEnded, emailsQueued: emailsToSend.length };
+    return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, trialsEnded, trialNotices, emailsQueued: emailsToSend.length };
   });
   for (const item of emailsToSend) {
     await sendLifecycleEmail(item.family, item.template, item.message);
