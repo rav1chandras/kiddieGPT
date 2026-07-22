@@ -1974,6 +1974,37 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         }
       }
     }
+    // A chargeback means the bank has pulled the money back. Access stops and the
+    // operator is alerted immediately — otherwise the first you hear of it is a
+    // Stripe email, days later, while the account keeps being served.
+    if (event.type.startsWith("charge.dispute.")) {
+      family.dispute = {
+        status: object.status || event.type.replace("charge.dispute.", ""),
+        reason: object.reason || "",
+        amountCents: Number(object.amount || 0),
+        chargeId: stripeId(object.charge) || "",
+        openedAt: family.dispute?.openedAt || nowIso(),
+        updatedAt: nowIso()
+      };
+      const won = object.status === "won";
+      const lost = object.status === "lost";
+      if (event.type === "charge.dispute.created" || (!won && !lost)) {
+        family.subscriptionStatus = "past_due";
+        family.paymentStatus = "disputed";
+      } else if (won) {
+        // Bank found for us: put the family back where they were.
+        family.subscriptionStatus = "active";
+        family.paymentStatus = "paid";
+        delete family.dispute;
+      } else if (lost) {
+        family.paymentStatus = "disputed";
+        markSubscriptionEndedNow(family, "Chargeback lost", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      }
+      monitor(db, "error", "billing",
+        won ? "Chargeback resolved in our favour" : lost ? "Chargeback lost — subscription ended" : "Chargeback opened — access suspended",
+        { email: family.email, reason: object.reason || "", amountCents: Number(object.amount || 0) }, family.email);
+      audit(db, "stripe.dispute", { familyId: family.id, email: family.email, type: event.type, status: object.status || "" }, "stripe");
+    }
     if (refundWebhook) {
       // Only a FULL refund ends the subscription. A partial/goodwill refund
       // (e.g. issued from the Stripe Dashboard) must leave access intact.
@@ -5092,8 +5123,10 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
 
   const existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) return res.status(404).json({ error: "Family account not found." });
-  if (!["active", "cancel_scheduled", "trialing"].includes(existingFamily.subscriptionStatus)) {
-    return res.status(400).json({ error: "Only active subscriptions can be scheduled for cancellation." });
+  // past_due is deliberately included: a parent whose card is failing is exactly
+  // who needs a clean exit, or a chargeback becomes their only option.
+  if (!["active", "cancel_scheduled", "trialing", "trial", "past_due"].includes(existingFamily.subscriptionStatus)) {
+    return res.status(400).json({ error: "This subscription cannot be cancelled." });
   }
 
   // Inside the refund window this is a full refund + immediate end, not a
@@ -5237,6 +5270,52 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     mutateDb((db) => monitor(db, "error", "stripe", "Cancellation request failed", { email, detail: error.message, subscriptionId: existingFamily.stripeSubscriptionId }, email));
     return res.status(500).json({ error: "Unable to schedule cancellation with Stripe." });
   }
+});
+
+// Undo a scheduled cancellation while the paid period is still running. This is
+// the cheapest revenue there is: the parent already has the plan and simply
+// changed their mind, so make it one click rather than "wait to lapse, then buy
+// again".
+app.post("/api/stripe/resume-subscription", requireParent, async (req, res) => {
+  const email = normalizeEmail(req.auth?.email || req.body?.email || "");
+  if (!email) return res.status(400).json({ error: "Missing parent email." });
+  const existing = readDb().families.find((item) => item.email === email);
+  if (!existing) return res.status(404).json({ error: "Family account not found." });
+  if (existing.subscriptionStatus !== "cancel_scheduled") {
+    return res.status(400).json({ error: "This plan is not scheduled to cancel." });
+  }
+  if (!cancellationStillActive(existing)) {
+    return res.status(409).json({ error: "This plan has already ended. Choose a plan to start again." });
+  }
+
+  const subscriptionId = effectiveFamilySubscriptionId(existing) || existing.stripeSubscriptionId || "";
+  if (process.env.STRIPE_SECRET_KEY && subscriptionId && !subscriptionId.startsWith("sub_mock")) {
+    try {
+      await stripeClient().subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+    } catch (error) {
+      mutateDb((db) => monitor(db, "error", "stripe", "Resume subscription failed", { email, detail: error.message }, email));
+      return res.status(502).json({ error: "Could not resume the subscription with Stripe." });
+    }
+  }
+
+  const updated = mutateDb((db) => {
+    const family = db.families.find((item) => item.email === email);
+    if (!family) return null;
+    // A trial that was cancelled goes back to trialing, not active — it has not
+    // been charged yet, and forcing "active" would invent a payment.
+    family.subscriptionStatus = family.paymentStatus === "trial" ? "trialing" : "active";
+    family.cancellationRequested = false;
+    family.cancellationStatus = "";
+    family.cancelAtPeriodEnd = false;
+    family.cancelReason = "";
+    family.cancelAccessUntil = "";
+    family.cancellationAccessUntil = "";
+    delete family.cancelledAt;
+    audit(db, "subscription.resume", { familyId: family.id, email }, email);
+    monitor(db, "info", "billing", "Parent resumed a scheduled cancellation", { email }, email);
+    return family;
+  });
+  res.json({ ok: true, status: updated.subscriptionStatus, plan: updated.plan, message: "Your plan will continue. Auto-renewal is back on." });
 });
 
 app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
@@ -6384,7 +6463,9 @@ async function runLifecycleSweep(trigger = "cron") {
         const daysSince = daysBetween(family.dunning.failedAt);
         if (daysSince >= rules.dunningSuspendDays && !family.dunning.suspendedAt) {
           family.subscriptionStatus = "past_due";
-          family.accountLocked = true;
+          // Deliberately NOT accountLocked: that blocks login, so a parent whose
+          // card failed could neither fix the card nor cancel, leaving a
+          // chargeback as their only exit. past_due already removes entitlement.
           family.dunning.suspendedAt = nowIso();
           suspended += 1;
           audit(db, "dunning.suspend", { familyId: family.id, email: family.email }, "autopilot");
@@ -6508,6 +6589,9 @@ app.get("/api/admin/action-queue", requireAdmin, (req, res) => {
       items.push({ ...base, priority: 1, category: "payment_suspended", title: "Access suspended for non-payment", detail: "Reach out, comp, or cancel.", since: family.dunning.suspendedAt });
     } else if (family.dunning && family.dunning.failedAt) {
       items.push({ ...base, priority: 2, category: "dunning", title: "Payment failing (dunning in progress)", detail: `Reminder stage ${family.dunning.stage || 0}. Auto-suspends if unpaid.`, since: family.dunning.failedAt });
+    }
+    if (family.dispute && family.dispute.status !== "won") {
+      items.push({ ...base, priority: 0, category: "dispute", title: "Chargeback opened", detail: "Respond in Stripe before the deadline.", since: family.dispute.openedAt || "" });
     }
     if (family.paymentStatus === "refunded" || family.paymentStatus === "partial_refunded") {
       items.push({ ...base, priority: 3, category: "refund", title: "Refund on record", detail: "Confirm resolution / watch for dispute.", since: family.refundedAt || family.updatedAt || "" });
