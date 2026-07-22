@@ -370,7 +370,6 @@
     if (!form) return;
 
     var finish = document.getElementById("finish");
-    var paymentButton = document.getElementById("mock-stripe");
     var paymentState = document.getElementById("payment-state");
     var cap = document.getElementById("usage-cap");
     var capLabel = document.getElementById("usage-cap-label");
@@ -1557,7 +1556,6 @@
         renderIcons();
       }
       renderPromotionOffer();
-      if (paymentButton) paymentButton.classList.toggle("hidden", !needsCheckout);
       if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !paid);
       if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid);
       if (currentPackageName) currentPackageName.textContent = plan.name;
@@ -1716,6 +1714,9 @@
       completionText.textContent = detail || activePlan().name + " is active. Child profiles and extension access are unlocked.";
       completionPanel.classList.add("is-active");
       preview();
+      // Entitlement resolves after the first paint, so the subscription card has
+      // to re-render here — otherwise it keeps whatever state it guessed at load.
+      renderSubscriptionState();
     }
 
     function setUnpaidSubscription(title, detail, stateText) {
@@ -1734,6 +1735,9 @@
       if (completionText) completionText.textContent = detail || "Select monthly or yearly, then complete Stripe checkout to unlock extension access.";
       if (completionPanel) completionPanel.classList.remove("is-active");
       preview();
+      // Entitlement resolves after the first paint, so the subscription card has
+      // to re-render here — otherwise it keeps whatever state it guessed at load.
+      renderSubscriptionState();
     }
 
     async function syncSubscriptionFromEntitlement() {
@@ -2390,7 +2394,9 @@
       });
     }
 
-    paymentButton.addEventListener("click", async function () {
+    // Each plan card carries its own CTA, so checkout is a plain function rather
+    // than a click on a separate button at the bottom of the page.
+    async function startStripeCheckout() {
       if (!validateParentEmail()) {
         setParentTab("support");
         return;
@@ -2436,7 +2442,7 @@
         completionText.textContent = "Check the Stripe Price ID in Admin, then try checkout again.";
       }
       preview();
-    });
+    }
 
       planInputs.forEach(function (input) {
       input.addEventListener("change", function () {
@@ -2688,7 +2694,7 @@
     function choosePlanAndCheckout(key) {
       setPlanChoice(key);
       updatePlanTiles();
-      if (paymentButton) paymentButton.click();
+      startStripeCheckout();
     }
     upgradeYearly.addEventListener("click", function () {
       if (!paid || onNoCardTrial()) return choosePlanAndCheckout("monthly");
