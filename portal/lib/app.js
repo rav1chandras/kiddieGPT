@@ -4613,7 +4613,10 @@ app.get("/api/entitlements/me", (req, res) => {
     // yearlyNextRenewalAt is unix seconds (straight off Stripe) while the other
     // two are ISO strings. Emitting the raw mix made the client do
     // new Date(1900000000) -> "January 23, 1970"; always hand back ISO.
-    renewalAt: isoDateOrEmpty((family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) || family.currentPeriodEnd || family.nextRenewalAt || ""),
+    // Only a *live* upgrade supplies the renewal date. A retired one (refunded,
+    // cancelled, downgraded) kept its yearly date on record, so a family back on
+    // monthly billing was told "Renews monthly - next on <the dead yearly date>".
+    renewalAt: isoDateOrEmpty((hasConfirmedYearlyUpgrade(family) && family.yearlyUpgrade.yearlyNextRenewalAt) || family.currentPeriodEnd || family.nextRenewalAt || ""),
     cancelAccessUntil: family.cancelAccessUntil || family.cancellationAccessUntil || "",
     cancellationStatus: family.cancellationStatus || "",
     cancelReason: family.cancelReason || "",
@@ -5524,7 +5527,19 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
       periodEnd = new Date(family.lastPaymentAt || family.createdAt || now);
       do { periodEnd.setMonth(periodEnd.getMonth() + 1); } while (periodEnd.getTime() <= now);
     }
-    const proratedDays = Math.max(0, Math.ceil((periodEnd.getTime() - now) / 86400000));
+    // A monthly plan cannot hold more than a month of unused time. Without this
+    // cap a wrong currentPeriodEnd compounds: the bogus remainder is carried
+    // into the yearly date, which becomes the next currentPeriodEnd, and the
+    // following upgrade carries a bigger one still (seen in the wild at 1859
+    // days, pushing a renewal out to 2032).
+    const MAX_CARRY_DAYS = String(family.plan || "").toLowerCase().includes("year") ? 366 : 31;
+    const rawProratedDays = Math.max(0, Math.ceil((periodEnd.getTime() - now) / 86400000));
+    const proratedDays = Math.min(rawProratedDays, MAX_CARRY_DAYS);
+    if (rawProratedDays > MAX_CARRY_DAYS) {
+      mutateDb((db) => monitor(db, "warning", "billing",
+        "Prorated carry-over capped — currentPeriodEnd looks wrong",
+        { familyId: family.id, rawProratedDays, cappedTo: MAX_CARRY_DAYS, currentPeriodEnd: family.currentPeriodEnd }, family.email));
+    }
     const accessMonths = 12 + bonusMonths;
     const accessEnd = new Date(now);
     accessEnd.setMonth(accessEnd.getMonth() + accessMonths);
