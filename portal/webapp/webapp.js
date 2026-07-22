@@ -1648,6 +1648,18 @@
       };
     }
 
+    // Refunding a yearly UPGRADE reverts to the monthly plan and keeps access to
+    // the end of the month already paid for — so the refund copy must not promise
+    // that access ends straight away.
+    function upgradeRefundKeepsMonthly() {
+      var up = parentEntitlement && parentEntitlement.yearlyUpgrade;
+      if (!up || up.status !== "scheduled" || !up.monthlyEndsAt) return null;
+      var raw = up.monthlyEndsAt;
+      var at = typeof raw === "number" ? raw * 1000 : new Date(raw).getTime();
+      if (!isFinite(at) || at <= Date.now()) return null;
+      return new Date(at).toISOString();
+    }
+
     function refundWindow() {
       return (parentEntitlement && parentEntitlement.refundWindow) || null;
     }
@@ -1681,16 +1693,20 @@
         if (saveOffer) saveOffer.classList.toggle("yearly-cancel", !promoAvailable);
         return;
       }
-      if (cancelFlowLabel) cancelFlowLabel.textContent = refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
+      if (cancelFlowLabel) cancelFlowLabel.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Upgrade refund" : refundable ? "Full refund" : yearly ? "Renewal cancellation" : "Save offer";
       if (cancelFlowTitle) {
-        cancelFlowTitle.textContent = refundable
+        cancelFlowTitle.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Refund your yearly upgrade"
+          : refundable
           ? "Cancel and get a full refund"
           : yearly ? "Cancel yearly renewal" : promoAvailable ? promo.percentOff + "% off your next renewal" : "Cancel your renewal";
       }
       if (cancelFlowCopy) {
         // Inside the refund window cancelling refunds the payment in full and
         // ends access immediately — say so before they confirm, not after.
-        cancelFlowCopy.textContent = refundable
+        var keepsMonthlyUntil = refundable ? upgradeRefundKeepsMonthly() : null;
+        cancelFlowCopy.textContent = keepsMonthlyUntil
+          ? "You are still within " + rw.windowDays + " days of the upgrade, so we refund it in full. You go back to your monthly plan, which you have already paid for — your child keeps access until " + parentDate(keepsMonthlyUntil) + ", then it ends."
+          : refundable
           ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept."
           : yearly
           ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."
@@ -1704,7 +1720,8 @@
       }
       // Inside the window the plan itself ends (refunded); outside, only the
       // renewal stops and access runs to the period end.
-      if (confirmCancel) confirmCancel.textContent = refundable ? "Cancel plan" : "Cancel renewal";
+      if (confirmCancel) confirmCancel.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Refund upgrade"
+        : refundable ? "Cancel plan" : "Cancel renewal";
       if (saveOffer) saveOffer.classList.toggle("yearly-cancel", yearly || refundable);
     }
 
