@@ -1826,6 +1826,17 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     webhookCancellationResult = await cancelStripeSubscriptionsNow(stripe, family);
   }
 
+  // A chargeback ends the relationship: stop the Stripe subscription so it cannot
+  // bill the disputed card again. A second charge almost always becomes a second
+  // dispute, and each one carries a fee and counts against the dispute ratio that
+  // Stripe polices. A won dispute is rare enough that re-subscribing is the right
+  // trade against that risk.
+  let disputeCancellationResult = [];
+  if (event.type === "charge.dispute.created" && stripe && process.env.STRIPE_SECRET_KEY) {
+    const disputedFamily = findFamilyForStripeObject(readDb(), webhookObject);
+    disputeCancellationResult = await cancelStripeSubscriptionsNow(stripe, disputedFamily);
+  }
+
   // checkout.session.completed carries only a subscription id, but whether that
   // subscription is trialing decides whether we may mark the family paid.
   // Resolve it here (async) so the synchronous mutateDb below can just read it.
@@ -1989,8 +2000,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       const won = object.status === "won";
       const lost = object.status === "lost";
       if (event.type === "charge.dispute.created" || (!won && !lost)) {
-        family.subscriptionStatus = "past_due";
+        // The Stripe subscription was cancelled above, so record that here too —
+        // leaving it "past_due" would imply Stripe is still retrying, and the
+        // renewals table would keep forecasting revenue that cannot arrive.
+        markSubscriptionEndedNow(family, "Chargeback opened", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
         family.paymentStatus = "disputed";
+        family.dispute.subscriptionCancelled = true;
       } else if (won) {
         // Bank found for us: put the family back where they were.
         family.subscriptionStatus = "active";
@@ -2003,7 +2018,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       monitor(db, "error", "billing",
         won ? "Chargeback resolved in our favour" : lost ? "Chargeback lost — subscription ended" : "Chargeback opened — access suspended",
         { email: family.email, reason: object.reason || "", amountCents: Number(object.amount || 0) }, family.email);
-      audit(db, "stripe.dispute", { familyId: family.id, email: family.email, type: event.type, status: object.status || "" }, "stripe");
+      audit(db, "stripe.dispute", { familyId: family.id, email: family.email, type: event.type, status: object.status || "", stripeCancellation: disputeCancellationResult }, "stripe");
     }
     if (refundWebhook) {
       // Only a FULL refund ends the subscription. A partial/goodwill refund
