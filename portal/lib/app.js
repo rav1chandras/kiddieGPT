@@ -4869,6 +4869,19 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       } else {
         family.lastPaymentAt = nowIso();
       }
+      // Only the real Stripe webhook used to set this, so in mock mode - which
+      // is every install without STRIPE_SECRET_KEY - a parent who had just
+      // subscribed was shown no renewal date at all. Derive it from the plan.
+      const periodStart = new Date();
+      const nextPeriodEnd = new Date(periodStart);
+      if (trialing && trialEndsAt) {
+        nextPeriodEnd.setTime(new Date(trialEndsAt).getTime());
+      } else if (String(family.plan || "").toLowerCase().includes("year")) {
+        nextPeriodEnd.setFullYear(nextPeriodEnd.getFullYear() + 1);
+      } else {
+        nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + 1);
+      }
+      family.currentPeriodEnd = nextPeriodEnd.toISOString();
       // Starting a new subscription clears any prior cancellation/refund state.
       family.cancellationRequested = false;
       family.cancellationStatus = "";
