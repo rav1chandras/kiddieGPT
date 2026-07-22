@@ -1762,7 +1762,10 @@
       var refundable = inRefundWindow();
       var trialing = onStripeTrial();
       var promo = cancellationPromoConfig();
-      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly && !refundable;
+      // Inside the refund window a monthly parent used to get no retention
+      // attempt at all — the most cancellable moment there is. The refund stays
+      // the headline and is never withheld; the discount is offered beside it.
+      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly;
       if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
@@ -1796,7 +1799,8 @@
         cancelFlowCopy.textContent = keepsMonthlyUntil
           ? "You are still within " + rw.windowDays + " days of the upgrade, so we refund it in full. You go back to your monthly plan, which you have already paid for — your child keeps access until " + parentDate(keepsMonthlyUntil) + ", then it ends."
           : refundable
-          ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept."
+          ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept." +
+            (promoAvailable ? " Or keep your plan and take $" + promo.amountOff + " off the next renewal — the full refund stays available for the rest of the window." : "")
           : yearly
           ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."
           : promoAvailable
