@@ -106,12 +106,12 @@ function defaultPricing() {
     },
     yearlyUpgrade: {
       bonusMonths: 3,       // extra months granted on top of 12
-      discountPercent: 0,   // discount on the yearly price for upgraders
+      discountAmount: 0,    // dollars off the yearly price for upgraders
       note: ""              // e.g. "July 4th sale — limited time"
     },
     cancellationPromo: {
       enabled: true,
-      percentOff: 50,
+      amountOff: 0,
       duration: "once",
       description: "Keep your plan and get 50% off the next renewal."
     }
@@ -147,13 +147,13 @@ function normalisePricing(pricing = {}) {
   const rawUpgrade = pricing.yearlyUpgrade || {};
   const yearlyUpgrade = {
     bonusMonths: Math.max(0, Math.round(Number(rawUpgrade.bonusMonths ?? defaults.yearlyUpgrade.bonusMonths) || 0)),
-    discountPercent: Math.min(90, Math.max(0, Number(rawUpgrade.discountPercent) || 0)),
+    discountAmount: Math.max(0, Number(rawUpgrade.discountAmount) || 0),
     note: String(rawUpgrade.note || "")
   };
   const rawCancellationPromo = pricing.cancellationPromo || {};
   const cancellationPromo = {
     enabled: rawCancellationPromo.enabled !== false,
-    percentOff: Math.min(90, Math.max(0, Number(rawCancellationPromo.percentOff) || 0)),
+    amountOff: Math.max(0, Number(rawCancellationPromo.amountOff) || 0),
     duration: rawCancellationPromo.duration === "repeating" ? "repeating" : "once",
     description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
     stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
@@ -1273,18 +1273,19 @@ async function retentionCouponId(stripe, db) {
   const promo = pricing.cancellationPromo || defaultPricing().cancellationPromo;
   const envConfigured = process.env.STRIPE_RETENTION_COUPON_ID || "";
   const configured = envConfigured || promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId;
-  const configuredPercent = Number(promo.stripeCouponPercentOff || 0);
-  if (envConfigured || (configured && configuredPercent === Number(promo.percentOff || 0))) return configured;
+  const configuredAmount = Number(promo.stripeCouponAmountOff || 0);
+  if (envConfigured || (configured && configuredAmount === Number(promo.amountOff || 0))) return configured;
 
   const coupon = await stripe.coupons.create({
-    percent_off: Number(promo.percentOff || 50),
+    amount_off: Math.round(Number(promo.amountOff || 0) * 100),
+    currency: "usd",
     duration: promo.duration === "repeating" ? "repeating" : "once",
     ...(promo.duration === "repeating" ? { duration_in_months: 1 } : {}),
     name: "KiddieGPT cancellation save offer",
     metadata: {
       app: "KiddieGPT",
       offer: "cancellation_promo",
-      percentOff: String(promo.percentOff || 50)
+      amountOff: String(promo.amountOff || 0)
     }
   });
 
@@ -1292,8 +1293,8 @@ async function retentionCouponId(stripe, db) {
     nextDb.pricing = nextDb.pricing || defaultPricing();
     nextDb.pricing.cancellationPromo = nextDb.pricing.cancellationPromo || {};
     nextDb.pricing.cancellationPromo.stripeCouponId = coupon.id;
-    nextDb.pricing.cancellationPromo.stripeCouponPercentOff = Number(promo.percentOff || 50);
-    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, percentOff: Number(promo.percentOff || 50) });
+    nextDb.pricing.cancellationPromo.stripeCouponAmountOff = Number(promo.amountOff || 0);
+    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, amountOff: Number(promo.amountOff || 0) });
   });
 
   return coupon.id;
@@ -1680,13 +1681,13 @@ function subscriptionHasCoupon(subscription, couponId, discountId) {
   });
 }
 
-async function applySubscriptionCoupon(stripe, subscriptionId, couponId, percentOff = 50) {
+async function applySubscriptionCoupon(stripe, subscriptionId, couponId, amountOff = 0) {
   try {
     return await stripe.subscriptions.update(subscriptionId, {
       discounts: [{ coupon: couponId }],
       metadata: {
         retentionOfferAccepted: "true",
-        retentionOffer: `${percentOff}_percent_next_invoice`
+        retentionOffer: `${amountOff}_off_next_invoice`
       }
     });
   } catch (error) {
@@ -1695,7 +1696,7 @@ async function applySubscriptionCoupon(stripe, subscriptionId, couponId, percent
       coupon: couponId,
       metadata: {
         retentionOfferAccepted: "true",
-        retentionOffer: `${percentOff}_percent_next_invoice`
+        retentionOffer: `${amountOff}_off_next_invoice`
       }
     });
   }
@@ -4998,7 +4999,7 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
     return res.status(404).json({ error: "Family account not found." });
   }
   const cancellationPromo = normalisePricing(readDb().pricing).cancellationPromo;
-  if (!cancellationPromo.enabled || Number(cancellationPromo.percentOff || 0) <= 0) {
+  if (!cancellationPromo.enabled || Number(cancellationPromo.amountOff || 0) <= 0) {
     return res.status(400).json({ error: "The cancellation save offer is not currently available." });
   }
   const trialing = existingFamily.subscriptionStatus === "trialing";
@@ -5012,8 +5013,8 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
         alreadyApplied: true,
         familyId: existingFamily.id,
         couponId: existingFamily.retentionOffer.stripeCouponId || "",
-        percentOff: cancellationPromo.percentOff,
-        message: `The ${cancellationPromo.percentOff}% save offer is already applied to the next invoice.`
+        amountOff: cancellationPromo.amountOff,
+        message: `The $${cancellationPromo.amountOff} save offer is already applied to the next invoice.`
       });
     }
     const updated = mutateDb((db) => {
@@ -5024,7 +5025,7 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
       family.retentionOffer = {
         status: "accepted",
         mode: "mock",
-        percentOff: cancellationPromo.percentOff,
+        amountOff: cancellationPromo.amountOff,
         duration: cancellationPromo.duration,
         appliesTo: "next_invoice",
         description: cancellationPromo.description,
@@ -5037,8 +5038,8 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
     return res.json({
       mode: "mock",
       familyId: updated?.id || existingFamily.id,
-      percentOff: cancellationPromo.percentOff,
-      message: `The ${cancellationPromo.percentOff}% save offer was recorded for the next renewal. Stripe discount application was simulated.`
+      amountOff: cancellationPromo.amountOff,
+      message: `The $${cancellationPromo.amountOff} save offer was recorded for the next renewal. Stripe discount application was simulated.`
     });
   }
 
@@ -5063,7 +5064,7 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
     const toUpdate = subscriptions.filter((subscription) => !subscriptionHasCoupon(subscription, couponId, previousDiscountId));
     const updatedSubscriptions = [];
     for (const subscription of toUpdate) {
-      updatedSubscriptions.push(await applySubscriptionCoupon(stripe, subscription.id, couponId, cancellationPromo.percentOff));
+      updatedSubscriptions.push(await applySubscriptionCoupon(stripe, subscription.id, couponId, cancellationPromo.amountOff));
     }
 
     const updatedById = new Map(updatedSubscriptions.map((subscription) => [subscription.id, subscription]));
@@ -5089,7 +5090,7 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
       family.retentionOffer = {
         status: "accepted",
         mode: "stripe",
-        percentOff: cancellationPromo.percentOff,
+        amountOff: cancellationPromo.amountOff,
         duration: cancellationPromo.duration,
         appliesTo: "next_invoice",
         description: cancellationPromo.description,
@@ -5120,12 +5121,12 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
       duplicateSubscriptionIds,
       couponId,
       discountId,
-      percentOff: cancellationPromo.percentOff,
+      amountOff: cancellationPromo.amountOff,
       message: duplicateSubscriptionIds.length
-          ? `The ${cancellationPromo.percentOff}% save offer was applied, but multiple active Stripe subscriptions exist for this parent email.`
+          ? `The $${cancellationPromo.amountOff} save offer was applied, but multiple active Stripe subscriptions exist for this parent email.`
           : toUpdate.length
-          ? `The ${cancellationPromo.percentOff}% save offer was applied to the next Stripe invoice.`
-          : `The ${cancellationPromo.percentOff}% save offer is already applied to the next invoice.`
+          ? `The $${cancellationPromo.amountOff} save offer was applied to the next Stripe invoice.`
+          : `The $${cancellationPromo.amountOff} save offer is already applied to the next invoice.`
     });
   } catch (error) {
     mutateDb((db) => monitor(db, "error", "stripe", "Retention discount failed", { email, detail: error.message }, email));
@@ -5363,18 +5364,19 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
   const yearlyPriceId = req.body?.yearlyPriceId || yearlyPlan.stripePriceId;
   const normalisedPricing = normalisePricing(dbSnapshot.pricing);
   const upgradeConfig = normalisedPricing.yearlyUpgrade;
-  const upgradeDiscountPercent = Number(upgradeConfig.discountPercent || 0);
+  const upgradeDiscountAmount = Number(upgradeConfig.discountAmount || 0);
   const configuredYearlyPromotion = promotionForPlan(normalisedPricing, yearlyPlan.label);
   const requestedPromoCode = String(req.body?.promoCode || "").trim();
-  const yearlyPromotion = !upgradeDiscountPercent && configuredYearlyPromotion && (!requestedPromoCode || requestedPromoCode === configuredYearlyPromotion.code)
+  const yearlyPromotion = !upgradeDiscountAmount && configuredYearlyPromotion && (!requestedPromoCode || requestedPromoCode === configuredYearlyPromotion.code)
     ? configuredYearlyPromotion
     : null;
   const bonusMonths = Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3);
   const upgradeNote = String(upgradeConfig.note || "");
   const initialPrice = yearlyPromotion
     ? Number(yearlyPromotion.promoPrice || yearlyPlan.amount || 0)
-    : upgradeDiscountPercent > 0
-    ? Math.round(Number(yearlyPlan.amount || 0) * (1 - upgradeDiscountPercent / 100) * 100) / 100
+    : upgradeDiscountAmount > 0
+    // Floor at zero: a discount larger than the plan price must not invert it.
+    ? Math.max(0, Math.round((Number(yearlyPlan.amount || 0) - upgradeDiscountAmount) * 100) / 100)
     : Number(yearlyPlan.amount || 0);
   const initialAmountCents = Math.round(initialPrice * 100);
   const promotionCode = yearlyPromotion?.code || "";
@@ -5529,7 +5531,7 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
         monthlySubscriptionIds,
         yearlySubscriptionId: mockYearlySubscriptionId,
         monthlyCancelledAtPeriodEnd: false,
-        discountPercent: yearlyPromotion ? Math.round((1 - effectivePrice / Number(yearlyPlan.amount || 1)) * 100) : upgradeDiscountPercent,
+        discountAmount: Math.max(0, Math.round((Number(yearlyPlan.amount || 0) - effectivePrice) * 100) / 100),
         promoCode: promotionCode,
         effectivePrice,
         note: effectiveOfferNote,

@@ -143,12 +143,12 @@
       },
       yearlyUpgrade: {
         bonusMonths: 3,
-        discountPercent: 0,
+        discountAmount: 0,
         note: ""
       },
       cancellationPromo: {
         enabled: true,
-        percentOff: 50,
+        amountOff: 0,
         duration: "once",
         description: "Keep your plan and get 50% off the next renewal."
       }
@@ -184,10 +184,10 @@
     delete promotion.endDate;
     var yearlyUpgrade = Object.assign({}, defaults.yearlyUpgrade, rawYearlyUpgrade);
     yearlyUpgrade.bonusMonths = Math.max(0, Math.round(Number(yearlyUpgrade.bonusMonths) || 0));
-    yearlyUpgrade.discountPercent = Math.min(90, Math.max(0, Number(yearlyUpgrade.discountPercent) || 0));
+    yearlyUpgrade.discountAmount = Math.max(0, Number(yearlyUpgrade.discountAmount) || 0);
     yearlyUpgrade.note = String(yearlyUpgrade.note || "");
     cancellationPromo.enabled = cancellationPromo.enabled !== false;
-    cancellationPromo.percentOff = Math.min(90, Math.max(0, Number(cancellationPromo.percentOff) || 0));
+    cancellationPromo.amountOff = Math.max(0, Number(cancellationPromo.amountOff) || 0);
     cancellationPromo.duration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
     cancellationPromo.description = String(cancellationPromo.description || "");
     return { monthly: monthly, yearly: yearly, promotion: promotion, yearlyUpgrade: yearlyUpgrade, cancellationPromo: cancellationPromo };
@@ -1548,7 +1548,7 @@
         var tileOffer = yearlyUpgradeOffer();
         if (upgradeYearlyName) upgradeYearlyName.textContent = planLabelForKey("yearly");
         if (upgradeYearlyPrice) {
-          upgradeYearlyPrice.innerHTML = (tileOffer.discountPercent > 0 ? "<s>$" + tileOffer.baseStr + "</s>" : "") +
+          upgradeYearlyPrice.innerHTML = (tileOffer.discountAmount > 0 ? "<s>$" + tileOffer.baseStr + "</s>" : "") +
             "<b>$" + tileOffer.priceStr + "</b><span>/year</span>";
         }
         if (upgradeYearlyPromo) {
@@ -1595,7 +1595,7 @@
           : cancellationScheduled
           ? "Cancellation scheduled: your child keeps extension access until " + parentDate(cancellationAccessUntil) + "."
           : retentionOfferAccepted
-          ? cancellationPromoConfig().percentOff + "% off will apply automatically to the next invoice."
+          ? "$" + cancellationPromoConfig().amountOff + " off will apply automatically to the next invoice."
           : plan.key === "monthly"
           ? "Upgrade to yearly and get 3 bonus months. Monthly renewal is cancelled at period end, so the paid month is honored."
           : "Your yearly package is active. Child profiles and extension access stay unlocked.";
@@ -1658,8 +1658,8 @@
       var pricing = readPricing();
       var promo = pricing.cancellationPromo || {};
       return {
-        enabled: promo.enabled !== false && Number(promo.percentOff || 0) > 0,
-        percentOff: Math.min(90, Math.max(0, Number(promo.percentOff || 0))),
+        enabled: promo.enabled !== false && Number(promo.amountOff || 0) > 0,
+        amountOff: Math.max(0, Number(promo.amountOff || 0)),
         duration: promo.duration === "repeating" ? "repeating" : "once",
         description: String(promo.description || "Keep your plan and get a discount on the next renewal.")
       };
@@ -1692,19 +1692,19 @@
       var refundable = inRefundWindow();
       var trialing = onStripeTrial();
       var promo = cancellationPromoConfig();
-      var promoAvailable = promo.enabled && promo.percentOff > 0 && !yearly && !refundable;
+      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly && !refundable;
       if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
-        if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? promo.percentOff + "% off your first renewal" : "End your free trial";
+        if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? "$" + promo.amountOff + " off your first renewal" : "End your free trial";
         if (cancelFlowCopy) {
           cancelFlowCopy.textContent = promoAvailable
-            ? "Your current plan cancels on " + trialEndsText() + " if you continue. Keep it instead and get " + promo.percentOff + "% off when billing starts on " + trialEndsText() + ". No code is needed."
+            ? "Your current plan cancels on " + trialEndsText() + " if you continue. Keep it instead and get $" + promo.amountOff + " off when billing starts on " + trialEndsText() + ". No code is needed."
             : "Your trial ends on " + trialEndsText() + " and you will not be charged. Your child keeps access until then, and all profiles and progress are saved.";
         }
         if (acceptDiscount) {
           acceptDiscount.classList.toggle("hidden", !promoAvailable);
-          acceptDiscount.textContent = promoAvailable ? "Keep plan with " + promo.percentOff + "% off" : "Keep my plan";
+          acceptDiscount.textContent = promoAvailable ? "Keep plan with $" + promo.amountOff + " off" : "Keep my plan";
         }
         if (confirmCancel) confirmCancel.textContent = "Cancel renewal";
         if (saveOffer) saveOffer.classList.toggle("yearly-cancel", !promoAvailable);
@@ -1715,7 +1715,7 @@
         cancelFlowTitle.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Refund your yearly upgrade"
           : refundable
           ? "Cancel and get a full refund"
-          : yearly ? "Cancel yearly renewal" : promoAvailable ? promo.percentOff + "% off your next renewal" : "Cancel your renewal";
+          : yearly ? "Cancel yearly renewal" : promoAvailable ? "$" + promo.amountOff + " off your next renewal" : "Cancel your renewal";
       }
       if (cancelFlowCopy) {
         // Inside the refund window cancelling refunds the payment in full and
@@ -1733,7 +1733,7 @@
       }
       if (acceptDiscount) {
         acceptDiscount.classList.toggle("hidden", !promoAvailable);
-        acceptDiscount.textContent = promoAvailable ? "Keep plan with " + promo.percentOff + "% off" : "Keep my plan";
+        acceptDiscount.textContent = promoAvailable ? "Keep plan with $" + promo.amountOff + " off" : "Keep my plan";
       }
       // Inside the window the plan itself ends (refunded); outside, only the
       // renewal stops and access runs to the period end.
@@ -2552,24 +2552,24 @@
     function moneyStr(n) { return Number.isInteger(n) ? String(n) : Number(n).toFixed(2); }
     function yearlyUpgradeOffer() {
       var pricing = readPricing();
-      var up = pricing.yearlyUpgrade || { bonusMonths: 3, discountPercent: 0, note: "" };
+      var up = pricing.yearlyUpgrade || { bonusMonths: 3, discountAmount: 0, note: "" };
       var base = Number((pricing.yearly || {}).amount || 0);
       var planPromotion = configuredPromotionForPlan("yearly");
-      var pct = Math.max(0, Number(up.discountPercent || 0));
+      var off = Math.max(0, Number(up.discountAmount || 0));
       var configuredPrice = planPromotion ? Number(planPromotion.promoPrice || 0) : 0;
-      var upgradePrice = pct > 0 ? Math.round(base * (1 - pct / 100) * 100) / 100 : 0;
+      var upgradePrice = off > 0 ? Math.max(0, Math.round((base - off) * 100) / 100) : 0;
       // The yearly-upgrade section is for existing monthly subscribers. If its
       // discount is set, it takes precedence over a generic signup override;
       // signup plan tiles continue to use the promotion override independently.
-      var usesUpgradeOffer = pct > 0 || Boolean(String(up.note || "").trim());
+      var usesUpgradeOffer = off > 0 || Boolean(String(up.note || "").trim());
       var usesPlanPromotion = !usesUpgradeOffer && Boolean(planPromotion && configuredPrice > 0);
       var price = usesPlanPromotion
         ? configuredPrice
         : upgradePrice > 0 ? upgradePrice : base;
-      var effectivePct = base > 0 && price < base ? Math.round((1 - price / base) * 100) : 0;
+      var effectiveOff = base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0;
       return {
         bonusMonths: Math.max(0, Number(up.bonusMonths || 0)),
-        discountPercent: usesPlanPromotion ? effectivePct : pct,
+        discountAmount: usesPlanPromotion ? effectiveOff : off,
         basePrice: base,
         price: price,
         priceStr: moneyStr(price),
@@ -2631,7 +2631,7 @@
       if (copyEl) {
         var extras = [];
         if (o.bonusMonths > 0) extras.push(o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s"));
-        if (o.discountPercent > 0) extras.push("save " + o.discountPercent + "%");
+        if (o.discountAmount > 0) extras.push("save $" + o.discountAmount);
         if (o.promoCode) extras.push("code " + o.promoCode);
         copyEl.textContent = "Switch to yearly for $" + o.priceStr + "/yr" + (extras.length ? " · " + extras.join(" · ") : "");
       }
@@ -2646,7 +2646,7 @@
       el.hidden = !show;
       if (!show) return;
       var o = yearlyUpgradeOffer();
-      var price = o.discountPercent > 0
+      var price = o.discountAmount > 0
         ? "<span class='strike'>$" + o.baseStr + "</span><b>$" + o.priceStr + "/yr</b>"
         : "<b>$" + o.priceStr + "/yr</b>";
       el.innerHTML = price + (o.bonusMonths > 0 ? " · <b>+" + o.bonusMonths + " bonus mo</b>" : "") +
@@ -2669,9 +2669,9 @@
       }
       var priceRow = document.getElementById("upgrade-price-row");
       if (priceRow) {
-        priceRow.innerHTML = (o.discountPercent > 0 ? "<span class='was'>$" + o.baseStr + "</span>" : "") +
+        priceRow.innerHTML = (o.discountAmount > 0 ? "<span class='was'>$" + o.baseStr + "</span>" : "") +
           "<span class='now'>$" + o.priceStr + "<span>/year</span></span>" +
-          (o.discountPercent > 0 ? "<span class='save'>Save " + o.discountPercent + "%</span>" : "");
+          (o.discountAmount > 0 ? "<span class='save'>Save $" + o.discountAmount + "</span>" : "");
       }
       var noteEl = document.getElementById("upgrade-modal-note");
       if (noteEl) {
@@ -2845,14 +2845,14 @@
         cancelFlow.classList.add("hidden");
         subscriptionMain.classList.remove("hidden");
         var promo = cancellationPromoConfig();
-        var percentOff = Number(result.percentOff || promo.percentOff || 0);
-        paymentState.textContent = result.alreadyApplied ? percentOff + "% off already applied" : percentOff + "% off applied";
+        var amountOff = Number(result.amountOff || promo.amountOff || 0);
+        paymentState.textContent = result.alreadyApplied ? "$" + amountOff + " off already applied" : "$" + amountOff + " off applied";
         paymentState.className = "state-chip ok";
         completionTitle.textContent = "Discount accepted";
-        completionText.textContent = result.message || "The " + percentOff + "% discount will be applied automatically to the next invoice. No code is needed.";
+        completionText.textContent = result.message || "The $" + amountOff + " discount will be applied automatically to the next invoice. No code is needed.";
         if (currentPackageNote) currentPackageNote.textContent = onStripeTrial()
-          ? percentOff + "% off will apply when billing starts on " + trialEndsText() + ". Your current plan stays active."
-          : "Save offer accepted: " + percentOff + "% off will apply automatically to the next invoice.";
+          ? "$" + amountOff + " off will apply when billing starts on " + trialEndsText() + ". Your current plan stays active."
+          : "Save offer accepted: $" + amountOff + " off will apply automatically to the next invoice.";
       } catch (error) {
         paymentState.textContent = "Discount needs attention";
         paymentState.className = "state-chip error";
@@ -4997,11 +4997,11 @@
       if (pricingForm.elements.promoDescription) pricingForm.elements.promoDescription.value = pricing.promotion.description || "";
       var upgrade = pricing.yearlyUpgrade || {};
       if (pricingForm.elements.upgradeBonusMonths) pricingForm.elements.upgradeBonusMonths.value = Number(upgrade.bonusMonths != null ? upgrade.bonusMonths : 3);
-      if (pricingForm.elements.upgradeDiscountPercent) pricingForm.elements.upgradeDiscountPercent.value = Number(upgrade.discountPercent || 0);
+      if (pricingForm.elements.upgradeDiscountAmount) pricingForm.elements.upgradeDiscountAmount.value = Number(upgrade.discountAmount || 0);
       if (pricingForm.elements.upgradeNote) pricingForm.elements.upgradeNote.value = upgrade.note || "";
       var cancellationPromo = pricing.cancellationPromo || {};
       if (pricingForm.elements.cancellationPromoEnabled) pricingForm.elements.cancellationPromoEnabled.checked = cancellationPromo.enabled !== false;
-      if (pricingForm.elements.cancellationPromoPercentOff) pricingForm.elements.cancellationPromoPercentOff.value = Number(cancellationPromo.percentOff || 0);
+      if (pricingForm.elements.cancellationPromoAmountOff) pricingForm.elements.cancellationPromoAmountOff.value = Number(cancellationPromo.amountOff || 0);
       if (pricingForm.elements.cancellationPromoDuration) pricingForm.elements.cancellationPromoDuration.value = cancellationPromo.duration === "repeating" ? "repeating" : "once";
       if (pricingForm.elements.cancellationPromoDescription) pricingForm.elements.cancellationPromoDescription.value = cancellationPromo.description || "";
       if (stripeTestForm && stripeTestForm.elements.priceId) {
@@ -6213,12 +6213,12 @@
           },
           yearlyUpgrade: {
             bonusMonths: Number(pricingForm.elements.upgradeBonusMonths ? pricingForm.elements.upgradeBonusMonths.value : 3) || 0,
-            discountPercent: Number(pricingForm.elements.upgradeDiscountPercent ? pricingForm.elements.upgradeDiscountPercent.value : 0) || 0,
+            discountAmount: Number(pricingForm.elements.upgradeDiscountAmount ? pricingForm.elements.upgradeDiscountAmount.value : 0) || 0,
             note: pricingForm.elements.upgradeNote ? pricingForm.elements.upgradeNote.value.trim() : ""
           },
           cancellationPromo: {
             enabled: pricingForm.elements.cancellationPromoEnabled ? pricingForm.elements.cancellationPromoEnabled.checked : true,
-            percentOff: Number(pricingForm.elements.cancellationPromoPercentOff ? pricingForm.elements.cancellationPromoPercentOff.value : 50) || 0,
+            amountOff: Number(pricingForm.elements.cancellationPromoAmountOff ? pricingForm.elements.cancellationPromoAmountOff.value : 0) || 0,
             duration: pricingForm.elements.cancellationPromoDuration ? pricingForm.elements.cancellationPromoDuration.value : "once",
             description: pricingForm.elements.cancellationPromoDescription ? pricingForm.elements.cancellationPromoDescription.value.trim() : ""
           }

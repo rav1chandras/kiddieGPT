@@ -8593,3 +8593,19 @@ body.parent-mockup .parent-portal-live .plan-includes-list strong {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Promotion override column: even inset on all sides, and the helper line under
+   the retention card stays on one line until it genuinely runs out of room. */
+body[data-page="admin"] .promotion-override-section {
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+}
+body[data-page="admin"] .promotion-override-section .plan-detail-grid { gap: 12px 14px; }
+body[data-page="admin"] .pricing-help {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
