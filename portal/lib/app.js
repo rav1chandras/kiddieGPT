@@ -155,6 +155,11 @@ function normalisePricing(pricing = {}) {
   promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
   if (Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) promotion.planKey = "yearly";
   promotion.enabled = promotion.enabled !== false;
+  // Each plan carries its own code. Records written before the split have a
+  // single `code`, which seeds both so an existing promotion keeps working.
+  promotion.monthlyCode = String(rawPromotion.monthlyCode || rawPromotion.code || "").trim();
+  promotion.yearlyCode = String(rawPromotion.yearlyCode || rawPromotion.code || "").trim();
+  promotion.code = promotion.monthlyCode || promotion.yearlyCode;
   delete promotion.discountPercent;
   delete promotion.endDate;
   const rawUpgrade = pricing.yearlyUpgrade || {};
@@ -430,7 +435,7 @@ function promotionForPlan(pricing, planName) {
   const key = planKeyForName(planName);
   const plan = pricing[key];
   const promo = pricing.promotion || {};
-  const code = String(promo.code || "").trim();
+  const code = String((key === "yearly" ? promo.yearlyCode : promo.monthlyCode) || promo.code || "").trim();
   const promoPrice = Number((key === "yearly" ? promo.yearlyAmount : promo.monthlyAmount) || 0);
   const basePrice = Number(plan?.amount || 0);
   if (!plan || promo.enabled === false || !code || !promoPrice || !basePrice || promoPrice >= basePrice) return null;

@@ -516,7 +516,8 @@
                   <label class="checkbox-field checkbox-inline plan-detail-wide"><input type="checkbox" name="promotionEnabled"><span>Enable for eligible parents</span></label>
                   <label class="promo-price-field" data-promo-plan="monthly">Discount price ($)<input type="number" name="promoMonthlyPrice" min="0" step="0.01" placeholder="Blank = none"></label>
                   <label class="promo-price-field" data-promo-plan="yearly" hidden>Discount price ($)<input type="number" name="promoYearlyPrice" min="0" step="0.01" placeholder="Blank = none"></label>
-                  <label>Code<input type="text" name="promoCode" placeholder="Enter promotion code"></label>
+                  <label class="promo-price-field" data-promo-plan="monthly">Code<input type="text" name="promoMonthlyCode" placeholder="Enter monthly code"></label>
+                  <label class="promo-price-field" data-promo-plan="yearly" hidden>Code<input type="text" name="promoYearlyCode" placeholder="Enter yearly code"></label>
                   <label class="plan-detail-wide">Description<input type="text" name="promoDescription" placeholder="Example: Back-to-school offer"></label>
                 </div>
               </section>
@@ -865,6 +866,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=184"></script>
+  <script src="/webapp/webapp.js?v=185"></script>
 </body>
 </html>

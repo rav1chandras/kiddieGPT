@@ -190,6 +190,11 @@
     promotion.price = promotion.planKey === "yearly" ? promotion.yearlyAmount : promotion.monthlyAmount;
     if (Number(promotion.monthlyAmount || 0) <= 0 && Number(promotion.yearlyAmount || 0) > 0) promotion.planKey = "yearly";
     promotion.enabled = promotion.enabled !== false;
+    // Each plan carries its own code. Records written before the split have a
+    // single `code`, which seeds both so an existing promotion keeps working.
+    promotion.monthlyCode = String(rawPromotion.monthlyCode || rawPromotion.code || "").trim();
+    promotion.yearlyCode = String(rawPromotion.yearlyCode || rawPromotion.code || "").trim();
+    promotion.code = promotion.monthlyCode || promotion.yearlyCode;
     delete promotion.discountPercent;
     delete promotion.endDate;
     var yearlyUpgrade = Object.assign({}, defaults.yearlyUpgrade, rawYearlyUpgrade);
@@ -2006,17 +2011,19 @@
     function configuredPromotionForPlan(planKey) {
       var pricing = readPricing();
       var promo = pricing.promotion || {};
-      var code = String(promo.code || "").trim();
       var key = planKey || selectedPlanKeyFromInputs(planInputs);
+      var code = String((key === "yearly" ? promo.yearlyCode : promo.monthlyCode) || promo.code || "").trim();
       if (promo.enabled === false || !code) return null;
       var amount = promotionAmountForPlan(promo, key);
       var base = Number((pricing[key] || {}).amount || 0);
       if (!amount || !base || amount >= base) return null;
-      return Object.assign({
+      // promo goes first: spreading it last overwrote the per-plan code and the
+      // requested planKey with the stored record's own values.
+      return Object.assign({}, promo, {
         code: code,
         planKey: key,
         promoPrice: amount
-      }, promo);
+      });
     }
 
     function eligiblePromotion(planKey) {
@@ -2625,11 +2632,12 @@
       var off = Math.max(0, Number(up.discountAmount || 0));
       var configuredPrice = planPromotion ? Number(planPromotion.promoPrice || 0) : 0;
       var upgradePrice = off > 0 ? Math.max(0, Math.round((base - off) * 100) / 100) : 0;
-      // The yearly-upgrade section is for existing monthly subscribers. If its
-      // discount is set, it takes precedence over a generic signup override;
-      // signup plan tiles continue to use the promotion override independently.
-      var usesUpgradeOffer = off > 0 || Boolean(String(up.note || "").trim());
-      var usesPlanPromotion = !usesUpgradeOffer && Boolean(planPromotion && configuredPrice > 0);
+      // A promotion override set for the yearly plan wins: it is the more
+      // specific, explicitly-priced instruction, and an admin who types a yearly
+      // override price expects to see exactly that price in the portal. The
+      // upgrade discount is the standing offer used when no override is set.
+      var usesPlanPromotion = Boolean(planPromotion && configuredPrice > 0);
+      var usesUpgradeOffer = !usesPlanPromotion && (off > 0 || Boolean(String(up.note || "").trim()));
       var price = usesPlanPromotion
         ? configuredPrice
         : upgradePrice > 0 ? upgradePrice : base;
@@ -5067,7 +5075,8 @@
       pricingFormSynced = true;
       syncPlanSetupFields();
       if (pricingForm.elements.promotionEnabled) pricingForm.elements.promotionEnabled.checked = pricing.promotion.enabled !== false;
-      pricingForm.elements.promoCode.value = pricing.promotion.code;
+      if (pricingForm.elements.promoMonthlyCode) pricingForm.elements.promoMonthlyCode.value = pricing.promotion.monthlyCode || pricing.promotion.code || "";
+      if (pricingForm.elements.promoYearlyCode) pricingForm.elements.promoYearlyCode.value = pricing.promotion.yearlyCode || pricing.promotion.code || "";
       // Blank means "no discount on this plan". Writing 0 here made a disabled
       // plan look like a $0 price, which is why a monthly override appeared set
       // but never reached the portal.
@@ -6453,6 +6462,8 @@
         var targetPlan = setupKey === "yearly" ? yearlyPlan : monthlyPlan;
         var promoMonthlyPrice = Number(pricingForm.elements.promoMonthlyPrice ? pricingForm.elements.promoMonthlyPrice.value : 0) || 0;
         var promoYearlyPrice = Number(pricingForm.elements.promoYearlyPrice ? pricingForm.elements.promoYearlyPrice.value : 0) || 0;
+        var promoMonthlyCode = pricingForm.elements.promoMonthlyCode ? pricingForm.elements.promoMonthlyCode.value.trim() : "";
+        var promoYearlyCode = pricingForm.elements.promoYearlyCode ? pricingForm.elements.promoYearlyCode.value.trim() : "";
         targetPlan.amount = Number(pricingForm.elements.planAmount.value) || Number(targetPlan.amount || 19);
         targetPlan.stripePriceId = pricingForm.elements.planStripePriceId.value.trim();
         targetPlan.familyMemberCount = Number(pricingForm.elements.planFamilyMemberCount.value) || Number(targetPlan.familyMemberCount || 3);
@@ -6465,7 +6476,9 @@
           promotion: Object.assign({}, pricing.promotion, {
             enabled: pricingForm.elements.promotionEnabled ? pricingForm.elements.promotionEnabled.checked : true,
             planKey: promoYearlyPrice > 0 && promoMonthlyPrice <= 0 ? "yearly" : "monthly",
-            code: pricingForm.elements.promoCode.value.trim(),
+            monthlyCode: promoMonthlyCode,
+            yearlyCode: promoYearlyCode,
+            code: promoMonthlyCode || promoYearlyCode,
             price: promoMonthlyPrice || promoYearlyPrice,
             monthlyAmount: promoMonthlyPrice,
             yearlyAmount: promoYearlyPrice,
