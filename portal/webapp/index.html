@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <link rel="stylesheet" href="/webapp/webapp.css?v=173">
-  <link rel="stylesheet" href="/webapp/parent-portal-mockup.css?v=6">
+  <link rel="stylesheet" href="/webapp/parent-portal-mockup.css?v=7">
 </head>
 <body data-page="parent" class="parent-mockup parent-locked">
   <section class="parent-auth-gate" id="parent-auth-gate">
@@ -154,8 +154,10 @@
 
   <div class="upgrade-modal-backdrop" id="upgrade-modal" hidden><div class="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title"><button class="upgrade-modal-close" id="upgrade-modal-close" aria-label="Close">&times;</button><div class="upgrade-modal-icon"><i data-lucide="sparkles"></i></div><h2 id="upgrade-modal-title">Upgrade to Yearly</h2><p class="upgrade-modal-sub">Here's exactly what you'll get.</p><ul class="upgrade-perks" id="upgrade-perks"></ul><div class="upgrade-price-row" id="upgrade-price-row"></div><p class="upgrade-note" id="upgrade-modal-note" hidden></p><div class="upgrade-modal-actions"><button class="button ghost" type="button" id="upgrade-cancel">Not now</button><button class="button primary" type="button" id="upgrade-confirm">Confirm upgrade</button></div></div></div>
 
+  <div class="modal-backdrop billing-cooldown-modal" id="billing-cooldown-modal" hidden><div class="profile-modal billing-cooldown-dialog" role="dialog" aria-modal="true" aria-labelledby="billing-cooldown-title" aria-describedby="billing-cooldown-copy"><button class="modal-close" type="button" id="billing-cooldown-close" aria-label="Close"><i data-lucide="x"></i></button><span class="billing-cooldown-icon"><i data-lucide="clock-3"></i></span><p class="eyebrow">Billing changes paused</p><h2 id="billing-cooldown-title">Before you make another billing change</h2><p class="modal-intro" id="billing-cooldown-copy">You recently changed your subscription. To protect your account and prevent duplicate billing changes, please wait 24 hours before trying again. Your current access and billing schedule will remain unchanged.</p><p class="billing-cooldown-until" id="billing-cooldown-until"></p><div class="modal-actions"><button class="primary-button" type="button" id="billing-cooldown-okay">Okay, got it</button></div></div></div>
+
   <div class="modal-backdrop delete-profile-modal-backdrop" id="delete-profile-modal" hidden><div class="profile-modal delete-profile-modal" role="dialog" aria-modal="true" aria-labelledby="delete-profile-modal-title" aria-describedby="delete-profile-modal-copy"><button class="modal-close" type="button" id="delete-profile-modal-close" aria-label="Close confirmation"><i data-lucide="x"></i></button><span class="delete-profile-icon"><i data-lucide="user-round-minus"></i></span><p class="eyebrow">Remove profile</p><h2 id="delete-profile-modal-title">Remove this student profile?</h2><p class="modal-intro" id="delete-profile-modal-copy">You are about to remove <strong id="delete-profile-name">this student</strong>'s profile from your family account.</p><div class="delete-profile-warning"><i data-lucide="triangle-alert"></i><span>The profile's learning goals, rewards, and progress will also be removed. This action cannot be undone.</span></div><p class="delete-profile-modal-error" id="delete-profile-modal-error" role="alert"></p><div class="modal-actions"><button class="quiet-button" type="button" id="cancel-delete-profile">Cancel</button><button class="primary-button delete-profile-confirm" type="button" id="confirm-delete-profile"><i data-lucide="trash-2"></i>Delete profile</button></div></div></div>
 
-  <script src="/webapp/webapp.js?v=188"></script>
+  <script src="/webapp/webapp.js?v=189"></script>
 </body>
 </html>

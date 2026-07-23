@@ -442,6 +442,10 @@
     var acceptDiscount = document.getElementById("accept-discount");
     var confirmCancel = document.getElementById("confirm-cancel");
     var cancelReason = document.getElementById("cancel-reason");
+    var billingCooldownModal = document.getElementById("billing-cooldown-modal");
+    var billingCooldownClose = document.getElementById("billing-cooldown-close");
+    var billingCooldownOkay = document.getElementById("billing-cooldown-okay");
+    var billingCooldownUntil = document.getElementById("billing-cooldown-until");
     var cancellationYearlyOption = document.getElementById("cancellation-yearly-option");
     var cancelSwitchYearly = document.getElementById("cancel-switch-yearly");
     var updatePaymentMethod = document.getElementById("update-payment-method");
@@ -1687,7 +1691,7 @@
         }
         var accessTitle = document.getElementById("upgrade-yearly-access-title");
         if (accessTitle) accessTitle.textContent = (12 + tileOffer.bonusMonths) + " months of learning access";
-        if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = "<i data-lucide='arrow-up-right'></i>Choose yearly";
+        if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = "<i data-lucide='arrow-up-right'></i>" + (showUpgradeTile ? "Upgrade to Yearly" : "Choose yearly");
         renderIcons();
       }
       var visibleCurrentPlanKey = needsCheckout ? "monthly" : plan.key;
@@ -2940,6 +2944,22 @@
     }
     function closeUpgradeModal() { var m = document.getElementById("upgrade-modal"); if (m) m.hidden = true; }
 
+    function closeBillingCooldownModal() {
+      if (billingCooldownModal) billingCooldownModal.hidden = true;
+    }
+
+    function openBillingCooldownModal(until) {
+      if (billingCooldownUntil) {
+        var cooldownDate = until ? new Date(until) : null;
+        billingCooldownUntil.textContent = cooldownDate && !isNaN(cooldownDate.getTime())
+          ? "You can manage billing again after " + cooldownDate.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + "."
+          : "";
+      }
+      if (billingCooldownModal) billingCooldownModal.hidden = false;
+      renderIcons();
+      if (billingCooldownOkay) billingCooldownOkay.focus();
+    }
+
     async function performYearlyUpgrade() {
       var plan = planByKey("yearly");
       upgradeYearly.disabled = true;
@@ -3011,6 +3031,11 @@
     if (upgradeCloseBtn) upgradeCloseBtn.addEventListener("click", closeUpgradeModal);
     var upgradeModalEl = document.getElementById("upgrade-modal");
     if (upgradeModalEl) upgradeModalEl.addEventListener("click", function (event) { if (event.target === upgradeModalEl) closeUpgradeModal(); });
+    if (billingCooldownClose) billingCooldownClose.addEventListener("click", closeBillingCooldownModal);
+    if (billingCooldownOkay) billingCooldownOkay.addEventListener("click", closeBillingCooldownModal);
+    if (billingCooldownModal) billingCooldownModal.addEventListener("click", function (event) {
+      if (event.target === billingCooldownModal) closeBillingCooldownModal();
+    });
 
     if (cancelSwitchYearly) cancelSwitchYearly.addEventListener("click", function () {
       closeUpgradeModal();
@@ -3134,7 +3159,29 @@
           })
         });
         var result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Unable to schedule cancellation");
+        if (!response.ok) {
+          if (result.code === "billing_cooldown") {
+            cancelFlow.classList.add("hidden");
+            subscriptionMain.classList.remove("hidden");
+            paymentState.textContent = "Billing changes paused";
+            paymentState.className = "state-chip warning";
+            completionTitle.textContent = "Billing changes paused";
+            completionText.textContent = result.error || "Please wait 24 hours before trying again.";
+            openBillingCooldownModal(result.cooldownUntil);
+            preview();
+            return;
+          }
+          throw new Error(result.error || "Unable to schedule cancellation");
+        }
+        if (result.alreadyScheduled) {
+          cancelFlow.classList.add("hidden");
+          subscriptionMain.classList.remove("hidden");
+          completionTitle.textContent = "Cancellation already scheduled";
+          completionText.textContent = result.message || "Your current access and billing schedule are unchanged.";
+          await syncSubscriptionFromEntitlement().catch(function () {});
+          preview();
+          return;
+        }
         if (result.trialing) {
           invalidateEntitlementSync();
           cancellationScheduled = true;

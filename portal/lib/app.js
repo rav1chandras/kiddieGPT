@@ -1375,11 +1375,42 @@ function cancellationStillActive(family) {
   return Number.isFinite(accessUntil) && accessUntil > Date.now();
 }
 
+function billingCooldownFor(family) {
+  const until = family?.billingCooldownUntil || "";
+  const untilMs = new Date(until).getTime();
+  return Number.isFinite(untilMs) && untilMs > Date.now()
+    ? { until, untilMs }
+    : null;
+}
+
+function recentBillingActions(family, action, windowMs = BILLING_COOLDOWN_HOURS * 3600000) {
+  const cutoff = Date.now() - windowMs;
+  return (Array.isArray(family?.billingActionHistory) ? family.billingActionHistory : [])
+    .filter((entry) => entry && entry.action === action && new Date(entry.at || 0).getTime() > cutoff);
+}
+
+function recordBillingAction(family, action) {
+  if (!family) return family;
+  const history = Array.isArray(family.billingActionHistory) ? family.billingActionHistory : [];
+  family.billingActionHistory = [{ action, at: nowIso() }, ...history].slice(0, 20);
+  return family;
+}
+
+function billingCooldownPayload(family) {
+  const cooldown = billingCooldownFor(family);
+  return {
+    code: "billing_cooldown",
+    error: `Billing changes are temporarily paused. Please wait ${BILLING_COOLDOWN_HOURS} hours before trying again.`,
+    cooldownUntil: cooldown?.until || family?.billingCooldownUntil || ""
+  };
+}
+
 // Refund policy (monthly and yearly alike): cancelling within REFUND_WINDOW_DAYS
 // of the most recent payment is a full refund and access ends immediately.
 // After that there is no refund — access runs to the end of the paid period and
 // simply does not renew. The window re-opens on every payment (each renewal).
 const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 3));
+const BILLING_COOLDOWN_HOURS = Math.max(1, Number(process.env.BILLING_COOLDOWN_HOURS || 24));
 
 // ---- Stripe card-upfront free trial ----------------------------------------
 // Self-serve signups get a card-upfront trial: Stripe collects the card at
@@ -4739,6 +4770,12 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     return res.status(400).json({ error: parentEmailError(parentEmail) });
   }
   let checkoutFamilyId = familyId || "";
+  const preflightCheckoutFamily = parentEmail
+    ? readDb().families.find((item) => item.id === familyId || item.email === String(parentEmail).toLowerCase())
+    : null;
+  if (preflightCheckoutFamily && billingCooldownFor(preflightCheckoutFamily)) {
+    return res.status(429).json(billingCooldownPayload(preflightCheckoutFamily));
+  }
   if (parentEmail) {
     checkoutFamilyId = mutateDb((db) => {
       let family = db.families.find((item) => item.id === familyId || item.email === String(parentEmail).toLowerCase());
@@ -5111,6 +5148,9 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
   if (!existingFamily) {
     return res.status(404).json({ error: "Family account not found." });
   }
+  if (billingCooldownFor(existingFamily)) {
+    return res.status(429).json(billingCooldownPayload(existingFamily));
+  }
   const cancellationPromo = normalisePricing(readDb().pricing).cancellationPromo;
   if (!cancellationPromo.enabled || Number(cancellationPromo.amountOff || 0) <= 0) {
     return res.status(400).json({ error: "The cancellation save offer is not currently available." });
@@ -5254,6 +5294,36 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
 
   const existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) return res.status(404).json({ error: "Family account not found." });
+  // Cancellation is idempotent. A stale browser can submit the old action after
+  // the first request succeeded, so return the existing schedule without making
+  // another Stripe call.
+  if (existingFamily.subscriptionStatus === "cancel_scheduled") {
+    return res.json({
+      mode: process.env.STRIPE_SECRET_KEY ? "stripe" : "mock",
+      familyId: existingFamily.id,
+      status: existingFamily.subscriptionStatus,
+      cancelAccessUntil: existingFamily.cancelAccessUntil || existingFamily.cancellationAccessUntil || "",
+      alreadyScheduled: true,
+      refunded: false,
+      message: "Cancellation is already scheduled. Your current access and billing schedule are unchanged."
+    });
+  }
+  const activeCooldown = billingCooldownFor(existingFamily);
+  if (activeCooldown) return res.status(429).json(billingCooldownPayload(existingFamily));
+  if (recentBillingActions(existingFamily, "cancel").length >= 1) {
+    const cooldownUntil = new Date(Date.now() + BILLING_COOLDOWN_HOURS * 3600000).toISOString();
+    const updated = mutateDb((db) => {
+      const family = db.families.find((item) => item.email === email);
+      if (!family) return null;
+      family.billingCooldownUntil = cooldownUntil;
+      audit(db, "subscription.billing_cooldown", { familyId: family.id, email, reason: "repeat_cancellation" }, email);
+      return family;
+    });
+    return res.status(429).json({
+      ...billingCooldownPayload(updated || { billingCooldownUntil: cooldownUntil }),
+      cooldownUntil
+    });
+  }
   // past_due is deliberately included: a parent whose card is failing is exactly
   // who needs a clean exit, or a chargeback becomes their only option.
   if (!["active", "cancel_scheduled", "trialing", "trial", "past_due"].includes(existingFamily.subscriptionStatus)) {
@@ -5316,6 +5386,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       } else {
         markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
       }
+      recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
       monitor(db, "info", "billing", "Cancelled inside refund window — full refund issued", { email, refundId, windowDays: refundWindow.windowDays }, email);
       return family;
@@ -5356,6 +5427,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
       markCancellationScheduled(family, { id: family?.stripeSubscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(mockPeriodEnd.getTime() / 1000) }, reason);
+      recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_requested.mock", { familyId: family?.id || "", email, reason, accessUntil: family?.cancelAccessUntil || "" }, email);
       return family;
     });
@@ -5380,6 +5452,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
       markCancellationScheduled(family, subscription, reason);
+      recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_requested", { familyId: family?.id || "", email, subscriptionId: subscription.id, reason, accessUntil: family?.cancelAccessUntil || "" }, email);
       return family;
     });
@@ -5412,6 +5485,7 @@ app.post("/api/stripe/resume-subscription", requireParent, async (req, res) => {
   if (!email) return res.status(400).json({ error: "Missing parent email." });
   const existing = readDb().families.find((item) => item.email === email);
   if (!existing) return res.status(404).json({ error: "Family account not found." });
+  if (billingCooldownFor(existing)) return res.status(429).json(billingCooldownPayload(existing));
   if (existing.subscriptionStatus !== "cancel_scheduled") {
     return res.status(400).json({ error: "This plan is not scheduled to cancel." });
   }
@@ -5462,6 +5536,9 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
   const family = dbSnapshot.families.find((item) => item.email === email);
   if (!family) {
     return res.status(404).json({ error: "Family account not found." });
+  }
+  if (billingCooldownFor(family)) {
+    return res.status(429).json(billingCooldownPayload(family));
   }
   const trialing = family.subscriptionStatus === "trialing";
   // A family that has cancelled but still has paid access left is the best
