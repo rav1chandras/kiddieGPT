@@ -110,7 +110,7 @@ button { cursor: pointer; }
 .nav-item:hover, .sidebar-link:hover { background: var(--mock-soft); color: var(--mock-text); }
 .nav-item.is-active { background: var(--mock-green-soft); color: var(--mock-green); }
 
-.sidebar-bottom { display: grid; gap: 6px; margin-top: auto; }
+.sidebar-bottom { display: grid; gap: 6px; margin-top: auto; padding-bottom: 10px; }
 .sidebar-plan-stack { display: grid; gap: 8px; margin-bottom: 9px; }
 .sidebar-plan-card, .sidebar-upgrade-card { width: 100%; padding: 12px; border-radius: 14px; text-align: left; }
 .sidebar-plan-card { border: 1px solid var(--mock-line); background: var(--mock-surface); }
@@ -329,6 +329,14 @@ button { cursor: pointer; }
 .support-icon { display: grid; width: 40px; height: 40px; margin-bottom: 17px; place-items: center; border-radius: 13px; background: var(--mock-green-soft); color: var(--mock-green); }
 .support-icon svg { width: 19px; }
 .support-contact .primary-button { margin-top: 14px; }
+.support-contact-head { display: flex; align-items: center; gap: 11px; }
+.support-contact-head .support-icon { flex: 0 0 auto; margin: 0; }
+.support-contact-head > div { min-width: 0; }
+.support-contact-head h3 { margin: 0; }
+.support-contact-head p { margin: 3px 0 0; }
+.support-legal-links { display: flex; align-items: center; justify-content: flex-end; gap: 13px; margin-top: 10px; color: var(--mock-muted); font-size: 9px; }
+.support-legal-links a { color: var(--mock-green); font-weight: 600; text-decoration: none; }
+.support-legal-links a:hover { text-decoration: underline; }
 .support-links { display: grid; align-content: start; gap: 0; }
 .support-links > div { display: flex; align-items: center; gap: 10px; min-height: 62px; border-bottom: 1px solid #eef3ef; }
 .support-links > div:last-child { border-bottom: 0; }
@@ -413,4 +421,98 @@ button { cursor: pointer; }
   .screen-heading { align-items: stretch; flex-direction: column; }
   .screen-heading .primary-button, .screen-heading .date-chip { align-self: flex-start; }
   .mockup-footer { align-items: flex-start; flex-direction: column; padding-bottom: 12px; }
+}
+
+/* Subscription mockup: a clearer family decision with a stronger yearly value story. */
+.subscription-heading { align-items: center; margin-bottom: 14px; }
+.subscription-heading h2 { font-size: clamp(24px, 2.45vw, 32px); }
+.subscription-assurance { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid #cfe8d8; border-radius: 999px; background: #f4fbf6; color: var(--mock-green); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.subscription-assurance svg { width: 14px; height: 14px; color: var(--mock-green-2); }
+.subscription-assurance-row { display: flex; justify-content: flex-end; margin-top: 10px; }
+.subscription-assurance-row .subscription-assurance { font-size: 10px; }
+.subscription-bottom-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; }
+.subscription-bottom-bar .billing-management-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); flex: 1 1 auto; min-width: 0; max-width: 620px; margin-top: 0; }
+.subscription-bottom-bar .subscription-assurance-row { flex: 0 0 auto; margin-top: 0; }
+.subscription-trial-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding: 10px 13px; border: 1px solid #e2e9c4; border-radius: 13px; background: #fbfce9; }
+.trial-banner-icon { display: grid; flex: 0 0 auto; width: 28px; height: 28px; place-items: center; border-radius: 9px; background: var(--mock-yellow); color: var(--mock-green); }
+.trial-banner-icon svg { width: 14px; height: 14px; }
+.subscription-trial-banner > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+.subscription-trial-banner strong { color: #5d691f; font-size: 11px; font-weight: 700; }
+.subscription-trial-banner small { color: #8a9051; font-size: 10px; }
+.trial-banner-note { margin-left: auto; color: #6e7731; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.polished-plan-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.polished-plan-card { position: relative; display: flex; min-height: 420px; flex-direction: column; overflow: hidden; padding: 21px; border-radius: 17px; }
+.monthly-plan-card { border-top: 3px solid var(--mock-green-2); }
+.yearly-plan-card { border: 0; border-top: 3px solid var(--mock-yellow); background: var(--mock-green) !important; color: #fff; box-shadow: 0 16px 32px rgba(11, 102, 93, .14); }
+.plan-card-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.plan-card-top .plan-badge, .plan-card-top .best-value { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; }
+.plan-card-top .best-value { background: var(--mock-yellow); color: #5b651b; }
+.plan-card-top .best-value svg { width: 12px; height: 12px; }
+.plan-fit { display: inline-flex; align-items: center; gap: 5px; color: var(--mock-muted); font-size: 9px; font-weight: 600; }
+.plan-fit svg { width: 13px; height: 13px; color: var(--mock-green-2); }
+.yearly-fit { color: rgba(255,255,255,.75); }
+.yearly-fit svg { color: var(--mock-yellow); }
+.plan-card-heading { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 21px; }
+.plan-card-heading h3 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+.plan-card-heading p { margin: 4px 0 0; color: var(--mock-muted); font-size: 10px; }
+.yearly-plan-card .plan-card-heading p { color: rgba(255,255,255,.7); }
+.plan-card-mark { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border-radius: 11px; background: var(--mock-green-soft); color: var(--mock-green); }
+.plan-card-mark svg { width: 17px; height: 17px; }
+.yearly-plan-card .plan-card-mark { background: rgba(255,255,255,.14); color: var(--mock-yellow); }
+.polished-plan-price { gap: 4px; margin-top: 18px; }
+.polished-plan-price strong { font-size: 36px; font-weight: 600; letter-spacing: -.055em; }
+.polished-plan-price span { color: var(--mock-muted); font-size: 11px; font-weight: 600; }
+.yearly-plan-card .polished-plan-price span { color: rgba(255,255,255,.76); }
+.plan-billing-line { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--mock-muted); font-size: 11px; font-weight: 600; }
+.plan-billing-line svg { width: 13px; height: 13px; color: var(--mock-green-2); }
+.yearly-billing-line { color: rgba(255,255,255,.9); font-weight: 700; }
+.yearly-billing-line svg { color: var(--mock-yellow); }
+.plan-divider { height: 1px; margin: 17px 0 5px; background: var(--mock-line); }
+.yearly-plan-card .plan-divider { background: rgba(255,255,255,.23); }
+.plan-benefits { position: relative; z-index: 1; display: grid; gap: 11px; }
+.plan-benefits > span { display: grid; grid-template-columns: 17px minmax(0, 1fr); gap: 1px 8px; align-items: start; }
+.plan-benefits svg { grid-row: span 2; width: 15px; height: 15px; margin-top: 2px; color: var(--mock-green-2); }
+.plan-benefits b { color: var(--mock-text); font-size: 10px; font-weight: 600; }
+.plan-benefits small { color: var(--mock-muted); font-size: 9px; line-height: 1.35; }
+.yearly-plan-card .plan-benefits svg { color: var(--mock-yellow); }
+.yearly-plan-card .plan-benefits b { color: #fff; }
+.yearly-plan-card .plan-benefits small { color: rgba(255,255,255,.7); }
+.plan-cta { position: relative; z-index: 1; width: 100%; min-height: 41px; margin-top: auto; border-radius: 11px; font-size: 11px; }
+.monthly-plan-card .plan-cta { background: var(--mock-green); }
+.yearly-cta { background: #fff; color: var(--mock-green); }
+.yearly-cta:hover { background: #f4f8eb; color: var(--mock-green); }
+.plan-cta-note { position: relative; z-index: 1; margin-top: 8px; color: var(--mock-muted); font-size: 9px; text-align: center; }
+.yearly-plan-card .plan-cta-note { color: rgba(255,255,255,.68); }
+.yearly-glow { position: absolute; top: -74px; right: -45px; width: 190px; height: 190px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 22px rgba(255,255,255,.035), 0 0 0 44px rgba(255,255,255,.02); }
+.yearly-price-row { position: relative; z-index: 1; display: flex; align-items: baseline; gap: 9px; }
+.yearly-price-row .plan-price { margin-top: 18px; }
+.old-price { color: rgba(255,255,255,.62); font-size: 14px; text-decoration: line-through; }
+.saving-chip { position: relative; z-index: 1; display: inline-flex; align-items: center; align-self: flex-start; gap: 5px; margin-top: 8px; padding: 6px 9px; border-radius: 7px; background: rgba(237,246,123,.24); color: var(--mock-yellow); font-size: 11px; font-weight: 700; }
+.saving-chip svg { width: 13px; height: 13px; }
+.plan-cta-note { font-size: 11px; font-weight: 600; }
+.trial-pitch-inline { display: block; margin: 5px 0 0; color: var(--mock-green); font-size: 10px; line-height: 1.35; text-align: center; }
+.trial-pitch-inline strong { color: var(--mock-green); font-weight: 800; }
+.trial-pitch-inline[hidden] { display: none !important; }
+.subscription-proof-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
+.subscription-proof-row > div { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 11px; border: 1px solid var(--mock-line); border-radius: 12px; background: rgba(255,255,255,.7); }
+.proof-icon { display: grid; flex: 0 0 auto; width: 27px; height: 27px; place-items: center; border-radius: 9px; }
+.proof-icon svg { width: 14px; height: 14px; }
+.proof-icon.mint { background: #def4e8; color: #18835d; }
+.proof-icon.yellow { background: #f7f5cd; color: #887f26; }
+.proof-icon.blue { background: #e6effb; color: #577aab; }
+.subscription-proof-row > div > span:last-child { display: grid; min-width: 0; gap: 1px; }
+.subscription-proof-row strong { overflow: hidden; color: var(--mock-text); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.subscription-proof-row small { overflow: hidden; color: var(--mock-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .subscription-heading { align-items: flex-start; }
+  .subscription-assurance { align-self: flex-start; }
+  .subscription-assurance-row { justify-content: flex-start; }
+  .subscription-bottom-bar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .subscription-bottom-bar .billing-management-row { flex: none; max-width: none; }
+  .subscription-trial-banner { align-items: flex-start; }
+  .trial-banner-note { margin-top: 3px; }
+  .polished-plan-grid, .subscription-proof-row { grid-template-columns: 1fr; }
+  .polished-plan-card { min-height: 0; }
+  .subscription-proof-row > div { min-height: 52px; }
 }

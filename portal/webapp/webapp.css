@@ -8196,14 +8196,26 @@ body.parent-mockup .parent-portal-live .cancellation-alternative strong { color:
 body.parent-mockup .parent-portal-live .cancellation-alternative small { color: var(--mock-muted); font-size: 9px; }
 body.parent-mockup .parent-portal-live .cancellation-alternative button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 body.parent-mockup .parent-portal-live .cancellation-alternative button svg { width: 13px; height: 13px; }
-body.parent-mockup .parent-portal-live .support-grid { align-items: start; }
-body.parent-mockup .parent-portal-live .support-form { display: grid; gap: 10px; margin: 14px 0 0; }
+body.parent-mockup .parent-portal-live .support-grid { align-items: stretch; }
+body.parent-mockup .parent-portal-live .support-grid > .surface { height: 100%; }
+body.parent-mockup .parent-portal-live .support-contact,
+body.parent-mockup .parent-portal-live .account-settings { display: flex; flex-direction: column; }
+body.parent-mockup .parent-portal-live .support-contact-head { display: flex; align-items: center; gap: 11px; margin: 0 0 14px; }
+body.parent-mockup .parent-portal-live .support-contact-head .support-icon { flex: 0 0 auto; width: 36px; height: 36px; margin: 0; border-radius: 11px; }
+body.parent-mockup .parent-portal-live .support-contact-head .support-icon svg { width: 17px; height: 17px; }
+body.parent-mockup .parent-portal-live .support-contact-head > div { min-width: 0; }
+body.parent-mockup .parent-portal-live .support-contact-head h3 { margin: 0; }
+body.parent-mockup .parent-portal-live .support-contact-head p { margin: 3px 0 0; color: var(--mock-muted); font-size: 10px; }
+body.parent-mockup .parent-portal-live .support-form { display: grid; gap: 10px; margin: 0; }
 body.parent-mockup .parent-portal-live .support-form label { display: grid; gap: 5px; color: var(--mock-muted); font-size: 10px; font-weight: 600; }
 body.parent-mockup .parent-portal-live .support-form select,
 body.parent-mockup .parent-portal-live .support-form textarea,
 body.parent-mockup .parent-portal-live .account-action-inline input { width: 100%; padding: 9px; border: 1px solid var(--mock-line); border-radius: 9px; background: var(--mock-soft); color: var(--mock-text); font-size: 11px; }
 body.parent-mockup .parent-portal-live .support-form textarea { min-height: 100px; resize: vertical; }
 body.parent-mockup .parent-portal-live .support-charcount { color: var(--mock-muted); font-size: 9px; text-align: right; }
+body.parent-mockup .parent-portal-live .support-legal-links { display: flex; align-items: center; justify-content: flex-end; gap: 13px; margin-top: 10px; color: var(--mock-muted); font-size: 9px; }
+body.parent-mockup .parent-portal-live .support-legal-links a { color: var(--mock-green); font-weight: 600; text-decoration: none; }
+body.parent-mockup .parent-portal-live .support-legal-links a:hover { text-decoration: underline; }
 body.parent-mockup .parent-portal-live .support-identity-summary { display: flex; align-items: center; gap: 9px; margin: 14px 0 8px; padding-bottom: 12px; border-bottom: 1px solid var(--mock-line); }
 body.parent-mockup .parent-portal-live .support-identity-summary > span:last-child { display: grid; gap: 2px; }
 body.parent-mockup .parent-portal-live .support-identity-summary strong { font-size: 11px; font-weight: 600; }
@@ -8853,6 +8865,170 @@ body.parent-mockup .parent-portal-live .plan-includes-list strong {
   font-weight: 600;
 }
 
+/* Live subscription cards now use the same family-first decision layout as the
+   approved mockup. IDs remain intact so Stripe and entitlement states keep
+   controlling the content inside these cards. */
+body.parent-mockup .parent-portal-live #subscription-main {
+  display: grid;
+  gap: 12px;
+}
+body.parent-mockup .parent-portal-live .subscription-trial-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid #e2e9c4;
+  border-radius: 13px;
+  background: #fbfce9;
+}
+body.parent-mockup .parent-portal-live .trial-banner-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--mock-yellow);
+  color: var(--mock-green);
+}
+body.parent-mockup .parent-portal-live .trial-banner-icon svg { width: 14px; height: 14px; }
+body.parent-mockup .parent-portal-live .subscription-trial-banner > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+body.parent-mockup .parent-portal-live .subscription-trial-banner strong { color: #5d691f; font-size: 11px; font-weight: 700; }
+body.parent-mockup .parent-portal-live .subscription-trial-banner small { color: #8a9051; font-size: 10px; }
+body.parent-mockup .parent-portal-live .trial-banner-note { margin-left: auto; color: #6e7731; font-size: 10px; font-weight: 600; white-space: nowrap; }
+body.parent-mockup .parent-portal-live .subscription-trial-banner.is-active { border-color: #cfe8d8; background: #f4fbf6; }
+body.parent-mockup .parent-portal-live .subscription-trial-banner.is-active .trial-banner-icon { background: #dff2e5; color: var(--mock-green-2); }
+body.parent-mockup .parent-portal-live .subscription-trial-banner.is-active strong { color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .subscription-trial-banner.is-active small,
+body.parent-mockup .parent-portal-live .subscription-trial-banner.is-active .trial-banner-note { color: var(--mock-muted); }
+body.parent-mockup .parent-portal-live .live-polished-plan-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+body.parent-mockup .parent-portal-live .live-polished-plan-grid.is-single-plan { grid-template-columns: minmax(0, 1fr); }
+body.parent-mockup .parent-portal-live .polished-plan-card {
+  position: relative;
+  display: flex;
+  min-height: 420px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 21px;
+  border-radius: 17px;
+}
+body.parent-mockup .parent-portal-live .monthly-plan-card { border-top: 3px solid var(--mock-green-2); }
+body.parent-mockup .parent-portal-live .yearly-plan-card {
+  border: 0;
+  border-top: 3px solid var(--mock-yellow);
+  background: var(--mock-green);
+  color: #fff;
+  box-shadow: 0 16px 32px rgba(11, 102, 93, .14);
+}
+body.parent-mockup .parent-portal-live .live-plan-card-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+body.parent-mockup .parent-portal-live .live-plan-card-top .plan-badge,
+body.parent-mockup .parent-portal-live .live-plan-card-top .best-value { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; }
+body.parent-mockup .parent-portal-live .live-plan-card-top .plan-badge { justify-self: start; text-transform: none; letter-spacing: 0; }
+body.parent-mockup .parent-portal-live .live-plan-card-top .best-value { background: var(--mock-yellow); color: #5b651b; }
+body.parent-mockup .parent-portal-live .live-plan-card-top .best-value svg { width: 12px; height: 12px; }
+body.parent-mockup .parent-portal-live .live-plan-fit { display: inline-flex; align-items: center; gap: 5px; color: var(--mock-muted); font-size: 9px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .live-plan-fit svg { width: 13px; height: 13px; color: var(--mock-green-2); }
+body.parent-mockup .parent-portal-live .live-plan-fit.yearly-fit { color: rgba(255,255,255,.75); }
+body.parent-mockup .parent-portal-live .live-plan-fit.yearly-fit svg { color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .live-plan-card-heading { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 21px; }
+body.parent-mockup .parent-portal-live .live-plan-card-heading h3 { margin: 0; color: var(--mock-text); font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+body.parent-mockup .parent-portal-live .live-plan-card-heading p { margin: 4px 0 0; color: var(--mock-muted); font-size: 10px; }
+body.parent-mockup .parent-portal-live .live-plan-card-mark { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border-radius: 11px; background: var(--mock-green-soft); color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .live-plan-card-mark svg { width: 17px; height: 17px; }
+body.parent-mockup .parent-portal-live .polished-plan-price { gap: 4px; margin-top: 18px; }
+body.parent-mockup .parent-portal-live .polished-plan-price strong { color: var(--mock-text); font-size: 36px; font-weight: 600; letter-spacing: -.055em; }
+body.parent-mockup .parent-portal-live .polished-plan-price strong s { color: var(--mock-muted); font-size: 18px; font-weight: 500; letter-spacing: 0; }
+body.parent-mockup .parent-portal-live .polished-plan-price span { color: var(--mock-muted); font-size: 11px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .plan-billing-line { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--mock-muted); font-size: 10px; line-height: 1.45; }
+body.parent-mockup .parent-portal-live .plan-billing-line svg { width: 13px; height: 13px; color: var(--mock-green-2); flex: 0 0 auto; }
+body.parent-mockup .parent-portal-live .live-plan-divider { height: 1px; margin: 17px 0 5px; background: var(--mock-line); }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features { display: grid; gap: 11px; margin: 0; padding: 0; border: 0; list-style: none; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li { display: flex; align-items: flex-start; gap: 8px; color: var(--mock-text); font-size: 10px; line-height: 1.4; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li svg { width: 15px; height: 15px; margin-top: 1px; color: var(--mock-green-2); flex: 0 0 auto; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li > span { display: grid; min-width: 0; gap: 1px; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li > span b { color: var(--mock-text); font-size: 10px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li > span small { color: var(--mock-muted); font-size: 9px; line-height: 1.35; }
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-cta-note { position: relative; z-index: 1; margin: 8px 0 0; color: var(--mock-muted); font-size: 9px; text-align: center; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .plan-cta-note { color: rgba(255,255,255,.68); }
+body.parent-mockup .parent-portal-live .polished-plan-card #upgrade-yearly { width: 100%; min-height: 41px; margin-top: auto; border-radius: 11px; }
+body.parent-mockup .parent-portal-live .polished-plan-card .resume-plan-pill { align-self: flex-start; margin-top: 10px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .live-plan-card-top .free-trial-flag { background: var(--mock-yellow); color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .free-trial-flag { background: var(--mock-yellow); color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .live-plan-card-heading h3,
+body.parent-mockup .parent-portal-live .yearly-plan-card #upgrade-plan-title { color: #fff; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .live-plan-card-heading p { color: rgba(255,255,255,.7); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .live-plan-card-mark { background: rgba(255,255,255,.14); color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .polished-plan-price strong { color: #fff; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .polished-plan-price span { color: rgba(255,255,255,.76); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-price-row { position: relative; z-index: 1; display: flex; align-items: baseline; gap: 9px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-price-row .polished-plan-price { margin-top: 18px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .old-price { color: rgba(255,255,255,.62); font-size: 14px; font-weight: 500; text-decoration: line-through; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .saving-chip { position: relative; z-index: 1; display: inline-flex; align-items: center; align-self: flex-start; gap: 5px; margin-top: 8px; padding: 5px 7px; border-radius: 7px; background: rgba(255,255,255,.14); color: #f8f9bd; font-size: 9px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .saving-chip svg { width: 13px; height: 13px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .saving-chip .promo-chip { display: inline-flex; padding: 3px 5px; border-radius: 999px; background: var(--mock-yellow); color: #5b651b; font-size: 8px; font-weight: 700; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-billing-line { color: rgba(255,255,255,.8); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-billing-line svg { color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .plan-divider { background: rgba(255,255,255,.23); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .plan-benefits svg { color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .plan-benefits b { color: #fff; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .plan-benefits small { color: rgba(255,255,255,.7); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-cta { background: #fff; color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-cta:hover { background: #f4f8eb; color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan { background: transparent; }
+body.parent-mockup .parent-portal-live .yearly-plan-card #upgrade-plan-title { display: none; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-content { position: relative; z-index: 1; display: grid; gap: 14px; min-height: 100%; align-content: start; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-heading strong { color: #fff; font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-price { display: flex; align-items: baseline; gap: 7px; margin-top: 2px; color: #fff; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-price s { color: rgba(255,255,255,.62); font-size: 14px; font-weight: 500; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-price b { color: #fff; font-size: 36px; font-weight: 600; letter-spacing: -.055em; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-price span { color: rgba(255,255,255,.76); font-size: 11px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-content > p { margin: 0; color: rgba(255,255,255,.78); font-size: 10px; line-height: 1.5; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-meta { display: grid; gap: 10px; margin-top: 1px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.23); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-meta span { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,.86); font-size: 10px; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-meta svg { width: 15px; color: var(--mock-yellow); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-plan-meta b { font-weight: 600; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-content .primary-button { width: 100%; min-height: 41px; margin-top: auto; border-radius: 11px; background: #fff; color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .yearly-plan-card .upgrade-yearly-content .primary-button:hover { background: #f4f8eb; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-glow { position: absolute; top: -74px; right: -45px; width: 190px; height: 190px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 22px rgba(255,255,255,.035), 0 0 0 44px rgba(255,255,255,.02); }
+body.parent-mockup .parent-portal-live .live-subscription-proof { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
+body.parent-mockup .parent-portal-live .live-subscription-proof > div { min-width: 0; }
+/* Keep the live upgrade card on the mockup's darker primary green even when
+   the legacy upgrade-state class is present. Trial copy is plain supporting
+   text beneath the monthly CTA rather than a second pill. */
+body.parent-mockup .parent-portal-live .yearly-plan-card.is-upgrade-only {
+  border-top-color: var(--mock-yellow);
+  background: var(--mock-green) !important;
+}
+body.parent-mockup .parent-portal-live .plan-billing-line { font-size: 11px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .yearly-billing-line { color: rgba(255,255,255,.9); font-weight: 700; }
+body.parent-mockup .parent-portal-live .yearly-plan-card .saving-chip {
+  padding: 6px 9px;
+  background: rgba(237,246,123,.24);
+  color: var(--mock-yellow);
+  font-size: 11px;
+  font-weight: 700;
+}
+body.parent-mockup .parent-portal-live .polished-plan-card .plan-cta-note { font-size: 11px; font-weight: 600; }
+body.parent-mockup .parent-portal-live .trial-pitch-inline {
+  display: block;
+  margin: 5px 0 0;
+  color: var(--mock-green);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+}
+body.parent-mockup .parent-portal-live .trial-pitch-inline strong { color: var(--mock-green); font-weight: 800; }
+body.parent-mockup .parent-portal-live .trial-pitch-inline[hidden] { display: none !important; }
+
+@media (max-width: 720px) {
+  body.parent-mockup .parent-portal-live .subscription-trial-banner { align-items: flex-start; }
+  body.parent-mockup .parent-portal-live .trial-banner-note { margin-top: 3px; }
+  body.parent-mockup .parent-portal-live .live-polished-plan-grid,
+  body.parent-mockup .parent-portal-live .live-subscription-proof { grid-template-columns: 1fr; }
+  body.parent-mockup .parent-portal-live .polished-plan-card { min-height: 0; }
+}
+
 /* Promotion override column: even inset on all sides, and the helper line under
    the retention card stays on one line until it genuinely runs out of room. */
 body[data-page="admin"] .promotion-override-section {
@@ -8917,4 +9093,35 @@ body[data-page="parent"] .current-plan .resume-plan-pill svg {
 
 body[data-page="parent"] .current-plan .resume-plan-pill[hidden] {
   display: none;
+}
+
+/* The live page keeps the shared heading markup for compatibility, but the
+   subscription screen uses the compact supporting line only. */
+body.parent-mockup .parent-portal-live .subscription-heading .page-kicker,
+body.parent-mockup .parent-portal-live .subscription-heading h2 {
+  display: none;
+}
+
+/* Keep the monthly-to-yearly inputs grouped by decision: bonus months first,
+   then the discount and parent-facing note side by side. */
+body[data-page="admin"] .yearly-upgrade-section .upgrade-bonus-field {
+  grid-column: 1;
+  grid-row: 1;
+}
+body[data-page="admin"] .yearly-upgrade-section .upgrade-discount-field {
+  grid-column: 1;
+  grid-row: 2;
+}
+body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+@media (max-width: 720px) {
+  body[data-page="admin"] .yearly-upgrade-section .upgrade-bonus-field,
+  body[data-page="admin"] .yearly-upgrade-section .upgrade-discount-field,
+  body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field {
+    grid-column: 1;
+    grid-row: auto;
+  }
 }

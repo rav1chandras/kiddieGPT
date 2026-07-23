@@ -315,6 +315,17 @@
     return result;
   }
 
+  async function saveParentProfileOnBackend(profile) {
+    var response = await parentAuthFetch("/api/parent/family/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile)
+    });
+    var result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to save the family profile.");
+    return result.family || result;
+  }
+
   function formatPlanPrice(plan, promoAmount) {
     var amount = promoAmount != null && promoAmount !== "" ? Number(promoAmount) : Number(plan.amount);
     return "$" + amount + "/" + plan.interval;
@@ -332,6 +343,10 @@
 
   function planLabelForKey(key) {
     return key === "yearly" ? "Yearly" : "Monthly";
+  }
+
+  function familyPlanLabelForKey(key) {
+    return "Family " + planLabelForKey(key);
   }
 
     function selectedPlanKeyFromInputs(inputs) {
@@ -441,6 +456,13 @@
     var currentPackageName = document.getElementById("current-package-name");
     var currentPackagePrice = document.getElementById("current-package-price");
     var currentPackageNote = document.getElementById("current-package-note");
+    var currentPackageMode = document.getElementById("current-package-mode");
+    var currentPackageSubcopy = document.getElementById("current-package-subcopy");
+    var subscriptionGrid = document.querySelector(".live-polished-plan-grid");
+    var subscriptionJourneyBanner = document.getElementById("subscription-journey-banner");
+    var subscriptionJourneyTitle = document.getElementById("subscription-journey-title");
+    var subscriptionJourneyCopy = document.getElementById("subscription-journey-copy");
+    var subscriptionJourneyNote = document.getElementById("subscription-journey-note");
     var subscriptionFineprint = document.querySelector(".subscription-fineprint");
     var upgradeYearly = document.getElementById("upgrade-yearly");
     var promoRow = document.getElementById("promo-offer-card");
@@ -505,6 +527,7 @@
     var yearlyUpgradeInfo = null;
     var cancellationScheduled = false;
     var cancellationAccessUntil = "";
+    var entitlementSyncGeneration = 0;
     var paid = false;
     var activeChildIndex = 0;
     var lastProgressData = null;
@@ -593,9 +616,15 @@
     function aggregateProgress(rows) {
       var totals = { lessons: 0, cardsReviewed: 0, mathSolved: 0, tutorLessons: 0, explains: 0, writingChecks: 0, quizzes: 0 };
       var quizzes = [];
+      var activities = [];
       var byDate = {};
+      function addActivity(title, detail, icon, color, stamp) {
+        if (!title) return;
+        activities.push({ title: title, detail: detail, icon: icon, color: color, stamp: stamp || 0 });
+      }
       (rows || []).forEach(function (row) {
         var b = row.bucket || {};
+        var dayStamp = row.date ? new Date(row.date + "T00:00:00").getTime() : 0;
         totals.lessons += b.lessons || 0;
         totals.cardsReviewed += b.cardsReviewed || 0;
         totals.mathSolved += b.mathSolved || 0;
@@ -605,11 +634,23 @@
         var qs = b.quizzes || [];
         totals.quizzes += qs.length;
         qs.forEach(function (q) { quizzes.push(q); });
+        if (b.lastLesson) addActivity(b.lastLesson, "Study mission", "book-open", "green", dayStamp);
+        else if (b.lessons) addActivity("Learning mission", "Study mission", "target", "green", dayStamp);
+        if (b.cardsReviewed) addActivity("Flashcards reviewed", "Recall practice", "layers-2", "violet", dayStamp);
+        if (b.mathSolved) addActivity("Math practice", "Math Step Tutor", "calculator", "orange", dayStamp);
+        if (b.tutorLessons) addActivity("Tutor session", "Tutor", "headphones", "green", dayStamp);
+        if (b.explains) addActivity("Explanation practice", "Explain", "lightbulb", "orange", dayStamp);
+        if (b.writingChecks) addActivity("Writing practice", "Writing check", "file-pen-line", "violet", dayStamp);
+        qs.forEach(function (q) {
+          var score = q.total ? q.score + "/" + q.total : "Quiz";
+          addActivity(q.title || "Quiz completed", score, "circle-check", "green", Number(q.ts) || dayStamp);
+        });
         var actions = (b.lessons || 0) + (b.cardsReviewed || 0) + (b.mathSolved || 0) +
           (b.tutorLessons || 0) + (b.explains || 0) + (b.writingChecks || 0) + qs.length;
         byDate[row.date] = (byDate[row.date] || 0) + actions;
       });
-      return { totals: totals, quizzes: quizzes, byDate: byDate };
+      activities.sort(function (a, b) { return b.stamp - a.stamp; });
+      return { totals: totals, quizzes: quizzes, activities: activities, byDate: byDate };
     }
 
     function renderProgressLegacy(data) {
@@ -710,33 +751,28 @@
         return;
       }
       var agg = aggregateProgress(selected.progress);
+      var historyAgg = aggregateProgress(selected.activityHistory || selected.progress);
       var t = agg.totals;
       var totalActions = t.lessons + t.cardsReviewed + t.mathSolved + t.tutorLessons + t.explains + t.writingChecks + t.quizzes;
-      var keys = progressLast7Keys();
-      // There is no configured weekly target, and the old copy invented one:
-      // goalCount = max(7, totalActions) with completedCount = min(goalCount,
-      // totalActions) always printed "X of X" at 100%. Report days active,
-      // which is a real number out of a real denominator.
-      var daysActive = keys.filter(function (key) { return (agg.byDate[key] || 0) > 0; }).length;
-      var percent = Math.round((daysActive / keys.length) * 100);
-      var message = totalActions
-        ? text(selected.name || "Your child") + " was active on " + daysActive + " of the last " + keys.length +
-          " days, with " + totalActions + " learning action" + (totalActions === 1 ? "" : "s") + "."
-        : "Your child's first learning session will appear here.";
-      var maxActions = Math.max(1, Math.max.apply(null, keys.map(function (key) { return agg.byDate[key] || 0; })));
-      var bars = keys.map(function (key) {
-        var actions = agg.byDate[key] || 0;
-        var height = actions ? Math.max(12, Math.round((actions / maxActions) * 100)) : 10;
-        var label = new Date(key + "T00:00:00").toLocaleDateString([], { weekday: "short" }).slice(0, 1);
-        return '<span class="bar-day"><i' + (actions ? ' style="height:' + height + '%"' : ' class="empty" style="height:10%"') + '></i><small>' + label + '</small></span>';
-      }).join("");
-      var recent = agg.quizzes.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 3);
-      var activity = recent.length ? recent.map(function (quiz, index) {
-        var pct = quiz.total ? Math.round((quiz.score / quiz.total) * 100) : 0;
-        var icon = index === 0 ? "calculator" : index === 1 ? "file-text" : "lightbulb";
-        return '<div class="activity-item"><span class="activity-icon ' + (index === 1 ? 'violet' : index === 2 ? 'orange' : 'green') + '"><i data-lucide="' + icon + '"></i></span><span><strong>' + text(quiz.title || "Quiz completed") + '</strong><small>' + text(quiz.score) + '/' + text(quiz.total) + ' · ' + pct + '%</small></span><time>' + relativeSince(quiz.ts ? new Date(quiz.ts).toISOString() : "") + '</time></div>';
-      }).join("") : '<div class="progress-empty">No quizzes yet this week.</div>';
-      list.innerHTML = '<div class="progress-focus"><div class="donut" style="--progress:' + percent + '%" aria-label="Active on ' + daysActive + ' of the last ' + keys.length + ' days"><span><strong>' + daysActive + '/' + keys.length + '</strong><small>days active</small></span></div><div class="focus-copy"><strong>' + (percent >= 70 ? 'Nice momentum' : percent ? 'A good start' : 'Ready when you are') + '</strong><p>' + message + '</p><span class="focus-note">' + (percent >= 85 ? 'A steady week — most days had a session.' : 'One more session keeps the week moving.') + '</span></div></div><div class="mini-bars" aria-label="Weekly activity by day">' + bars + '</div><div class="focus-footer"><span><i data-lucide="activity"></i> ' + totalActions + ' learning action' + (totalActions === 1 ? '' : 's') + '</span><span><i data-lucide="trending-up"></i> ' + (totalActions ? 'This week' : 'No activity yet') + '</span></div><div class="embedded-activity"><div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>' + recent.length + ' ' + (recent.length === 1 ? 'session' : 'sessions') + '</span></div><div class="activity-list">' + activity + '</div></div>';
+      var goalTotal = Math.max(0, Number(selected.goals && selected.goals.total) || 0);
+      var goalCompleted = Math.min(goalTotal, Math.max(0, Number(selected.goals && selected.goals.completed) || 0));
+      var goalPercent = goalTotal ? Math.round((goalCompleted / goalTotal) * 100) : 0;
+      var goalLabel = goalTotal ? goalCompleted + "/" + goalTotal : "Ready";
+      var goalSub = goalTotal ? "goals completed" : "to begin";
+      var message = goalTotal
+        ? goalCompleted === goalTotal
+          ? text(selected.name || "Your child") + " has completed all " + goalTotal + " learning goal" + (goalTotal === 1 ? "" : "s") + "."
+          : text(selected.name || "Your child") + " has completed " + goalCompleted + " of " + goalTotal + " learning goal" + (goalTotal === 1 ? "" : "s") + "."
+        : historyAgg.activities.length
+        ? "A few learning activities are ready to revisit."
+        : "Add a goal or start a learning session.";
+      var allTimeTotals = historyAgg.totals;
+      var allTimeActions = allTimeTotals.lessons + allTimeTotals.cardsReviewed + allTimeTotals.mathSolved + allTimeTotals.tutorLessons + allTimeTotals.explains + allTimeTotals.writingChecks + allTimeTotals.quizzes;
+      var recent = historyAgg.activities.slice(0, 5);
+      var activity = recent.length ? recent.map(function (item) {
+        return '<div class="activity-item"><span class="activity-icon ' + text(item.color) + '"><i data-lucide="' + text(item.icon) + '"></i></span><span><strong>' + text(item.title) + '</strong><small>' + text(item.detail) + '</small></span></div>';
+      }).join("") : '<div class="progress-empty">Your child\'s learning activities will appear here.</div>';
+      list.innerHTML = '<div class="progress-focus"><div class="donut" style="--progress:' + goalPercent + '%" aria-label="' + goalLabel + ' ' + goalSub + '"><span><strong>' + goalLabel + '</strong><small>' + goalSub + '</small></span></div><div class="focus-copy"><strong>' + (goalTotal && goalCompleted === goalTotal ? 'Goals complete' : goalTotal ? 'Goals in progress' : historyAgg.activities.length ? 'Keep the momentum going' : 'Ready to begin') + '</strong><p>' + message + '</p><span class="focus-note">' + (goalTotal && goalCompleted === goalTotal ? 'Add another goal whenever your child is ready.' : goalTotal ? 'One small step keeps learning moving.' : 'Add a goal or start a learning session.') + '</span></div></div><div class="focus-footer"><span><i data-lucide="activity"></i> ' + allTimeActions + ' learning action' + (allTimeActions === 1 ? '' : 's') + '</span><span><i data-lucide="trending-up"></i> ' + (historyAgg.activities.length ? 'Activity saved' : 'Ready to start') + '</span></div><div class="embedded-activity"><div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>' + recent.length + ' ' + (recent.length === 1 ? 'activity' : 'activities') + '</span></div><div class="activity-list">' + activity + '</div></div>';
       var streak = document.querySelector("[data-learning-streak]");
       if (streak) {
         var streakDays = Math.min(7, Math.max(1, Object.keys(agg.byDate).length));
@@ -1430,16 +1466,18 @@
       return planByKey(activePlanKey);
     }
 
-    // Show the trial promise only to someone who can still get one: no plan yet
-    // and no prior payment. A reactivating or upgrading parent must not be told
-    // they get another free week.
+    // Show the trial promise only to someone who has no subscription yet and is
+    // still eligible for the first trial. Existing subscribers, including
+    // card-based trials, must not see a signup message again.
     function renderTrialPitch() {
       var pitch = document.getElementById("trial-pitch");
       if (!pitch) return;
       var trial = trialInfo();
+      var hasSubscription = paid || Boolean(parentEntitlement && parentEntitlement.active && !onNoCardTrial());
       // Trust the server's eligibility rule (one trial per account, either kind)
-      // rather than guessing client-side.
-      pitch.hidden = trial ? !trial.eligible : paid;
+      // rather than guessing client-side, but never show signup copy to an
+      // already-subscribed family.
+      pitch.hidden = hasSubscription || !(trial && trial.eligible);
     }
 
     function updatePlanTiles() {
@@ -1493,39 +1531,40 @@
         var seats = Number((pricingNow.monthly || {}).familyMemberCount || 3);
       
         var badge = currentPackageCard ? currentPackageCard.querySelector('.plan-badge') : null;
-        if (badge) badge.textContent = 'Pay monthly';
-        if (currentPackageName) currentPackageName.textContent = planLabelForKey('monthly');
+        if (badge) badge.textContent = 'Flexible choice';
+        if (currentPackageName) currentPackageName.textContent = familyPlanLabelForKey('monthly');
+        if (currentPackageSubcopy) currentPackageSubcopy.textContent = 'Easy to start, easy to pause.';
         if (currentPackagePrice) currentPackagePrice.innerHTML = (monthlyNow < monthlyBase ? "<s>$" + monthlyBase + "</s> " : "") + "$" + monthlyNow;
         var monthlyInterval = document.getElementById('current-package-interval');
         if (monthlyInterval) monthlyInterval.textContent = '/ month';
-        if (currentPackageNote) currentPackageNote.textContent = monthlyNow < monthlyBase
-          ? (monthlyPromo && monthlyPromo.description) || 'Limited-time monthly price.'
-          : 'Flexible family access. Cancel any time.';
+        var signupTrial = trialInfo();
+        var trialEligible = signupTrial ? signupTrial.eligible : !paid;
+        var trialDays = Number(signupTrial && signupTrial.days) || 7;
+        if (currentPackageNote) {
+          var billingCopy = trialEligible
+            ? (trialDays === 7 ? 'First payment after your free week' : 'First payment after your ' + trialDays + '-day trial')
+            : monthlyNow < monthlyBase
+            ? (monthlyPromo && monthlyPromo.description) || 'Limited-time monthly price.'
+            : 'Flexible family access. Cancel any time.';
+          currentPackageNote.innerHTML = "<i data-lucide='clock-3'></i><span>" + text(billingCopy) + "</span>";
+          currentPackageNote.hidden = false;
+        }
         var factsEl = document.getElementById('current-package-facts');
         if (factsEl) {
           factsEl.innerHTML = [
-            { icon: 'users-round', text: 'Up to ' + seats + ' family members' },
-            { icon: 'puzzle', text: 'Chrome extension unlocked' },
-            { icon: 'refresh-cw', text: 'Switch or cancel any time' }
-          ].map(function (f) { return "<li><i data-lucide='" + f.icon + "'></i>" + text(f.text) + "</li>"; }).join('');
+            { icon: 'users-round', title: 'Up to ' + seats + ' student profiles', detail: 'One family, each child’s own space' },
+            { icon: 'puzzle', title: 'Every learning tool included', detail: 'Math, PDFs, flashcards, quizzes, and more' },
+            { icon: 'trending-up', title: 'Parent progress snapshots', detail: 'See what is clicking week by week' }
+          ].map(function (f) {
+            return "<li><i data-lucide='" + f.icon + "'></i><span><b>" + text(f.title) + "</b><small>" + text(f.detail) + "</small></span></li>";
+          }).join('');
         }
         // Free-trial-first: when the family is still eligible, both plan tiles
         // lead with the free week and the buttons sell the trial, not the plan.
         // trialInfo() is the server's per-account eligibility, so a family that
         // already used its week correctly falls back to plain checkout copy.
-        var signupTrial = trialInfo();
-        var trialEligible = signupTrial ? signupTrial.eligible : !paid;
-        var trialDays = Number(signupTrial && signupTrial.days) || 7;
-        var flagText = trialDays + "-day free trial";
         // "free week" only reads right at 7; anything else says the day count.
         var trialCta = trialDays === 7 ? "Start my free week" : "Start " + trialDays + "-day free trial";
-        var monthlyFlag = document.getElementById('monthly-trial-flag');
-        var yearlyFlag = document.getElementById('yearly-trial-flag');
-        [monthlyFlag, yearlyFlag].forEach(function (flag) {
-          if (!flag) return;
-          flag.hidden = !trialEligible;
-          flag.innerHTML = "<i data-lucide='gift'></i>" + text(flagText);
-        });
 
         if (upgradeYearly) {
           upgradeYearly.classList.remove('hidden');
@@ -1534,31 +1573,35 @@
             : "<i data-lucide='credit-card'></i>Continue with monthly";
         }
       
-        if (upgradePlanKicker) upgradePlanKicker.textContent = yearlyNow < yearlyBase ? 'Limited-time offer' : 'Best value';
+        if (upgradePlanKicker) upgradePlanKicker.innerHTML = "<i data-lucide='star'></i>Best value";
         if (upgradePlanTitle) upgradePlanTitle.textContent = 'Pay yearly';
-        if (upgradeYearlyName) upgradeYearlyName.textContent = planLabelForKey('yearly');
-        if (upgradeYearlyPrice) {
-          upgradeYearlyPrice.innerHTML = (yearlyNow < yearlyBase ? "<s>$" + yearlyBase + "</s>" : "") +
-            "<b>$" + yearlyNow + "</b><span>/year</span>";
+        if (upgradeYearlyName) upgradeYearlyName.textContent = familyPlanLabelForKey('yearly');
+        var signupYearlyOldPrice = document.getElementById('upgrade-yearly-old-price');
+        if (signupYearlyOldPrice) {
+          signupYearlyOldPrice.textContent = '$' + yearlyBase;
+          signupYearlyOldPrice.hidden = !(yearlyNow < yearlyBase);
         }
+        if (upgradeYearlyPrice) upgradeYearlyPrice.textContent = '$' + yearlyNow;
         if (upgradeYearlyPromo) {
           var code = yearlyPromo && yearlyPromo.code;
           upgradeYearlyPromo.textContent = code ? 'Code ' + code : 'Best value';
           upgradeYearlyPromo.classList.toggle('hidden', !code);
         }
-        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = yearlyNow < yearlyBase
-          ? (yearlyPromo && yearlyPromo.description) || 'Save on your first year.'
-          : 'Best value for steady learning all year.';
+        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = 'More runway for steady progress.';
         if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = monthlyBase && yearlyNow
           ? 'Save $' + Math.max(0, Math.round(monthlyBase * 12 - yearlyNow)) + ' vs monthly'
-          : 'Best value';
-        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = 'Up to ' + seats + ' family members';
+          : 'Best value for steady learning';
+        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = yearlyPromo && yearlyPromo.description
+          ? yearlyPromo.description
+          : 'Includes 3 bonus months for your family';
         if (upgradeYearlyTileButton) {
           upgradeYearlyTileButton.classList.remove('hidden');
-          upgradeYearlyTileButton.innerHTML = trialEligible
-            ? "<i data-lucide='gift'></i>" + text(trialCta)
-            : "<i data-lucide='credit-card'></i>Continue with yearly";
+          upgradeYearlyTileButton.innerHTML = "<i data-lucide='arrow-up-right'></i>Choose yearly";
         }
+        var monthlyCtaNote = document.getElementById('monthly-plan-cta-note');
+        if (monthlyCtaNote) monthlyCtaNote.textContent = trialEligible
+          ? 'No charge today · Cancel before billing starts'
+          : 'Secure checkout · Cancel any time';
         renderIcons();
       }
 
@@ -1573,13 +1616,11 @@
       // retrying, so show billing actions rather than the signup plan picker.
       var pastDueNow = parentEntitlement && parentEntitlement.status === "past_due";
       var needsCheckout = (!paid || onNoCardTrial()) && !pastDueNow;
-      // A monthly family that has cancelled but still has paid access left should
-      // still see the yearly offer — that is the moment they are most likely to
-      // reconsider, and upgrading clears the pending cancellation.
-      var cancellingWithAccess = cancellationScheduled && cancellationAccessUntil &&
-        new Date(cancellationAccessUntil).getTime() > Date.now();
+      // A scheduled cancellation removes the cancel tile, but it must not
+      // remove the yearly upgrade path. A parent can still change their mind
+      // and make an explicit yearly purchase before monthly access ends.
       var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" &&
-        (!cancellationScheduled || cancellingWithAccess) && !yearlyUpgradeScheduled;
+        !yearlyUpgradeScheduled;
       // Both states use the SAME two-card layout: base plan in the white card on
       // the left, best-value plan in the green card on the right. For a signup the
       // left card is the Monthly option rather than a current package, so the two
@@ -1591,39 +1632,31 @@
       if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile));
       if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
       if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile || needsCheckout);
-      // The large right-hand tile is the single upgrade action for a current
-      // monthly package; keep the legacy action in the current card hidden.
-      if (upgradeYearly) upgradeYearly.classList.add("hidden");
-      if (upgradeYearlyTileButton) upgradeYearlyTileButton.classList.toggle("hidden", !showUpgradeTile);
+      if (subscriptionGrid) subscriptionGrid.classList.toggle("is-single-plan", !(needsCheckout || showUpgradeTile));
+      // Signup keeps both plan CTAs visible; a paid monthly subscriber moves the
+      // yearly action into the large right-hand tile only.
+      if (upgradeYearly) upgradeYearly.classList.toggle("hidden", !needsCheckout);
+      if (upgradeYearlyTileButton) upgradeYearlyTileButton.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
       if (upgradePlanTitle) upgradePlanTitle.textContent = showUpgradeTile ? "Upgrade to yearly" : "Choose your plan";
-      if (upgradePlanKicker) {
-        var upgradeKickerOffer = yearlyUpgradeOffer();
-        upgradePlanKicker.textContent = showUpgradeTile && (upgradeKickerOffer.usesPlanPromotion || upgradeKickerOffer.usesUpgradeOffer) ? "Limited-time offer" : "Best value";
-      }
+      if (upgradePlanKicker) upgradePlanKicker.innerHTML = "<i data-lucide='star'></i>Best value";
       if (showUpgradeTile) {
         var tileOffer = yearlyUpgradeOffer();
-        if (upgradeYearlyName) upgradeYearlyName.textContent = planLabelForKey("yearly");
-        if (upgradeYearlyPrice) {
-          upgradeYearlyPrice.innerHTML = (tileOffer.discountAmount > 0 ? "<s>$" + tileOffer.baseStr + "</s>" : "") +
-            "<b>$" + tileOffer.priceStr + "</b><span>/year</span>";
+        if (upgradeYearlyName) upgradeYearlyName.textContent = familyPlanLabelForKey("yearly");
+        var tileOldPrice = document.getElementById("upgrade-yearly-old-price");
+        if (tileOldPrice) {
+          tileOldPrice.textContent = "$" + tileOffer.baseStr;
+          tileOldPrice.hidden = !(tileOffer.discountAmount > 0);
         }
+        if (upgradeYearlyPrice) upgradeYearlyPrice.textContent = "$" + tileOffer.priceStr;
         if (upgradeYearlyPromo) {
           upgradeYearlyPromo.textContent = tileOffer.promoCode ? "Code " + tileOffer.promoCode : "Best value";
           upgradeYearlyPromo.classList.toggle("hidden", !tileOffer.promoCode);
         }
-        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = onStripeTrial()
-          ? ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Keep your free trial, then switch to yearly billing when it ends.")
-          : ((tileOffer.usesPlanPromotion || tileOffer.usesUpgradeOffer) ? tileOffer.promoDescription || "Save on your first yearly charge." : "Get a full year of access with your unused monthly time carried over.");
-        // "+0 bonus months" reads as a downgrade. With no bonus configured, sell
-        // the reason to upgrade instead: the money saved against paying monthly.
+        if (upgradeYearlyCopy) upgradeYearlyCopy.textContent = "More runway for steady progress.";
         if (upgradeYearlyBonus) {
-          var bonusPill = onStripeTrial()
-            ? { icon: "gift", text: "No charge today" }
-            : tileOffer.bonusMonths > 0
-            ? { icon: "gift", text: "+" + tileOffer.bonusMonths + " bonus month" + (tileOffer.bonusMonths === 1 ? "" : "s") }
-            : tileOffer.annualSavings > 0
-            ? { icon: "piggy-bank", text: "Save $" + moneyStr(tileOffer.annualSavings) + " a year" }
-            : { icon: "calendar-check", text: "One payment, all year" };
+          var bonusPill = tileOffer.annualSavings > 0
+            ? { icon: "piggy-bank", text: "Save $" + moneyStr(tileOffer.annualSavings) + " vs monthly" }
+            : { icon: "piggy-bank", text: "Best value for steady learning" };
           upgradeYearlyBonus.textContent = bonusPill.text;
           // lucide swaps <i data-lucide> for an <svg> on first render, so put a
           // fresh <i> back rather than trying to retarget the old element.
@@ -1636,14 +1669,12 @@
             else bonusHost.insertBefore(freshIcon, upgradeYearlyBonus);
           }
         }
-        // "No double billing" answered a worry instead of giving a reason to
-        // upgrade. Reassurance belongs in the fine print; this slot sells.
         if (upgradeYearlyBillingNote) {
-          var billingPill = onStripeTrial()
-            ? { icon: "shield-check", text: "Starts " + trialEndsText() }
-            : tileOffer.freeMonths >= 1
-            ? { icon: "sparkles", text: tileOffer.freeMonths + " months free vs monthly" }
-            : { icon: "lock", text: "Price locked for 12 months" };
+          var billingPill = tileOffer.bonusMonths > 0
+            ? { icon: "gift", text: "Includes " + tileOffer.bonusMonths + " bonus month" + (tileOffer.bonusMonths === 1 ? "" : "s") + " for your family" }
+            : tileOffer.promoDescription
+            ? { icon: "tag", text: tileOffer.promoDescription }
+            : { icon: "gift", text: "One secure family account" };
           upgradeYearlyBillingNote.textContent = billingPill.text;
           var billingHost = upgradeYearlyBillingNote.parentNode;
           var billingIcon = billingHost && billingHost.firstElementChild;
@@ -1654,14 +1685,70 @@
             else billingHost.insertBefore(freshBillingIcon, upgradeYearlyBillingNote);
           }
         }
-        if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = onStripeTrial()
-          ? "Choose yearly billing<i data-lucide='arrow-up-right'></i>"
-          : "Upgrade to yearly<i data-lucide='arrow-up-right'></i>";
+        var accessTitle = document.getElementById("upgrade-yearly-access-title");
+        if (accessTitle) accessTitle.textContent = (12 + tileOffer.bonusMonths) + " months of learning access";
+        if (upgradeYearlyTileButton) upgradeYearlyTileButton.innerHTML = "<i data-lucide='arrow-up-right'></i>Choose yearly";
         renderIcons();
+      }
+      var visibleCurrentPlanKey = needsCheckout ? "monthly" : plan.key;
+      if (currentPackageMode) currentPackageMode.textContent = needsCheckout
+        ? (onNoCardTrial() ? "Trial plan" : "Pay monthly")
+        : onStripeTrial()
+        ? "Trial · pay monthly"
+        : visibleCurrentPlanKey === "yearly" ? "Pay yearly" : "Pay monthly";
+      if (currentPackageSubcopy) currentPackageSubcopy.textContent = visibleCurrentPlanKey === "yearly"
+        ? "One payment for the year ahead."
+        : onNoCardTrial() ? "Try the tools before choosing a plan."
+        : "Easy to start, easy to pause.";
+      if (subscriptionJourneyBanner) {
+        var journeyTitle = "";
+        var journeyCopy = "";
+        var journeyNote = "";
+        if (needsCheckout && onNoCardTrial()) {
+          journeyTitle = "Free trial active";
+          journeyCopy = "Your child has access now. Choose a plan before the trial ends to keep learning going.";
+          journeyNote = "Choose when ready";
+        } else if (needsCheckout && trialInfo() && trialInfo().eligible !== false) {
+          journeyTitle = "Start with 7 days free";
+          journeyCopy = "Explore every learning tool before your first payment.";
+          journeyNote = "Cancel anytime";
+        } else if (needsCheckout) {
+          journeyTitle = "Choose the right family plan";
+          journeyCopy = "Monthly flexibility or yearly value, with every learning tool included.";
+          journeyNote = "Secure checkout";
+        } else if (showUpgradeTile) {
+          journeyTitle = "Plan for the year ahead";
+          journeyCopy = "Upgrade once, keep your child’s learning momentum moving, and save against monthly billing.";
+          journeyNote = "Yearly value";
+        } else if (yearlyUpgradeScheduled) {
+          journeyTitle = "Yearly upgrade pending";
+          journeyCopy = "Your yearly plan is confirmed and will take over at the scheduled billing point.";
+          journeyNote = "Payment complete";
+        } else if (cancellationScheduled) {
+          journeyTitle = "Your access continues";
+          journeyCopy = "Renewal is off, but your child can keep using the extension until the paid access date.";
+          journeyNote = "Renewal off";
+        } else if (plan.key === "yearly") {
+          journeyTitle = "Your yearly plan is active";
+          journeyCopy = "You are set for a full year of learning with one simple family plan.";
+          journeyNote = "12 months covered";
+        } else {
+          journeyTitle = "Your monthly plan is active";
+          journeyCopy = "Keep the routine going with flexible monthly family access.";
+          journeyNote = "Cancel anytime";
+        }
+        if (subscriptionJourneyTitle) subscriptionJourneyTitle.textContent = journeyTitle;
+        if (subscriptionJourneyCopy) subscriptionJourneyCopy.textContent = journeyCopy;
+        if (subscriptionJourneyNote) subscriptionJourneyNote.textContent = journeyNote;
+        subscriptionJourneyBanner.classList.toggle("is-offer", needsCheckout || showUpgradeTile);
+        subscriptionJourneyBanner.classList.toggle("is-active", !needsCheckout && !showUpgradeTile);
       }
       renderPromotionOffer();
       if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !(paid || pastDueNow));
-      if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid);
+      // A cancellation request is already complete from the parent's point of
+      // view. Keep the paid-through access and show only the restore action;
+      // offering another cancellation tile invites a second, confusing flow.
+      if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled);
       // One-click undo while the paid period is still running — the cheapest
       // revenue there is, and the moment a parent is most likely to reconsider.
       if (resumeSubscription) {
@@ -1675,7 +1762,7 @@
       // Pricing stores "mo"/"yr", so an exact "year" match always fell through to
       // "month" — a yearly plan rendered as "$149 / month".
       if (currentPackageInterval) currentPackageInterval.textContent = "/ " + (String(plan.interval || "").charAt(0) === "y" ? "year" : "month");
-      if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", plan.key !== "monthly");
+      if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", !needsCheckout && plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
         currentPackageNote.textContent = onStripeTrial()
@@ -1689,9 +1776,10 @@
           : retentionOfferAccepted
           ? "$" + cancellationPromoConfig().amountOff + " off will apply automatically to the next invoice."
           // The upgrade pitch lives on the yearly tile now; repeating it on the
-          // current-plan card sold the same thing twice.
+          // current-plan card sold the same thing twice. Keep a compact status
+          // line here so the active card still explains its billing state.
           : plan.key === "monthly"
-          ? ""
+          ? "Your monthly package is active. Child profiles and extension access stay unlocked."
           : "Your yearly package is active. Child profiles and extension access stay unlocked.";
         // An empty <p> still occupies its margins, leaving a gap above the pill.
         currentPackageNote.hidden = !currentPackageNote.textContent;
@@ -1701,6 +1789,8 @@
         upgradeYearly.textContent = "Upgrade to yearly";
         renderUpgradeOffer();
       }
+      var monthlyCtaNote = document.getElementById("monthly-plan-cta-note");
+      if (monthlyCtaNote) monthlyCtaNote.hidden = !needsCheckout;
       renderRailPromo();
       if (paid) {
         var chipTrialing = onStripeTrial();
@@ -1844,7 +1934,12 @@
       if (saveOffer) saveOffer.classList.toggle("yearly-cancel", yearly || refundable);
     }
 
-    function setPaidPlan(key, title, detail) {
+    function invalidateEntitlementSync() {
+      entitlementSyncGeneration += 1;
+    }
+
+    function setPaidPlan(key, title, detail, fromEntitlement) {
+      if (!fromEntitlement) invalidateEntitlementSync();
       paid = true;
       activePlanKey = key || activePlanKey || "monthly";
       localStorage.setItem(ACTIVE_PLAN_KEY, activePlanKey);
@@ -1859,7 +1954,8 @@
       renderSubscriptionState();
     }
 
-    function setUnpaidSubscription(title, detail, stateText) {
+    function setUnpaidSubscription(title, detail, stateText, fromEntitlement) {
+      if (!fromEntitlement) invalidateEntitlementSync();
       paid = false;
       retentionOfferAccepted = false;
       yearlyUpgradeScheduled = false;
@@ -1882,10 +1978,14 @@
 
     async function syncSubscriptionFromEntitlement() {
       if (!parentToken()) return false;
+      var syncGeneration = ++entitlementSyncGeneration;
       try {
         var response = await parentAuthFetch("/api/entitlements/me");
         var entitlement = await response.json();
         if (!response.ok) throw entitlement;
+        // A billing action may have completed while this request was in flight.
+        // Never let an older entitlement response repaint the newer tile state.
+        if (syncGeneration !== entitlementSyncGeneration) return false;
         parentEntitlement = entitlement;
         parentRenewalAt = entitlement.renewalAt || (entitlement.trial && entitlement.trial.endsAt) || "";
         if (entitlement.active) {
@@ -1922,7 +2022,7 @@
           } else {
             detail = planName + " is active for this family.";
           }
-          setPaidPlan(key, title, detail);
+          setPaidPlan(key, title, detail, true);
           if (compedTrial && paymentState) {
             paymentState.textContent = "Free trial · ends " + trialEnds;
             paymentState.className = "state-chip trialing";
@@ -1941,13 +2041,15 @@
               : entitlement.reason === "locked"
               ? "This account is locked. Contact KiddieGPT support to restore access."
               : "This parent account does not have an active package yet. Choose monthly or yearly to unlock the extension.",
-            pastDue ? "Payment failed" : entitlement.reason === "locked" ? "Account locked" : "Payment pending"
+            pastDue ? "Payment failed" : entitlement.reason === "locked" ? "Account locked" : "Payment pending",
+            true
           );
         }
         return true;
       } catch (error) {
+        if (syncGeneration !== entitlementSyncGeneration) return false;
         parentEntitlement = null;
-        setUnpaidSubscription("Check subscription", error.error || "Could not verify subscription status. Try signing in again.", "Needs attention");
+        setUnpaidSubscription("Check subscription", error.error || "Could not verify subscription status. Try signing in again.", "Needs attention", true);
         return false;
       }
     }
@@ -2467,6 +2569,39 @@
       return true;
     }
 
+    function validateProfileForm() {
+      var profiles = Array.from(document.querySelectorAll(".child-profile"));
+      if (!profiles.length) {
+        completionTitle.textContent = "Add a child profile";
+        completionText.textContent = "At least one child profile is needed before saving.";
+        setParentTab("overview");
+        return false;
+      }
+      for (var i = 0; i < profiles.length; i += 1) {
+        var profile = profiles[i];
+        var nameInput = profile.querySelector('[name="studentName"]');
+        var gradeInput = profile.querySelector('[name="grade"]');
+        if (!nameInput || !nameInput.value.trim()) {
+          activeChildIndex = i;
+          updateChildCards();
+          completionTitle.textContent = "Add a student name";
+          completionText.textContent = "Each student profile needs a name before it can be saved.";
+          nameInput?.focus();
+          return false;
+        }
+        var grade = Number(gradeInput && gradeInput.value);
+        if (!gradeInput || !Number.isFinite(grade) || grade < 1 || grade > 12) {
+          activeChildIndex = i;
+          updateChildCards();
+          completionTitle.textContent = "Choose a grade";
+          completionText.textContent = "Choose a grade from 1 through 12 before saving.";
+          gradeInput?.focus();
+          return false;
+        }
+      }
+      return true;
+    }
+
     tabButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         setParentTab(button.dataset.parentTab);
@@ -2663,19 +2798,14 @@
       var pricing = readPricing();
       var up = pricing.yearlyUpgrade || { bonusMonths: 3, discountAmount: 0, note: "" };
       var base = Number((pricing.yearly || {}).amount || 0);
-      var planPromotion = configuredPromotionForPlan("yearly");
       var off = Math.max(0, Number(up.discountAmount || 0));
-      var configuredPrice = planPromotion ? Number(planPromotion.promoPrice || 0) : 0;
       var upgradePrice = off > 0 ? Math.max(0, Math.round((base - off) * 100) / 100) : 0;
-      // A promotion override set for the yearly plan wins: it is the more
-      // specific, explicitly-priced instruction, and an admin who types a yearly
-      // override price expects to see exactly that price in the portal. The
-      // upgrade discount is the standing offer used when no override is set.
-      var usesPlanPromotion = Boolean(planPromotion && configuredPrice > 0);
-      var usesUpgradeOffer = !usesPlanPromotion && (off > 0 || Boolean(String(up.note || "").trim()));
-      var price = usesPlanPromotion
-        ? configuredPrice
-        : upgradePrice > 0 ? upgradePrice : base;
+      // Monthly-to-yearly is a targeted retention offer. It must take
+      // precedence over the generic yearly promotion, so a standard signup
+      // promotion cannot replace the extra months promised to an existing
+      // monthly subscriber.
+      var usesUpgradeOffer = off > 0 || Boolean(String(up.note || "").trim()) || Number(up.bonusMonths || 0) > 0;
+      var price = upgradePrice > 0 ? upgradePrice : base;
       var effectiveOff = base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0;
       // What a year on this plan costs versus twelve monthly charges — the
       // headline reason to upgrade when no bonus months are configured.
@@ -2683,23 +2813,43 @@
       var annualSavings = monthlyAmount > 0 && price > 0
         ? Math.max(0, Math.round((monthlyAmount * 12 - price) * 100) / 100)
         : 0;
-      // The same saving expressed as months — "5 months free" lands harder than
-      // a dollar figure. Floored, so the claim is never larger than the truth.
-      var freeMonths = monthlyAmount > 0 ? Math.floor(annualSavings / monthlyAmount) : 0;
       return {
-        freeMonths: freeMonths,
         bonusMonths: Math.max(0, Number(up.bonusMonths || 0)),
         annualSavings: annualSavings,
-        discountAmount: usesPlanPromotion ? effectiveOff : off,
+        discountAmount: effectiveOff || off,
         basePrice: base,
         price: price,
         priceStr: moneyStr(price),
         baseStr: moneyStr(base),
-        note: usesPlanPromotion ? (planPromotion.code + (planPromotion.description ? ": " + planPromotion.description : "")) : (up.note || ""),
-        promoCode: usesPlanPromotion ? planPromotion.code : "",
-        promoDescription: usesPlanPromotion ? planPromotion.description || "" : up.note || "",
-        usesPlanPromotion: usesPlanPromotion,
+        note: up.note || "",
+        promoCode: "",
+        promoDescription: up.note || "",
+        usesPlanPromotion: false,
         usesUpgradeOffer: usesUpgradeOffer
+      };
+    }
+
+    function yearlySignupOffer() {
+      var pricing = readPricing();
+      var yearly = pricing.yearly || {};
+      var base = Number(yearly.amount || 0);
+      var promo = configuredPromotionForPlan("yearly");
+      var promoAmount = promotionAmountForPlan(promo, "yearly");
+      var price = promoAmount || base;
+      var monthlyAmount = Number((pricing.monthly || {}).amount || 0);
+      return {
+        bonusMonths: 0,
+        annualSavings: monthlyAmount > 0 && price > 0 ? Math.max(0, Math.round((monthlyAmount * 12 - price) * 100) / 100) : 0,
+        discountAmount: base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0,
+        basePrice: base,
+        price: price,
+        priceStr: moneyStr(price),
+        baseStr: moneyStr(base),
+        note: promo ? (promo.description || "") : "",
+        promoCode: promo ? promo.code : "",
+        promoDescription: promo ? (promo.description || "") : "",
+        usesPlanPromotion: Boolean(promo),
+        usesUpgradeOffer: false
       };
     }
 
@@ -2708,34 +2858,13 @@
       if (!el) return;
       var pricing = readPricing();
       var members = Number((pricing[plan.key] || pricing.monthly || {}).familyMemberCount || 3);
-      var facts = [];
-      var trialingNow = onStripeTrial();
-      facts.push({
-        icon: cancellationScheduled || trialingNow ? "clock" : "check-circle",
-        text: cancellationScheduled
-          ? (trialingNow ? "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEndsText()) : "Cancels " + parentDate(cancellationAccessUntil))
-          : trialingNow
-          ? "Free trial · ends " + trialEndsText()
-          : yearlyUpgradeScheduled
-          ? "Yearly upgrade confirmed"
-          : "Active subscription"
-      });
-      // During a trial the meaningful date is when billing starts, which the
-      // fact above already states — a "renews monthly" line would imply a charge
-      // cycle that has not begun yet.
-      if (trialingNow) {
-        facts.push({ icon: "credit-card", text: cancellationScheduled ? "No charge will be made" : "Billing starts " + trialEndsText() });
-      }
-      var renewalIso = yearlyUpgradeScheduled && yearlyUpgradeInfo && yearlyUpgradeInfo.yearlyNextRenewalAt
-        ? new Date(Number(yearlyUpgradeInfo.yearlyNextRenewalAt) * 1000).toISOString()
-        : parentRenewalAt;
-      if (renewalIso && !cancellationScheduled && !trialingNow) {
-        facts.push({ icon: "calendar", text: (plan.key === "monthly" ? "Renews monthly · next on " : "Renews ") + parentDate(renewalIso) });
-      }
-      facts.push({ icon: "users-round", text: "Up to " + members + " family members" });
-      facts.push({ icon: "puzzle", text: "Chrome extension unlocked" });
+      var facts = [
+        { icon: "users-round", title: "Up to " + members + " student profiles", detail: "One family, each child's own space" },
+        { icon: "puzzle", title: "Every learning tool included", detail: "Math, PDFs, flashcards, quizzes, and more" },
+        { icon: "trending-up", title: "Parent progress snapshots", detail: "See what is clicking week by week" }
+      ];
       el.innerHTML = facts.map(function (f) {
-        return "<li><i data-lucide='" + f.icon + "'></i>" + text(f.text) + "</li>";
+        return "<li><i data-lucide='" + f.icon + "'></i><span><b>" + text(f.title) + "</b><small>" + text(f.detail) + "</small></span></li>";
       }).join("");
       renderIcons();
     }
@@ -2743,18 +2872,22 @@
     function renderRailPromo() {
       var el = document.getElementById("rail-yearly-promo");
       if (!el) return;
-      var show = paid && activePlanKey === "monthly" && !onNoCardTrial() && !cancellationScheduled && !yearlyUpgradeScheduled;
+      var noCardTrial = onNoCardTrial();
+      var monthlySubscriber = paid && activePlanKey === "monthly" && !noCardTrial;
+      var show = (monthlySubscriber || noCardTrial) && !yearlyUpgradeScheduled;
       el.classList.toggle("hidden", !show);
       if (!show) return;
-      var o = yearlyUpgradeOffer();
+      var o = noCardTrial ? yearlySignupOffer() : yearlyUpgradeOffer();
+      var titleEl = document.getElementById("rail-promo-title");
       var copyEl = document.getElementById("rail-promo-copy");
       var detailEl = document.getElementById("rail-promo-detail");
+      if (titleEl) titleEl.textContent = noCardTrial ? "Choose yearly" : "Upgrade to yearly";
       if (copyEl) {
         var extras = [];
         if (o.bonusMonths > 0) extras.push(o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s"));
         if (o.discountAmount > 0) extras.push("save $" + o.discountAmount);
         if (o.promoCode) extras.push("code " + o.promoCode);
-        copyEl.textContent = "Switch to yearly for $" + o.priceStr + "/yr" + (extras.length ? " · " + extras.join(" · ") : "");
+        copyEl.textContent = (noCardTrial ? "Start yearly for $" : "Switch to yearly for $") + o.priceStr + "/yr" + (extras.length ? " · " + extras.join(" · ") : "");
       }
       if (detailEl) detailEl.textContent = o.promoDescription || "Keep learning all year with one simple renewal.";
       renderIcons();
@@ -2826,6 +2959,7 @@
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Yearly upgrade failed");
         var trialingResult = Boolean(result.trialing);
+        invalidateEntitlementSync();
         yearlyUpgradeInfo = {
           status: trialingResult ? "trialing" : "scheduled",
           accessMonths: result.accessMonths || (trialingResult ? 12 : 15),
@@ -2905,6 +3039,7 @@
           });
           var result = await response.json();
           if (!response.ok) throw new Error(result.error || "Could not restore the plan.");
+          invalidateEntitlementSync();
           cancellationScheduled = false;
           cancellationAccessUntil = "";
           await syncSubscriptionFromEntitlement().catch(function () {});
@@ -2961,6 +3096,7 @@
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Unable to apply discount");
 
+        invalidateEntitlementSync();
         paid = true;
         retentionOfferAccepted = true;
         cancelFlow.classList.add("hidden");
@@ -3000,6 +3136,7 @@
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Unable to schedule cancellation");
         if (result.trialing) {
+          invalidateEntitlementSync();
           cancellationScheduled = true;
           cancellationAccessUntil = result.cancelAccessUntil || result.trialEndsAt || "";
           cancelFlow.classList.add("hidden");
@@ -3016,12 +3153,31 @@
           return;
         }
         if (result.refunded) {
-          // Cancelled inside the refund window: refunded in full, access over.
+          // A refunded yearly upgrade is special: the yearly charge is undone,
+          // but the separately paid monthly remainder stays active until its
+          // original period end. Do not mark the family unpaid in that case.
           cancelFlow.classList.add("hidden");
           subscriptionMain.classList.remove("hidden");
-          // Refresh entitlement first — it repaints the generic unpaid copy, so
-          // the refund wording has to be applied after it, not before.
           await syncSubscriptionFromEntitlement().catch(function () {});
+          if (result.status === "cancel_scheduled" && result.cancelAccessUntil) {
+            invalidateEntitlementSync();
+            paid = true;
+            activePlanKey = "monthly";
+            localStorage.setItem(ACTIVE_PLAN_KEY, activePlanKey);
+            cancellationScheduled = true;
+            cancellationAccessUntil = result.cancelAccessUntil;
+            yearlyUpgradeScheduled = false;
+            yearlyUpgradeInfo = null;
+            setPlanChoice("monthly");
+            paymentState.textContent = "Monthly access ends " + parentDate(cancellationAccessUntil);
+            paymentState.className = "state-chip warning";
+            completionTitle.textContent = "Yearly upgrade refunded";
+            completionText.textContent = result.message || "Your yearly upgrade was refunded. Monthly access continues until the paid-through date. Keep the plan to continue monthly billing.";
+            renderSubscriptionState();
+            preview();
+            return;
+          }
+          // A normal full refund ends access immediately.
           setUnpaidSubscription(
             "Refunded and cancelled",
             result.message || "Your payment was refunded in full and extension access has ended.",
@@ -3033,6 +3189,7 @@
           preview();
           return;
         }
+        invalidateEntitlementSync();
         paid = true;
         cancellationScheduled = true;
         cancellationAccessUntil = result.cancelAccessUntil || "";
@@ -3252,6 +3409,49 @@
 
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
+
+      // The overview Save action is a profile edit for signed-in parents. Keep
+      // it independent from checkout validation so goals/rewards save even if
+      // entitlement refresh is still in flight or the parent is on a trial.
+      if (parentToken()) {
+        if (!validateProfileForm()) return;
+        finish.disabled = true;
+        if (profileSaveState) profileSaveState.textContent = "Saving…";
+        try {
+          var savedProfile = await saveParentProfileOnBackend({
+            parentName: formValue("parentName"),
+            children: childProfiles()
+          });
+          if (savedProfile && Array.isArray(savedProfile.children)) {
+            var localFamilies = readFamilies();
+            var cachedFamily = localFamilies.find(function (item) { return normalizeEmail(item.email) === normalizeEmail(formValue("email")); });
+            if (cachedFamily) {
+              cachedFamily.children = savedProfile.children;
+              cachedFamily.studentName = savedProfile.studentName;
+              cachedFamily.grade = savedProfile.grade;
+              cachedFamily.goal = savedProfile.goal;
+              cachedFamily.reward = savedProfile.reward;
+              cachedFamily.learningGoals = savedProfile.learningGoals;
+              writeFamilies(localFamilies);
+            }
+          }
+          if (profileSaveState) profileSaveState.textContent = "Saved";
+          completionTitle.textContent = "Profile saved";
+          completionText.textContent = "Your learning goals and rewards are saved for this family.";
+          preview();
+          await loadProgress();
+          setTimeout(function () { if (profileSaveState) profileSaveState.textContent = ""; }, 3000);
+        } catch (error) {
+          if (profileSaveState) profileSaveState.textContent = "Not saved";
+          completionTitle.textContent = "Profile not saved";
+          completionText.textContent = error.message || "We could not save the family profile. Try again.";
+        } finally {
+          finish.disabled = false;
+          renderIcons();
+        }
+        return;
+      }
+
       if (!validateForm()) return;
 
       var data = new FormData(form);

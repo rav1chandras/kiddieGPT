@@ -140,7 +140,7 @@
               <div class="goal-row">
                 <span class="goal-check"><i data-lucide="message-circle" aria-hidden="true"></i></span>
                 <span class="goal-copy"><strong>Ask one thoughtful question</strong><small>Build curiosity through chat</small></span>
-                <span class="goal-state">This week</span>
+                <span class="goal-state">In progress</span>
               </div>
             </div>
 
@@ -154,31 +154,22 @@
           <section class="surface focus-surface">
             <div class="surface-heading">
               <div>
-                <p class="section-kicker">This week</p>
+                <p class="section-kicker">Learning progress</p>
                 <h2>Progress snapshot</h2>
               </div>
               <button class="icon-button small" type="button" aria-label="More progress options" title="More progress options"><i data-lucide="more-horizontal" aria-hidden="true"></i></button>
             </div>
             <div class="progress-focus">
-              <div class="donut" aria-label="72 percent weekly goal completion"><span><strong>72%</strong><small>weekly goal</small></span></div>
-              <div class="focus-copy"><strong>Nice momentum</strong><p data-focus-message>Ava has completed 5 of 7 planned learning sessions.</p><span class="focus-note">One more session reaches this week's goal.</span></div>
+              <div class="donut" aria-label="2 of 3 goals on track"><span><strong>2/3</strong><small>goals on track</small></span></div>
+              <div class="focus-copy"><strong>Goals in progress</strong><p data-focus-message>Ava has 2 of 3 learning goals on track.</p><span class="focus-note">One small step keeps learning moving.</span></div>
             </div>
-            <div class="mini-bars" aria-label="Weekly activity by day">
-              <span class="bar-day"><i style="height: 52%"></i><small>M</small></span>
-              <span class="bar-day"><i style="height: 76%"></i><small>T</small></span>
-              <span class="bar-day"><i style="height: 38%"></i><small>W</small></span>
-              <span class="bar-day"><i style="height: 90%"></i><small>T</small></span>
-              <span class="bar-day"><i style="height: 68%"></i><small>F</small></span>
-              <span class="bar-day"><i style="height: 22%"></i><small>S</small></span>
-              <span class="bar-day"><i class="empty" style="height: 12%"></i><small>S</small></span>
-            </div>
-            <div class="focus-footer"><span><i data-lucide="clock-3" aria-hidden="true"></i> 68 min learning time</span><span><i data-lucide="trending-up" aria-hidden="true"></i> 12% vs last week</span></div>
+            <div class="focus-footer"><span><i data-lucide="target" aria-hidden="true"></i> 2 of 3 goals on track</span><span><i data-lucide="trending-up" aria-hidden="true"></i> Activity saved</span></div>
             <div class="embedded-activity">
               <div class="embedded-activity-heading"><span class="section-kicker">Recent activity</span><span>3 sessions</span></div>
               <div class="activity-list">
-                <div class="activity-item"><span class="activity-icon green"><i data-lucide="calculator" aria-hidden="true"></i></span><span><strong>Math Step Tutor</strong><small>Fractions and equivalent numbers</small></span><time>Today, 4:20 PM</time></div>
-                <div class="activity-item"><span class="activity-icon violet"><i data-lucide="file-text" aria-hidden="true"></i></span><span><strong>PDF Explainer</strong><small>Read a chapter on ecosystems</small></span><time>Yesterday, 6:05 PM</time></div>
-                <div class="activity-item"><span class="activity-icon orange"><i data-lucide="lightbulb" aria-hidden="true"></i></span><span><strong>Ask &amp; Explain</strong><small>Why do shadows change length?</small></span><time>Mon, 5:41 PM</time></div>
+                <div class="activity-item"><span class="activity-icon green"><i data-lucide="calculator" aria-hidden="true"></i></span><span><strong>Math Step Tutor</strong><small>Fractions and equivalent numbers</small></span></div>
+                <div class="activity-item"><span class="activity-icon violet"><i data-lucide="file-text" aria-hidden="true"></i></span><span><strong>PDF Explainer</strong><small>Read a chapter on ecosystems</small></span></div>
+                <div class="activity-item"><span class="activity-icon orange"><i data-lucide="lightbulb" aria-hidden="true"></i></span><span><strong>Ask &amp; Explain</strong><small>Why do shadows change length?</small></span></div>
               </div>
             </div>
           </section>
@@ -186,13 +177,50 @@
       </section>
 
       <section class="screen" data-screen="subscription">
-        <div class="screen-heading"><div><p class="page-kicker">Subscription</p><h2>Your family plan</h2><p>Manage access, billing, and the next renewal in one place.</p></div><span class="active-chip"><span class="status-dot"></span>Active</span></div>
-        <div class="subscription-grid"><section class="surface current-plan"><div class="plan-badge">Current package</div><h3>Family Monthly</h3><div class="plan-price"><strong>$30</strong><span> / month</span></div><p>Renews August 19, 2026</p><div class="plan-features"><span><i data-lucide="check" aria-hidden="true"></i>Up to 3 student profiles</span><span><i data-lucide="check" aria-hidden="true"></i>All learning tools</span><span><i data-lucide="check" aria-hidden="true"></i>Parent progress view</span></div></section><section class="surface upgrade-plan"><span class="best-value">Best value</span><h3>Family Yearly</h3><div class="plan-price"><strong>$149</strong><span> / year</span></div><p>Save more and receive 3 bonus months on upgrade.</p><button class="primary-button" type="button"><i data-lucide="arrow-up-right" aria-hidden="true"></i>Upgrade to yearly</button><small>Billing is handled securely by Stripe.</small></section></div>
+        <div class="subscription-trial-banner"><span class="trial-banner-icon"><i data-lucide="gift" aria-hidden="true"></i></span><span><strong>Start with 7 days free</strong><small>Explore every learning tool before your first payment.</small></span><span class="trial-banner-note">Cancel anytime</span></div>
+        <div class="subscription-grid polished-plan-grid">
+          <section class="surface current-plan polished-plan-card monthly-plan-card">
+            <div class="plan-card-top"><span class="plan-badge">Flexible choice</span><span class="plan-fit"><i data-lucide="calendar-days" aria-hidden="true"></i>Pay monthly</span></div>
+            <div class="plan-card-heading"><div><h3>Family Monthly</h3><p>Easy to start, easy to pause.</p></div><span class="plan-card-mark"><i data-lucide="sparkles" aria-hidden="true"></i></span></div>
+            <div class="plan-price polished-plan-price"><strong>$30</strong><span>/ month</span></div>
+            <p class="plan-billing-line"><i data-lucide="clock-3" aria-hidden="true"></i>First payment after your free week</p>
+            <div class="plan-divider"></div>
+            <div class="plan-benefits">
+              <span><i data-lucide="users-round" aria-hidden="true"></i><b>Up to 3 student profiles</b><small>One family, each child’s own space</small></span>
+              <span><i data-lucide="puzzle" aria-hidden="true"></i><b>Every learning tool included</b><small>Math, PDFs, flashcards, quizzes, and more</small></span>
+              <span><i data-lucide="trending-up" aria-hidden="true"></i><b>Parent progress snapshots</b><small>See what is clicking week by week</small></span>
+            </div>
+            <button class="primary-button plan-cta" type="button"><i data-lucide="gift" aria-hidden="true"></i>Start my free week</button>
+            <small class="plan-cta-note">No charge today · Cancel before billing starts</small>
+          </section>
+          <section class="surface upgrade-plan polished-plan-card yearly-plan-card">
+            <div class="yearly-glow" aria-hidden="true"></div>
+            <div class="plan-card-top"><span class="best-value"><i data-lucide="star" aria-hidden="true"></i>Best value</span><span class="plan-fit yearly-fit"><i data-lucide="calendar-range" aria-hidden="true"></i>Pay yearly</span></div>
+            <div class="plan-card-heading"><div><h3>Family Yearly</h3><p>More runway for steady progress.</p></div><span class="plan-card-mark"><i data-lucide="badge-check" aria-hidden="true"></i></span></div>
+            <div class="yearly-price-row"><span class="old-price">$360</span><div class="plan-price polished-plan-price"><strong>$149</strong><span>/ year</span></div></div>
+            <div class="saving-chip"><i data-lucide="piggy-bank" aria-hidden="true"></i>Save $211 vs monthly</div>
+            <p class="plan-billing-line yearly-billing-line"><i data-lucide="gift" aria-hidden="true"></i>Includes 3 bonus months for your family</p>
+            <div class="plan-divider"></div>
+            <div class="plan-benefits">
+              <span><i data-lucide="infinity" aria-hidden="true"></i><b>15 months of learning access</b><small>Build momentum without monthly decisions</small></span>
+              <span><i data-lucide="heart-handshake" aria-hidden="true"></i><b>Made for growing learners</b><small>Keep every child’s goals and rewards together</small></span>
+              <span><i data-lucide="lock-keyhole" aria-hidden="true"></i><b>One secure family account</b><small>Parent-controlled access from one place</small></span>
+            </div>
+            <button class="primary-button plan-cta yearly-cta" type="button"><i data-lucide="arrow-up-right" aria-hidden="true"></i>Choose yearly</button>
+            <small class="plan-cta-note">Best value for families planning the year ahead</small>
+          </section>
+        </div>
+        <div class="subscription-proof-row" aria-label="Family plan highlights">
+          <div><span class="proof-icon mint"><i data-lucide="home" aria-hidden="true"></i></span><span><strong>One place for the family</strong><small>Learning tools, goals, and progress together.</small></span></div>
+          <div><span class="proof-icon yellow"><i data-lucide="wand-sparkles" aria-hidden="true"></i></span><span><strong>Less homework friction</strong><small>Help your child understand, not just finish.</small></span></div>
+          <div><span class="proof-icon blue"><i data-lucide="refresh-cw" aria-hidden="true"></i></span><span><strong>Stay in control</strong><small>Change plans or cancel whenever you need.</small></span></div>
+        </div>
+        <div class="subscription-assurance-row"><span class="subscription-assurance"><i data-lucide="shield-check" aria-hidden="true"></i>Secure Stripe checkout</span></div>
       </section>
 
       <section class="screen" data-screen="support">
         <div class="screen-heading"><div><p class="page-kicker">Support</p><h2>Account help</h2><p>Password, profile changes, and privacy requests all live here.</p></div></div>
-        <div class="support-grid"><section class="surface support-contact"><span class="support-icon"><i data-lucide="message-circle" aria-hidden="true"></i></span><h3>Send a message</h3><p>Our team usually replies within one business day.</p><button class="primary-button" type="button">Start a conversation <i data-lucide="arrow-right" aria-hidden="true"></i></button></section><section class="surface account-settings"><p class="section-kicker">Account settings</p><h3>Manage your account</h3><div class="account-setting-row"><span class="setting-icon"><i data-lucide="key-round" aria-hidden="true"></i></span><span><strong>Change password</strong><small>Update the password used to sign in.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row"><span class="setting-icon"><i data-lucide="mail" aria-hidden="true"></i></span><span><strong>Change email</strong><small>Keep login and extension access current.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row danger-setting"><span class="setting-icon"><i data-lucide="user-round-x" aria-hidden="true"></i></span><span><strong>Request account deletion</strong><small>We will review the request before closing access.</small></span><button class="text-button" type="button">Request <i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section></div>
+        <div class="support-grid"><section class="surface support-contact"><div class="support-contact-head"><span class="support-icon"><i data-lucide="message-circle" aria-hidden="true"></i></span><div><h3>Send a message</h3><p>Our team usually replies within one business day.</p></div></div><button class="primary-button" type="button">Start a conversation <i data-lucide="arrow-right" aria-hidden="true"></i></button></section><section class="surface account-settings"><p class="section-kicker">Account settings</p><h3>Manage your account</h3><div class="account-setting-row"><span class="setting-icon"><i data-lucide="key-round" aria-hidden="true"></i></span><span><strong>Change password</strong><small>Update the password used to sign in.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row"><span class="setting-icon"><i data-lucide="mail" aria-hidden="true"></i></span><span><strong>Change email</strong><small>Keep login and extension access current.</small></span><button class="text-button" type="button">Update <i data-lucide="arrow-right" aria-hidden="true"></i></button></div><div class="account-setting-row danger-setting"><span class="setting-icon"><i data-lucide="user-round-x" aria-hidden="true"></i></span><span><strong>Request account deletion</strong><small>We will review the request before closing access.</small></span><button class="text-button" type="button">Request <i data-lucide="arrow-right" aria-hidden="true"></i></button></div></section></div><nav class="support-legal-links" aria-label="Legal information"><span>Family account information</span><a href="https://kiddiegpt.com/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="https://kiddiegpt.com/terms.html" target="_blank" rel="noopener">Terms</a></nav>
       </section>
 
       <footer class="mockup-footer"><span><span class="status-dot"></span>Extension access is unlocked</span><span>Last synced just now</span><a href="/index.html">Back to current portal</a></footer>

@@ -2868,6 +2868,63 @@ app.get("/api/auth/me", (req, res) => {
   res.json({ user: auth });
 });
 
+// Parent profile edits are deliberately separate from onboarding and billing.
+// Saving a child goal should never be able to rewrite plan or subscription
+// fields, and it should not depend on Stripe entitlement timing.
+app.put("/api/parent/family/profile", requireParent, (req, res) => {
+  const body = req.body || {};
+  const inputChildren = Array.isArray(body.children) ? body.children.slice(0, 3) : [];
+  if (!inputChildren.length) {
+    return res.status(400).json({ error: "Add at least one student profile before saving." });
+  }
+
+  const children = inputChildren.map((child) => {
+    const studentName = String(child.studentName || "").trim().slice(0, 25);
+    const rawGrade = String(child.grade || "").match(/\d+/)?.[0] || "5";
+    const grade = Math.min(12, Math.max(1, Number(rawGrade) || 5));
+    const goals = Array.isArray(child.learningGoals) ? child.learningGoals.slice(0, 7).map((goal) => ({
+      goal: String(goal?.goal || "").trim().slice(0, 75),
+      reward: String(goal?.reward || "").trim().slice(0, 75),
+      completed: Boolean(goal?.completed)
+    })).filter((goal) => goal.goal || goal.reward) : [];
+    const firstGoal = goals.find((goal) => !goal.completed) || goals[0] || { goal: "", reward: "" };
+    return {
+      id: String(child.id || makeId("child")).slice(0, 100),
+      studentName,
+      grade: `Grade ${grade}`,
+      readingLevel: String(child.readingLevel || "").trim().slice(0, 30),
+      goal: firstGoal.goal,
+      reward: firstGoal.reward,
+      learningGoals: goals
+    };
+  });
+
+  if (children.some((child) => !child.studentName)) {
+    return res.status(400).json({ error: "Each student profile needs a name before saving." });
+  }
+
+  const saved = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return null;
+    family.children = children;
+    const primary = children[0];
+    family.studentName = primary.studentName;
+    family.grade = primary.grade;
+    family.readingLevel = primary.readingLevel;
+    family.goal = primary.goal;
+    family.reward = primary.reward;
+    family.learningGoals = primary.learningGoals;
+    if (String(body.parentName || "").trim()) family.parentName = String(body.parentName).trim().slice(0, 100);
+    const user = db.users.find((item) => item.id === req.auth.sub && item.role === "parent");
+    if (user && family.parentName) user.name = family.parentName;
+    audit(db, "family.profile.update", { familyId: family.id, childCount: children.length }, family.email);
+    return family;
+  });
+
+  if (!saved) return res.status(404).json({ error: "Family account not found." });
+  return res.json({ ok: true, family: saved });
+});
+
 app.delete("/api/parent/family/children/:childId", requireParent, (req, res) => {
   const result = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
@@ -3290,6 +3347,10 @@ app.get("/api/account/progress", requireParent, (req, res) => {
         topics: LEARN.reduce((sum, t) => sum + Number(tools[t] || 0), 0)
       },
       progress: progressRowsForChild(db, child.id, 7),
+      // Keep the weekly snapshot focused, but let the parent see the latest
+      // meaningful activity even after a quiet week. Dates are intentionally
+      // omitted by the portal UI; this is only the activity history source.
+      activityHistory: progressRowsForChild(db, child.id),
       favoriteTool: favoriteToolFromUsage(child) || "",
       lastExtensionUseAt: (child.usage && child.usage.lastExtensionUseAt) || "",
       remaining: usageRemaining(family, settings, child.id),
@@ -3387,10 +3448,15 @@ function sanitizeProgressBucket(raw) {
   return out;
 }
 function progressRowsForChild(db, childId, days) {
-  const cutoff = Date.now() - Math.min(90, Math.max(1, Number(days) || 7)) * 86400000;
+  const hasWindow = days !== undefined && days !== null && days !== "" && Number.isFinite(Number(days));
+  const cutoff = hasWindow ? Date.now() - Math.min(90, Math.max(1, Number(days))) * 86400000 : 0;
   return (db.studentProgress || [])
     .filter((r) => r.childId === childId)
-    .filter((r) => { const t = new Date((r.date || "") + "T00:00:00").getTime(); return !t || t >= cutoff; })
+    .filter((r) => {
+      if (!cutoff) return true;
+      const t = new Date((r.date || "") + "T00:00:00").getTime();
+      return !t || t >= cutoff;
+    })
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .map((r) => ({ date: r.date, bucket: r.bucket }));
 }
@@ -3417,8 +3483,9 @@ app.post("/api/progress", requireParent, (req, res) => {
     const idx = db.studentProgress.findIndex((r) => r.childId === child.id && r.date === date);
     const row = { childId: child.id, date, bucket, updatedAt: nowIso() };
     if (idx >= 0) db.studentProgress[idx] = row; else db.studentProgress.unshift(row);
-    // Prune: drop buckets older than 120 days and cap total rows.
-    const cutoff = Date.now() - 120 * 86400000;
+    // Keep enough history to show a meaningful activity after a quiet season.
+    // The parent UI only displays activity names, not historical dates.
+    const cutoff = Date.now() - 730 * 86400000;
     db.studentProgress = db.studentProgress
       .filter((r) => { const t = new Date((r.date || "") + "T00:00:00").getTime(); return !t || t >= cutoff; })
       .slice(0, 2000);
@@ -5411,11 +5478,10 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
   const normalisedPricing = normalisePricing(dbSnapshot.pricing);
   const upgradeConfig = normalisedPricing.yearlyUpgrade;
   const upgradeDiscountAmount = Number(upgradeConfig.discountAmount || 0);
-  const configuredYearlyPromotion = promotionForPlan(normalisedPricing, yearlyPlan.label);
-  const requestedPromoCode = String(req.body?.promoCode || "").trim();
-  const yearlyPromotion = !upgradeDiscountAmount && configuredYearlyPromotion && (!requestedPromoCode || requestedPromoCode === configuredYearlyPromotion.code)
-    ? configuredYearlyPromotion
-    : null;
+  // Monthly-to-yearly upgrades use their dedicated offer. The generic yearly
+  // promotion is reserved for new sign-ups and must not replace the upgrade's
+  // configured bonus months or upgrade discount.
+  const yearlyPromotion = null;
   const bonusMonths = Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3);
   const upgradeNote = String(upgradeConfig.note || "");
   const initialPrice = yearlyPromotion
