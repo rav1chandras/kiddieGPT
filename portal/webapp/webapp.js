@@ -2875,23 +2875,27 @@
 
     function renderRailPromo() {
       var el = document.getElementById("rail-yearly-promo");
-      if (!el) return;
+      var newUserEl = document.getElementById("rail-new-user-promo");
+      if (!el || !newUserEl) return;
       var noCardTrial = onNoCardTrial();
       var monthlySubscriber = paid && activePlanKey === "monthly" && !noCardTrial;
-      var show = (monthlySubscriber || noCardTrial) && !yearlyUpgradeScheduled;
-      el.classList.toggle("hidden", !show);
-      if (!show) return;
-      var o = noCardTrial ? yearlySignupOffer() : yearlyUpgradeOffer();
+      var blockedState = parentEntitlement && ["past_due", "locked"].indexOf(parentEntitlement.status) >= 0;
+      var newUser = !paid && !blockedState && (!parentEntitlement || noCardTrial);
+      var showYearlyOffer = monthlySubscriber && !yearlyUpgradeScheduled;
+      el.classList.toggle("hidden", !showYearlyOffer);
+      newUserEl.classList.toggle("hidden", !newUser);
+      if (!showYearlyOffer) return;
+      var o = yearlyUpgradeOffer();
       var titleEl = document.getElementById("rail-promo-title");
       var copyEl = document.getElementById("rail-promo-copy");
       var detailEl = document.getElementById("rail-promo-detail");
-      if (titleEl) titleEl.textContent = noCardTrial ? "Choose yearly" : "Upgrade to yearly";
+      var priceEl = document.getElementById("rail-promo-price");
+      if (titleEl) titleEl.textContent = o.annualSavings > 0 ? "Save $" + moneyStr(o.annualSavings) + " with yearly access" : "Make room for a full year";
+      if (priceEl) priceEl.textContent = "$" + o.priceStr;
       if (copyEl) {
         var extras = [];
         if (o.bonusMonths > 0) extras.push(o.bonusMonths + " bonus month" + (o.bonusMonths === 1 ? "" : "s"));
-        if (o.discountAmount > 0) extras.push("save $" + o.discountAmount);
-        if (o.promoCode) extras.push("code " + o.promoCode);
-        copyEl.textContent = (noCardTrial ? "Start yearly for $" : "Switch to yearly for $") + o.priceStr + "/yr" + (extras.length ? " · " + extras.join(" · ") : "");
+        copyEl.textContent = extras.length ? "Get " + extras.join(" + ") : "One simple yearly payment";
       }
       if (detailEl) detailEl.textContent = o.promoDescription || "Keep learning all year with one simple renewal.";
       renderIcons();
@@ -3023,6 +3027,8 @@
     });
     var railYearlyPromo = document.getElementById("rail-yearly-promo");
     if (railYearlyPromo) railYearlyPromo.addEventListener("click", function () { setParentTab("subscription"); openUpgradeModal(); });
+    var railNewUserPromo = document.getElementById("rail-new-user-promo");
+    if (railNewUserPromo) railNewUserPromo.addEventListener("click", function () { setParentTab("subscription"); });
     var upgradeConfirmBtn = document.getElementById("upgrade-confirm");
     if (upgradeConfirmBtn) upgradeConfirmBtn.addEventListener("click", function () { closeUpgradeModal(); performYearlyUpgrade(); });
     var upgradeCancelBtn = document.getElementById("upgrade-cancel");
@@ -5293,6 +5299,7 @@
           ? "Stored: " + settings.maskedOpenAIKey + " — leave blank to keep"
           : "sk-...";
         if (aiSettingsForm.elements.openaiModel) aiSettingsForm.elements.openaiModel.value = settings.openaiModel || "gpt-5.6-luna";
+        if (aiSettingsForm.elements.openaiModelAdv) aiSettingsForm.elements.openaiModelAdv.value = settings.openaiModelAdv || "";
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         if (aiSettingsForm.elements.tokensPerFamilyDaily) aiSettingsForm.elements.tokensPerFamilyDaily.value = Number(settings.tokensPerFamilyDaily || 0);
@@ -5332,6 +5339,7 @@
             openaiApiKey: clearKey ? "" : aiSettingsForm.elements.openaiApiKey.value.trim(),
             clearOpenAIKey: Boolean(clearKey),
             openaiModel: aiSettingsForm.elements.openaiModel ? aiSettingsForm.elements.openaiModel.value.trim() : undefined,
+            openaiModelAdv: aiSettingsForm.elements.openaiModelAdv ? aiSettingsForm.elements.openaiModelAdv.value.trim() : undefined,
             mathProblemsPerUserDaily: Number(aiSettingsForm.elements.mathProblemsPerUserDaily.value || 0),
             tutorVoiceMinutesPerUserDaily: Number(aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value || 0),
             tokensPerFamilyDaily: aiSettingsForm.elements.tokensPerFamilyDaily ? Number(aiSettingsForm.elements.tokensPerFamilyDaily.value || 0) : undefined,

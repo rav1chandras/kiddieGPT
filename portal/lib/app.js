@@ -351,6 +351,10 @@ function defaultAiSettings() {
   return {
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     openaiModel: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+    // Optional stronger model for "advanced" requests (the extension's
+    // "Reconsider and solve it again" and its geometry vision-retry). Empty is
+    // allowed and means advanced requests fall back to openaiModel.
+    openaiModelAdv: process.env.OPENAI_MODEL_ADV || "",
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
     // Account-wide daily token ceiling across every child and every tool. The
@@ -379,6 +383,9 @@ function normaliseAiSettings(settings = {}) {
     ...settings,
     openaiApiKey: typeof settings.openaiApiKey === "string" ? settings.openaiApiKey : defaults.openaiApiKey,
     openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-5.6-luna"),
+    // No fallback to the standard model here: an empty Adv field is a real state
+    // that means "reuse openaiModel", resolved per request at call time.
+    openaiModelAdv: String(settings.openaiModelAdv || "").trim(),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tokensPerFamilyDaily: Math.max(0, Number(settings.tokensPerFamilyDaily ?? defaults.tokensPerFamilyDaily) || 0),
@@ -394,6 +401,16 @@ function normaliseAiSettings(settings = {}) {
   };
 }
 
+// Single source of truth for which model a request runs on. Admin config is
+// authoritative — the client-sent `model` is only a dev/back-compat hint and is
+// never consulted here. `advanced` picks the stronger model, falling back to the
+// standard one when the Adv field is left empty.
+function resolveOpenAiModel(settings, advanced) {
+  const normalised = normaliseAiSettings(settings);
+  if (advanced && normalised.openaiModelAdv) return normalised.openaiModelAdv;
+  return normalised.openaiModel;
+}
+
 function maskedSecret(value) {
   const secret = String(value || "").trim();
   if (!secret) return "";
@@ -407,6 +424,7 @@ function safeAiSettings(settings = {}) {
     hasOpenAIKey: Boolean(normalised.openaiApiKey),
     maskedOpenAIKey: maskedSecret(normalised.openaiApiKey),
     openaiModel: normalised.openaiModel,
+    openaiModelAdv: normalised.openaiModelAdv,
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
     tokensPerFamilyDaily: normalised.tokensPerFamilyDaily,
@@ -3264,6 +3282,11 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
       const model = String(body.openaiModel || "").trim();
       if (model) next.openaiModel = model;
     }
+    // Adv model may be intentionally cleared to fall back to the standard model,
+    // so an empty string is a valid save here (unlike openaiModel above).
+    if (Object.prototype.hasOwnProperty.call(body, "openaiModelAdv")) {
+      next.openaiModelAdv = String(body.openaiModelAdv || "").trim();
+    }
     if (Object.prototype.hasOwnProperty.call(body, "mathProblemsPerUserDaily")) {
       next.mathProblemsPerUserDaily = Math.max(0, Number(body.mathProblemsPerUserDaily) || 0);
     }
@@ -3982,12 +4005,17 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   if (isMath && effectiveLimits(settings, family).requireSteps) {
     instructions = `${instructions || ""}\n\nIMPORTANT PARENTAL CONTROL: Never reveal the final numeric answer directly. Guide the student through the steps one at a time and prompt them to try each step themselves.`;
   }
+  // Model routing is decided here, from admin settings and the request's
+  // `advanced` flag. The client's `model` is ignored on purpose — it is only a
+  // dev hint, and trusting it would let a modified extension pick any model.
+  const advanced = body.advanced === true;
+  const modelToUse = resolveOpenAiModel(settings, advanced);
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({
-        model: body.model || settings.openaiModel || "gpt-5.6-luna",
+        model: modelToUse,
         instructions,
         input: body.input,
         // Clamp rather than trust: the client's value was previously not
@@ -4017,6 +4045,9 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
     mutateDb((store) => {
       const fam = parentFamilyForIdentity(store, req.auth);
       if (fam) recordChildUsage(fam, { childId: body.childId, tool: tool || "ai", mathProblems: isMath ? Math.max(1, Number(body.mathProblems) || 1) : 0, tokens });
+      // Attribute cost: which configured model actually ran, and whether it was
+      // the advanced tier, so usage can be split by model later.
+      audit(store, "ai.responses", { familyId: fam?.id || "", tool: tool || "ai", model: modelToUse, advanced, tokens }, req.auth.email);
     });
     res.json(data);
   } catch (error) {
@@ -6896,4 +6927,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, initPersistence, flushPending, runLifecycleSweep };
+module.exports = { app, initPersistence, flushPending, runLifecycleSweep, resolveOpenAiModel };

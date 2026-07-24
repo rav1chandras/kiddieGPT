@@ -571,7 +571,11 @@
             </label>
             <label>OpenAI model
               <input type="text" name="openaiModel" placeholder="gpt-5.6-luna" autocomplete="off">
-              <small>Model the tutor proxy uses for responses.</small>
+              <small>Model the tutor proxy uses for standard responses.</small>
+            </label>
+            <label>OpenAI model (Adv)
+              <input type="text" name="openaiModelAdv" placeholder="Leave blank to reuse the standard model" autocomplete="off">
+              <small>Used for "Reconsider and solve it again" and geometry retries. Blank falls back to the standard model.</small>
             </label>
             <label>Math problems per user/day
               <input type="number" name="mathProblemsPerUserDaily" min="0" step="1" required>
