@@ -34,6 +34,15 @@ const USAGE_RETENTION_DAYS = Number(process.env.USAGE_RETENTION_DAYS || 30);
 // client value can be forged, so the ceiling has to be enforced here. Counts
 // TEXT only — base64 image payloads (QR capture) are exempt or screenshots break.
 const AI_MAX_INPUT_CHARS = Number(process.env.AI_MAX_INPUT_CHARS || 8000);
+// Page-based tools (Mission, Explain, Read, PDF, Write, Tutor) legitimately
+// ingest a whole web page or document, which routinely exceeds the tight
+// problem-sized default. They get a larger bound; math and other problem tools
+// stay small. Output tokens are still capped separately, so cost stays bounded.
+const AI_MAX_INPUT_CHARS_LONG = Number(process.env.AI_MAX_INPUT_CHARS_LONG || 48000);
+const LONG_INPUT_TOOLS = new Set(["mission", "explain", "read", "pdf", "write", "tutor", "deep-dive", "deepdive"]);
+function maxInputCharsForTool(tool) {
+  return LONG_INPUT_TOOLS.has(String(tool || "").trim().toLowerCase()) ? AI_MAX_INPUT_CHARS_LONG : AI_MAX_INPUT_CHARS;
+}
 const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 2000);
 // OpenAI's TTS endpoint rejects >4096 characters, so stay just under it.
 const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
@@ -4005,10 +4014,11 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   // counts against the same budget — capping only `input` would just move an
   // injection into the other field.
   const promptChars = aiInputTextLength(body.input) + String(body.instructions || "").length;
-  if (promptChars > AI_MAX_INPUT_CHARS) {
-    mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI prompt rejected", { chars: promptChars, limit: AI_MAX_INPUT_CHARS, tool }, req.auth.email));
+  const inputCap = maxInputCharsForTool(tool);
+  if (promptChars > inputCap) {
+    mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI prompt rejected", { chars: promptChars, limit: inputCap, tool }, req.auth.email));
     mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized"));
-    return res.status(413).json({ error: "input_too_large", limit: AI_MAX_INPUT_CHARS, received: promptChars });
+    return res.status(413).json({ error: "input_too_large", limit: inputCap, received: promptChars });
   }
   // Enforce the "require step-by-step" parental control server-side so it can't
   // be bypassed by the client.
