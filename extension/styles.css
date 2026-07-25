@@ -610,18 +610,32 @@ body{background:#f6f8f5}
     .mission-card-shell{width:clamp(300px,96%,816px);max-width:100%;height:270px;perspective:1100px}
     .mission-flip-card{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .48s cubic-bezier(.2,.7,.2,1)}
     .mission-flip-card.flipped{transform:rotateY(180deg)}
-    .mission-card-side{position:absolute;inset:0;overflow:hidden;border:1px solid #dce8df;border-radius:18px;background:#fff;box-shadow:0 14px 30px rgba(12,42,60,.06);padding:22px 18px 16px;display:grid;align-content:center;text-align:left;backface-visibility:hidden}
+    .mission-card-side{position:absolute;inset:0;overflow:hidden;border:1px solid #dce8df;border-radius:18px;background:#fff;box-shadow:0 14px 30px rgba(12,42,60,.06);padding:22px 18px 16px;display:grid;grid-template-rows:auto 1fr;text-align:left;backface-visibility:hidden}
     .mission-card-back{transform:rotateY(180deg);background:linear-gradient(135deg,#fff,#fbfde6)}
+    /* Question (front) side only — dark green card, white non-bold question. The
+       flipped answer (back) side is intentionally left unchanged. */
+    .mission-card-front{background:var(--green);border-color:#004f48}
+    .mission-card-front .mission-card-face b{color:#fff;font-weight:400}
+    .mission-card-front{grid-template-rows:auto 1fr auto}
+    .mission-card-front .mission-card-face-term{text-align:center}
+    .mission-card-hint{position:relative;z-index:1;align-self:end;justify-self:start;text-align:left;margin:8px 0 0;font-size:12px;line-height:1.45}
+    .mission-card-front .mission-card-hint{color:rgba(255,255,255,.78)}
+    .mission-card-front .mission-card-fold:after{border-top-color:var(--green)}
+    .mission-card-front .mission-card-fold span{color:#fff}
     .mission-card-side:after{content:"";position:absolute;right:-24px;bottom:-28px;width:92px;height:92px;border-radius:30px;background:rgba(220,233,106,.22);transform:rotate(14deg);pointer-events:none}
     .mission-card-fold{position:absolute;top:0;right:0;width:72px;height:72px;border:0;background:transparent;color:#004f48;cursor:pointer;z-index:3;font:inherit}
     .mission-card-fold:before{content:"";position:absolute;top:0;right:0;border-top:72px solid #eef6b5;border-left:72px solid transparent;filter:drop-shadow(-6px 6px 8px rgba(12,42,60,.1))}
     .mission-card-fold:after{content:"";position:absolute;top:0;right:0;border-top:49px solid #fff;border-left:49px solid transparent;opacity:.82}
     .mission-card-fold span{position:absolute;top:13px;right:5px;z-index:1;transform:rotate(45deg);font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
     .mission-card-face,.mission-card-answer,.mission-card-actions,.mission-card-help{position:relative;z-index:1}
-    .mission-card-face small,.mission-card-answer small{display:inline-flex;width:max-content;border-radius:999px;background:#eef6b5;color:#617500;padding:5px 8px;font-size:9px;font-weight:900;text-transform:uppercase;margin-bottom:8px}
+    /* Pill is pinned to the top-left row so it never moves with the term length;
+       the term/clue block below it is vertically centred in the remaining space. */
+    .mission-card-tag{position:relative;z-index:2;justify-self:start;align-self:start;display:inline-flex;width:max-content;border-radius:999px;background:#eef6b5;color:#617500;padding:5px 8px;font-size:9px;font-weight:900;text-transform:uppercase}
+    .mission-card-face,.mission-card-answer{align-self:center}
     .mission-card-face b,.mission-card-answer b{display:block;font-size:clamp(18px,3.2vw,26px);line-height:1.15;color:#004f48;margin:0 0 7px;font-weight:900}
     .mission-card-face p,.mission-card-answer p{font-size:12px;line-height:1.45;color:#60747d;margin:0}
-    .mission-card-answer{padding-top:0}
+    .mission-card-answer{padding-top:0;text-align:center}
+    .mission-card-answer b{font-weight:400}
     .mission-card-answer[hidden],.mission-card-help[hidden]{display:none}
     .mission-card-actions{width:clamp(300px,96%,816px);max-width:100%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
     .mission-card-actions .small-button{height:42px;min-width:128px;border-radius:12px;font-size:10px;padding:0 12px}
@@ -666,7 +680,7 @@ body{background:#f6f8f5}
     .mission-builder-footer .pdf-status{grid-area:status}
     .mission-builder-footer .pdf-progress{grid-area:progress}
     .mission-builder-footer .pdf-status[hidden],.mission-builder-footer .pdf-progress[hidden]{display:none}
-    .mission-builder-footer #pdfBuildButton{grid-area:action}
+    .mission-builder-footer #pdfBuildButton{grid-area:action;align-self:stretch;height:auto;white-space:normal;line-height:1.2}
     .challenge-control{grid-area:challenge;border:1px solid rgba(0,79,72,.1);border-radius:10px;background:rgba(255,255,255,.72);padding:5px 8px;display:grid;gap:2px;min-width:0}
     .challenge-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .challenge-head b{font-size:10px;color:#0b2d43;font-weight:800}
@@ -836,7 +850,7 @@ body{background:#f6f8f5}
     .choice.correct{background:#fbfde6;border-color:#d4e56d}
     .quiz-list{display:grid;gap:10px}
     .quiz-question-card{border:1px solid var(--line);border-radius:14px;background:#fff;padding:11px}
-    .quiz-question-card h4{margin:0 0 8px;font-size:13px;font-weight:500;color:#0b2d43}
+    .quiz-question-card h4{margin:0 0 8px;font-size:14px;font-weight:700;color:#0b2d43}
     .quiz-progress{display:grid;gap:5px;margin-bottom:10px}
     .quiz-progress small{font-size:11px;color:#60747d;font-weight:500}
     .quiz-question-card .choice{padding:9px 10px;font-weight:500}

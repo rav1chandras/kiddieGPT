@@ -1014,9 +1014,6 @@ function showMissionStep(step = "study") {
   });
   if (stepName === "cards") renderMissionCards();
   if (stepName === "quiz") renderMissionQuiz();
-  if ((stepName === "cards" || stepName === "quiz") && currentStudyPack && !missionReadDone) {
-    setPdfStatus("Tip: spend a few focused minutes reading the mission first, then practice.", "blue");
-  }
   updateMissionReadUi();
 }
 
@@ -1054,18 +1051,18 @@ function renderMissionCards() {
             <button class="mission-card-fold" data-card-flip="true" type="button" aria-label="Flip card to reveal answer">
               <span>Flip</span>
             </button>
-            <div class="mission-card-face">
-              <small>${escapeHtml(promptLabel)}</small>
+            <small class="mission-card-tag">${escapeHtml(promptLabel)}</small>
+            <div class="mission-card-face${guessTerm ? "" : " mission-card-face-term"}">
               <b>${escapeHtml(promptText)}</b>
-              <p>Say your answer first, then tap the folded corner.</p>
             </div>
+            <p class="mission-card-hint">Say your answer first, then tap the folded corner.</p>
           </div>
           <div class="mission-card-side mission-card-back">
             <button class="mission-card-fold" data-card-flip="true" type="button" aria-label="Flip card back">
               <span>Back</span>
             </button>
+            <small class="mission-card-tag">Answer</small>
             <div class="mission-card-answer">
-              <small>Answer</small>
               <b>${escapeHtml(revealTitle)}</b>
               <p>${escapeHtml(revealText)}</p>
             </div>
@@ -2658,7 +2655,7 @@ function setPdfBusy(isBusy) {
   const progress = document.getElementById("pdfProgress");
   if (button) {
     button.disabled = isBusy;
-    button.textContent = isBusy ? "Generating..." : "Generate Study Aids";
+    button.innerHTML = isBusy ? "Generating..." : "Generate Study<br>Aids";
   }
   if (progress) {
     progress.hidden = !isBusy;
