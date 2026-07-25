@@ -4011,6 +4011,43 @@ body[data-page="admin"] .button {
   overflow: hidden;
 }
 
+.ai-section-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 5px;
+  border: 1px solid #e2ebe6;
+  border-radius: 14px;
+  background: #edf4ef;
+}
+
+.ai-section-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #70827d;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+.ai-section-tab svg { width: 15px; height: 15px; stroke-width: 1.9; }
+.ai-section-tab:hover { color: #0b665d; }
+.ai-section-tab.is-active {
+  background: #fff;
+  color: #0b665d;
+  box-shadow: 0 2px 8px rgba(31, 71, 56, .08);
+}
+.ai-section-panel[hidden] { display: none !important; }
+
 .ai-settings-grid {
   padding: 16px;
 }
@@ -7040,6 +7077,150 @@ body[data-page="parent"] .parent-portal-pro .rail-promo-cta {
 }
 body[data-page="parent"] .parent-portal-pro .rail-promo-cta i { width: 15px; height: 15px; }
 
+/* Left rail offers: the yearly upsell is for monthly subscribers only. A
+   separate neutral invitation is used for families without an active package. */
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  overflow: hidden;
+  width: 100%;
+  margin-top: 0;
+  padding: 13px;
+  border: 1px solid #0b665d;
+  border-radius: 14px;
+  background: #075a52;
+  color: #fff;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(6, 77, 69, .16);
+  cursor: pointer;
+  transition: background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo::before,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo::before {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 130px;
+  height: 130px;
+  border: 1px solid rgba(237, 246, 123, .2);
+  border-radius: 50%;
+  box-shadow: 0 0 0 13px rgba(237, 246, 123, .05), 0 0 0 27px rgba(237, 246, 123, .04);
+  content: "";
+  pointer-events: none;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo:hover,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo:hover {
+  background: #075f57;
+  box-shadow: 0 13px 28px rgba(6, 77, 69, .22);
+  transform: translateY(-1px);
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo > *,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo > * { position: relative; z-index: 1; }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-top,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(255, 255, 255, .82);
+  font-size: 9px;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-top > svg,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-top > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--parent-yellow, #edf67b);
+}
+body[data-page="parent"] .parent-portal-pro .sidebar-promo-badge,
+body[data-page="parent"] .parent-portal-pro .sidebar-welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 999px;
+  background: #0b665d;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-label,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-label {
+  margin-top: 3px;
+  color: #b6e1c2;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo > strong,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo > strong {
+  margin-top: -2px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-price {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: -2px;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-price b {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.06em;
+  line-height: 1;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-price small { color: #bfe4cf; font-size: 9px; }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-savings {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: max-content;
+  padding: 4px 6px;
+  border-radius: 7px;
+  background: rgba(237, 246, 123, .16);
+  color: #f1f7a2;
+  font-size: 8px;
+  font-weight: 700;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-savings svg { width: 12px; height: 12px; }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-bonus,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-copy {
+  color: #d4eddc;
+  font-size: 8px;
+  line-height: 1.4;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-link,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-upgrade-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-upgrade-link svg,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-upgrade-link svg { width: 13px; height: 13px; color: #edf67b; }
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo { background: #0b665d; }
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-tools { display: flex; flex-wrap: wrap; gap: 5px; }
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-tools span {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 999px;
+  color: #f1f7a2;
+  font-size: 8px;
+  font-weight: 600;
+}
+
 /* Briefly flag a child card whose required fields block the save. */
 body[data-page="parent"] .child-profile.needs-attention {
   border-color: #e0a83e !important;
@@ -8727,6 +8908,112 @@ body[data-page="admin"] .plan-detail-grid {
 body[data-page="admin"] .plan-detail-grid > .plan-detail-wide { grid-column: 1 / -1; }
 body[data-page="admin"] .plan-detail-grid > label[hidden] { display: none; }
 
+body[data-page="admin"] .plan-offer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+body[data-page="admin"] .plan-offer-grid > .pricing-card {
+  min-width: 0;
+}
+body[data-page="admin"] .plan-offer-grid .pricing-section-grid {
+  min-height: 188px;
+  align-content: start;
+}
+body[data-page="admin"] .plan-offer-grid .admin-card-head {
+  align-items: center;
+  gap: 12px;
+}
+body[data-page="admin"] .promo-enable-toggle {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin-left: auto;
+  padding: 0 11px;
+  border: 1px solid #cfe0d7;
+  border-radius: 999px;
+  background: #fbfdfb;
+  color: #315d50 !important;
+  font-size: .76rem !important;
+  font-weight: 720 !important;
+  cursor: pointer;
+}
+body[data-page="admin"] .promo-enable-toggle:has(input:checked) {
+  border-color: #8fc6ac;
+  background: #eaf8f1;
+  color: #004f48 !important;
+}
+body[data-page="admin"] .promo-enable-toggle input[type="checkbox"] {
+  accent-color: #004f48;
+}
+body[data-page="admin"] .cancellation-promo-section .pricing-section-grid,
+body[data-page="admin"] .yearly-upgrade-section .pricing-section-grid {
+  padding-top: 16px;
+}
+body[data-page="admin"] .cancellation-promo-section .pricing-section-grid {
+  grid-template-columns: 132px minmax(0, 1fr);
+}
+body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field,
+body[data-page="admin"] .cancellation-promo-section .plan-detail-wide,
+body[data-page="admin"] .cancellation-promo-section .pricing-help {
+  grid-column: 1 / -1;
+}
+body[data-page="admin"] .duration-radio-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+body[data-page="admin"] .duration-radio-field legend {
+  margin: 0 0 6px;
+  padding: 0;
+  color: var(--ink);
+  font-size: .82rem;
+  font-weight: 700;
+}
+body[data-page="admin"] .duration-radio-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+body[data-page="admin"] .duration-radio-options label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  min-height: 42px;
+  padding: 0 5px;
+  border: 1px solid #dfe8df;
+  border-radius: 10px;
+  background: #fbfdfb;
+  color: #60747d;
+  font-family: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+@media (max-width: 720px) {
+  body[data-page="admin"] .cancellation-promo-section .pricing-section-grid {
+    grid-template-columns: 1fr;
+  }
+  body[data-page="admin"] .duration-radio-options {
+    grid-template-columns: 1fr;
+  }
+}
+body[data-page="admin"] .duration-radio-options label:has(input:checked) {
+  border-color: #8fc6ac;
+  background: #eaf8f1;
+  color: #004f48;
+}
+body[data-page="admin"] .lifecycle-entitlements-card {
+  margin-top: 14px;
+}
+
 @media (max-width: 900px) {
   body[data-page="admin"] .plan-promo-body { grid-template-columns: minmax(0, 1fr); }
   body[data-page="admin"] .plan-promo-col + .plan-promo-col {
@@ -8735,6 +9022,7 @@ body[data-page="admin"] .plan-detail-grid > label[hidden] { display: none; }
     border-left: 0;
     border-top: 1px solid var(--line);
   }
+  body[data-page="admin"] .plan-offer-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* The segmented toggle is a 2-col grid sized for a form field; in the card head
@@ -9037,12 +9325,14 @@ body[data-page="admin"] .promotion-override-section {
 }
 body[data-page="admin"] .promotion-override-section .plan-detail-grid { gap: 12px 14px; }
 body[data-page="admin"] .pricing-help {
+  display: block;
   grid-column: 1 / -1;
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
-  text-wrap: pretty;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ---- "Keep my plan" pill in the current-plan card ------------------------ */
@@ -9109,12 +9399,19 @@ body[data-page="admin"] .yearly-upgrade-section .upgrade-bonus-field {
   grid-row: 1;
 }
 body[data-page="admin"] .yearly-upgrade-section .upgrade-discount-field {
-  grid-column: 1;
-  grid-row: 2;
+  grid-column: 2;
+  grid-row: 1;
 }
 body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field {
-  grid-column: 2;
+  grid-column: 1 / -1;
   grid-row: 2;
+}
+body[data-page="admin"] .plan-offer-grid .retention-amount-field input {
+  width: min(100%, 160px);
+}
+body[data-page="admin"] .plan-offer-grid .cancellation-promo-section .plan-detail-wide input,
+body[data-page="admin"] .plan-offer-grid .yearly-upgrade-section .upgrade-note-field input {
+  width: 100%;
 }
 
 @media (max-width: 720px) {
@@ -9123,5 +9420,392 @@ body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field {
   body[data-page="admin"] .yearly-upgrade-section .upgrade-note-field {
     grid-column: 1;
     grid-row: auto;
+  }
+  body[data-page="admin"] .yearly-upgrade-section .upgrade-discount-field {
+    grid-column: 1;
+  }
+}
+
+/* AI Controls layout: model configuration on the left, guardrails on the
+   right, with voice controls grouped inside the Tutor voice panel. */
+body[data-page="admin"] .ai-settings-card .admin-card-head { align-items: center; }
+body[data-page="admin"] .ai-control-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+body[data-page="admin"] .ai-save-button { min-height: 38px; white-space: nowrap; }
+body[data-page="admin"] .ai-settings-card .ai-settings-grid { display: block; padding: 16px; }
+body[data-page="admin"] .ai-controls-columns {
+  display: grid;
+  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+  gap: 16px;
+  align-items: start;
+}
+body[data-page="admin"] .ai-control-pane {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid #e2ebe6;
+  border-radius: 15px;
+  background: #fbfdfb;
+}
+body[data-page="admin"] .ai-pane-head { display: grid; gap: 2px; padding-bottom: 3px; }
+body[data-page="admin"] .ai-pane-head .eyebrow { margin: 0; }
+body[data-page="admin"] .ai-pane-head h3 { margin: 0; color: #173c34; font-size: .96rem; font-weight: 650; }
+body[data-page="admin"] .ai-pane-head small { color: #7b8d87; font-size: .72rem; line-height: 1.4; }
+body[data-page="admin"] .ai-control-pane > label:not(.tts-default-field),
+body[data-page="admin"] .ai-key-control {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: #60747d;
+  font-size: .74rem;
+  font-weight: 720;
+}
+body[data-page="admin"] .ai-control-pane > label > small,
+body[data-page="admin"] .ai-key-control > small { color: #8a98a4; font-size: .7rem; font-weight: 560; line-height: 1.35; }
+body[data-page="admin"] .ai-key-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+body[data-page="admin"] .ai-key-input-row .table-action { min-height: 40px; white-space: nowrap; }
+body[data-page="admin"] .ai-control-pane .tts-voice-field {
+  grid-column: auto;
+  margin-top: 2px;
+  padding: 13px;
+  border-color: #dbe8e1;
+  background: #f5faf6;
+}
+body[data-page="admin"] .tts-voice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+body[data-page="admin"] .tts-voice-copy { display: grid; min-width: 0; gap: 2px; }
+body[data-page="admin"] .tts-voice-head .tts-voice-copy small { margin-top: 0; }
+body[data-page="admin"] .tts-voice-head-actions { display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
+body[data-page="admin"] .tts-enabled-toggle {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 9px;
+  border: 1px solid #cfe0d7;
+  border-radius: 10px;
+  background: #fff;
+  color: #315d50 !important;
+  font-size: .72rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap;
+}
+body[data-page="admin"] .tts-enabled-toggle input { width: 16px !important; height: 16px !important; min-height: 0 !important; margin: 0 !important; }
+body[data-page="admin"] .tts-default-field {
+  display: grid !important;
+  min-width: 128px;
+  gap: 4px;
+  margin: 0;
+  color: #315d50 !important;
+  font-size: .7rem !important;
+  font-weight: 650 !important;
+}
+body[data-page="admin"] .tts-default-field select { min-height: 38px; padding: 0 9px; border: 1px solid #cfe0d7; border-radius: 10px; background: #fff; color: #23483e; font: inherit; }
+body[data-page="admin"] .tts-voice-help { color: #6a827d; font-size: .7rem; line-height: 1.35; }
+body[data-page="admin"] .ai-bottom-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin-top: 16px;
+  align-items: stretch;
+}
+body[data-page="admin"] .ai-bottom-controls .tts-voice-field {
+  grid-column: auto;
+  min-width: 0;
+  height: 100%;
+}
+body[data-page="admin"] .ai-bottom-controls .tts-voice-list {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+}
+body[data-page="admin"] .ai-voice-controls { gap: 12px; }
+body[data-page="admin"] .ai-voice-controls .tts-voice-list { margin-top: 2px; }
+body[data-page="admin"] .tts-length-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #dbe8e1;
+}
+body[data-page="admin"] .tts-length-section .tts-voice-head { align-items: center; }
+body[data-page="admin"] .tts-length-section .tts-voice-copy b { font-size: .86rem; }
+body[data-page="admin"] .tts-length-section .tts-voice-copy small { font-size: .7rem; }
+body[data-page="admin"] #tutor-word-targets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+body[data-page="admin"] #tutor-word-targets .word-target-row {
+  display: grid !important;
+  grid-template-columns: auto minmax(64px, 86px);
+  gap: 5px 8px !important;
+  align-items: center;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 9px 10px;
+  border: 1px solid #e0ebe5;
+  border-radius: 10px;
+  background: #fff;
+}
+body[data-page="admin"] #tutor-word-targets .word-target-row > span:first-child {
+  color: #315d50;
+  font-size: .72rem;
+  font-weight: 700;
+}
+body[data-page="admin"] #tutor-word-targets .word-target-row > span:last-child {
+  grid-column: 1 / -1;
+  color: #7a8c87;
+  font-size: .66rem;
+  line-height: 1.25;
+}
+body[data-page="admin"] #tutor-word-targets .word-target-row input {
+  width: 100% !important;
+  min-height: 32px;
+  padding: 0 7px;
+  border: 1px solid #cfe0d7;
+  border-radius: 8px;
+  background: #fff;
+  color: #23483e;
+  font: inherit;
+  font-size: .76rem;
+}
+@media (max-width: 820px) {
+  body[data-page="admin"] .ai-controls-columns { grid-template-columns: 1fr; }
+  body[data-page="admin"] #tutor-word-targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  body[data-page="admin"] .ai-settings-card .admin-card-head { align-items: flex-start; flex-direction: column; }
+  body[data-page="admin"] .ai-control-actions { width: 100%; justify-content: space-between; }
+  body[data-page="admin"] .tts-voice-head { flex-direction: column; }
+  body[data-page="admin"] .tts-voice-head-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  body[data-page="admin"] #tutor-word-targets { grid-template-columns: 1fr; }
+}
+
+/* Final rail sizing overrides keep both live sidebar states aligned with the
+   compact extension-style treatment above. */
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 13px;
+  border-radius: 14px;
+}
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo { background: #075a52; box-shadow: 0 10px 24px rgba(6, 77, 69, .16); }
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo { background: #0b665d; box-shadow: 0 10px 24px rgba(6, 77, 69, .16); }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo:hover,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo:hover { box-shadow: 0 13px 28px rgba(6, 77, 69, .22); }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo strong,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo strong { font-size: 13px; font-weight: 600; }
+body[data-page="parent"] .parent-portal-pro .rail-yearly-promo .sidebar-promo-badge,
+body[data-page="parent"] .parent-portal-pro .rail-new-user-promo .sidebar-welcome-badge { padding: 4px 8px; font-size: 8px; }
+@media (max-width: 940px) {
+  body[data-page="parent"] .parent-portal-pro .rail-yearly-promo,
+  body[data-page="parent"] .parent-portal-pro .rail-new-user-promo { min-height: 112px; }
+}
+
+/* Simple Tutor voice configuration: one text field beside the enable switch,
+   with lesson limits kept in a compact 2x2 panel. */
+body[data-page="admin"] .ai-bottom-controls {
+  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+  gap: 16px;
+}
+body[data-page="admin"] .ai-simple-voice,
+body[data-page="admin"] .tts-length-section {
+  align-content: start;
+  min-height: 100%;
+  gap: 14px;
+}
+body[data-page="admin"] .tts-voice-form { display: grid; gap: 7px; }
+body[data-page="admin"] .tts-input-label {
+  color: #587078;
+  font-size: .74rem;
+  font-weight: 720;
+}
+body[data-page="admin"] .tts-voice-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+body[data-page="admin"] .tts-voice-input-row > input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cfe0d7;
+  border-radius: 10px;
+  background: #fff;
+  color: #23483e;
+  font: inherit;
+  font-size: .82rem;
+}
+body[data-page="admin"] .tts-voice-input-row > input:focus {
+  border-color: #0b665d;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(11, 102, 93, .12);
+}
+body[data-page="admin"] .tts-voice-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid #dbe8e1;
+}
+body[data-page="admin"] .tts-voice-examples span {
+  padding: 6px 9px;
+  border: 1px solid #cfe0d7;
+  border-radius: 999px;
+  background: #fff;
+  color: #0b665d;
+  font-size: .7rem;
+  font-weight: 700;
+}
+body[data-page="admin"] .tts-voice-examples span:first-child {
+  border-color: #b8d8c6;
+  background: #e8f4ed;
+}
+body[data-page="admin"] .tts-length-section {
+  margin-top: 0;
+  padding-top: 15px;
+  border-top: 0;
+}
+body[data-page="admin"] .tts-length-section .tts-voice-head { align-items: flex-start; }
+body[data-page="admin"] .tts-length-section .tts-voice-copy b { font-size: .92rem; }
+body[data-page="admin"] .tts-length-section .tts-voice-copy small { font-size: .7rem; }
+body[data-page="admin"] .tts-length-section #tutor-word-targets {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 820px) {
+  body[data-page="admin"] .ai-bottom-controls { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  body[data-page="admin"] .tts-voice-input-row { grid-template-columns: 1fr; }
+  body[data-page="admin"] .tts-enabled-toggle { justify-content: center; }
+  body[data-page="admin"] .tts-length-section #tutor-word-targets { grid-template-columns: 1fr; }
+}
+
+/* Combined usage report and raw event log. The summary is intentionally wide:
+   it is an operator table for comparison, while the logs remain a readable
+   audit trail below the same AI & Usage navigation. */
+body[data-page="admin"] .usage-report-card .admin-card-subtitle {
+  margin: 5px 0 0;
+  color: #73827f;
+  font-size: .78rem;
+  font-weight: 500;
+}
+body[data-page="admin"] .usage-report-card > .admin-card-head > select {
+  min-width: 145px;
+}
+body[data-page="admin"] .usage-filters {
+  margin: 16px 16px 8px;
+  align-items: center;
+}
+body[data-page="admin"] .usage-filters input[type="search"] {
+  flex: 1 1 270px;
+  min-width: 220px;
+}
+body[data-page="admin"] .usage-filters select {
+  min-width: 145px;
+}
+body[data-page="admin"] .usage-flag-filter {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dce8e1;
+  border-radius: 10px;
+  background: #fbfdfb;
+}
+body[data-page="admin"] .usage-card-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 16px 14px;
+  color: #73827f;
+  font-size: .72rem;
+}
+body[data-page="admin"] .usage-filters > .state-chip {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+body[data-page="admin"] .usage-card-note svg {
+  width: 15px;
+  height: 15px;
+  color: #9a9d0d;
+  flex: 0 0 auto;
+}
+body[data-page="admin"] .usage-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e0e9e4;
+  border-radius: 12px;
+  margin: 0 16px 16px;
+}
+body[data-page="admin"] .usage-log-filters {
+  margin-top: 16px;
+}
+body[data-page="admin"] .usage-table,
+body[data-page="admin"] .usage-log-table {
+  min-width: 1220px;
+}
+body[data-page="admin"] .usage-log-table {
+  min-width: 900px;
+}
+body[data-page="admin"] .usage-table th,
+body[data-page="admin"] .usage-table td,
+body[data-page="admin"] .usage-log-table th,
+body[data-page="admin"] .usage-log-table td {
+  white-space: nowrap;
+}
+body[data-page="admin"] .usage-table th,
+body[data-page="admin"] .usage-log-table th {
+  font-size: .66rem;
+  letter-spacing: .02em;
+}
+body[data-page="admin"] .usage-table td,
+body[data-page="admin"] .usage-log-table td {
+  font-size: .76rem;
+}
+body[data-page="admin"] .usage-table td small {
+  display: block;
+  margin-top: 3px;
+  color: #84928e;
+  font-size: .66rem;
+}
+body[data-page="admin"] .usage-number {
+  font-variant-numeric: tabular-nums;
+}
+body[data-page="admin"] .raw-log-detail {
+  min-width: 430px;
+  white-space: normal !important;
+}
+body[data-page="admin"] .raw-log-detail strong,
+body[data-page="admin"] .raw-log-detail small {
+  display: block;
+}
+body[data-page="admin"] .raw-log-detail small {
+  margin-top: 3px;
+  color: #7d8d89;
+  font-size: .68rem;
+  line-height: 1.35;
+}
+@media (max-width: 720px) {
+  body[data-page="admin"] .usage-table-wrap {
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+  body[data-page="admin"] .usage-filters,
+  body[data-page="admin"] .usage-card-note {
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+  body[data-page="admin"] .usage-report-card > .admin-card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  body[data-page="admin"] .usage-report-card > .admin-card-head > select {
+    width: 100%;
   }
 }

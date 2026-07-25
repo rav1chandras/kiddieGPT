@@ -6,6 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentScreen = 'overview';
   let currentProfileIndex = 0;
 
+  const isNewUserPreview = ['new', 'new-user', 'free'].includes(new URLSearchParams(window.location.search).get('state'));
+  document.querySelectorAll('[data-new-user-card]').forEach((card) => {
+    card.hidden = !isNewUserPreview;
+  });
+  document.querySelectorAll('.sidebar-plan-card, .sidebar-upgrade-card').forEach((card) => {
+    card.hidden = isNewUserPreview;
+  });
+
   const profiles = [
     {
       name: 'Ava Patel',

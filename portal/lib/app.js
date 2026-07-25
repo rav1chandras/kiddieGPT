@@ -105,6 +105,7 @@ function defaultPricing() {
       durationDays: 7
     },
     yearlyUpgrade: {
+      enabled: true,
       bonusMonths: 3,       // extra months granted on top of 12
       discountAmount: 0,    // dollars off the yearly price for upgraders
       note: ""              // e.g. "July 4th sale — limited time"
@@ -164,6 +165,7 @@ function normalisePricing(pricing = {}) {
   delete promotion.endDate;
   const rawUpgrade = pricing.yearlyUpgrade || {};
   const yearlyUpgrade = {
+    enabled: rawUpgrade.enabled !== false,
     bonusMonths: Math.max(0, Math.round(Number(rawUpgrade.bonusMonths ?? defaults.yearlyUpgrade.bonusMonths) || 0)),
     discountAmount: legacyAmountOff(rawUpgrade.discountAmount, rawUpgrade.discountPercent, yearly.amount),
     note: String(rawUpgrade.note || "")
@@ -171,7 +173,7 @@ function normalisePricing(pricing = {}) {
   const rawCancellationPromo = pricing.cancellationPromo || {};
   const cancellationPromo = {
     enabled: rawCancellationPromo.enabled !== false,
-    amountOff: legacyAmountOff(rawCancellationPromo.amountOff, rawCancellationPromo.percentOff, monthly.amount),
+    amountOff: Math.min(999, legacyAmountOff(rawCancellationPromo.amountOff, rawCancellationPromo.percentOff, monthly.amount)),
     duration: rawCancellationPromo.duration === "repeating" ? "repeating" : "once",
     description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
     stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
@@ -194,11 +196,11 @@ function normalisePricing(pricing = {}) {
 const TTS_MODEL = "gpt-4o-mini-tts";
 const SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
 // Preferred order for middle school; also the non-empty fallback shortlist.
-const PREFERRED_TTS_VOICES = ["marin", "cedar", "sage"];
+const PREFERRED_TTS_VOICES = ["alloy", "marin", "cedar"];
 const TTS_INSTRUCTION = "Speak like a calm, supportive middle-school tutor. Soothing, clear, steady pace, warm but not childish. Add gentle pauses between ideas. Keep energy relaxed and reassuring.";
 
-// Speech models the admin may choose from (A/B testing without an extension
-// release). Anything outside this list falls back to the default TTS_MODEL.
+// Common speech models shown as helpful defaults. The admin may enter another
+// valid provider model ID without requiring an extension release.
 const SUPPORTED_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"];
 
 // Grade bands supported across the product. 9-12 is a real, selectable band
@@ -256,7 +258,7 @@ function resolveSpeechInstruction(mode, gradeBand) {
 
 function normaliseTtsModel(requested) {
   const model = String(requested || "").trim();
-  return SUPPORTED_TTS_MODELS.includes(model) ? model : TTS_MODEL;
+  return model.slice(0, 120) || TTS_MODEL;
 }
 
 // Clamp/validate the per-band Deep Dive max words. Missing bands fall back to
@@ -331,20 +333,20 @@ function normaliseAllowedVoices(list) {
 }
 
 // If the default isn't in the allowed list, fall back to the first preferred
-// voice that is allowed (marin -> cedar -> sage), else the first allowed voice.
+// voice that is allowed (alloy -> marin -> cedar), else the first allowed voice.
 function normaliseDefaultVoice(requested, allowed) {
   if (requested && allowed.includes(requested)) return requested;
   return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0];
 }
 
 // Resolve the voice for a TTS call: student pick if allowed, else admin
-// default, else fallback order (marin -> cedar -> sage), else first allowed.
+// default, else fallback order (alloy -> marin -> cedar), else first allowed.
 function resolveTtsVoice(requested, settings) {
   const allowed = normaliseAllowedVoices(settings.ttsAllowedVoices);
   if (requested && allowed.includes(requested)) return requested;
   const def = normaliseDefaultVoice(settings.ttsDefaultVoice, allowed);
   if (def) return def;
-  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0] || "marin";
+  return PREFERRED_TTS_VOICES.find((v) => allowed.includes(v)) || allowed[0] || "alloy";
 }
 
 function defaultAiSettings() {
@@ -363,7 +365,7 @@ function defaultAiSettings() {
     tokensPerFamilyDaily: 60000,
     tutorVoiceEnabled: true,
     ttsModel: TTS_MODEL,
-    ttsDefaultVoice: "marin",
+    ttsDefaultVoice: "alloy",
     ttsAllowedVoices: [...PREFERRED_TTS_VOICES],
     tutorExplainMaxWords: { ...DEFAULT_EXPLAIN_MAX_WORDS },
     tutorStandardFraction: DEFAULT_STANDARD_FRACTION,
@@ -390,7 +392,7 @@ function normaliseAiSettings(settings = {}) {
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     tokensPerFamilyDaily: Math.max(0, Number(settings.tokensPerFamilyDaily ?? defaults.tokensPerFamilyDaily) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
-    // Speech model is admin-configurable, validated against SUPPORTED_TTS_MODELS.
+    // Speech model is admin-configurable and accepts a provider model ID.
     ttsModel: normaliseTtsModel(settings.ttsModel),
     ttsAllowedVoices,
     ttsDefaultVoice,
@@ -899,7 +901,7 @@ function usageDayKey(date = new Date()) {
 }
 
 function emptyUsage() {
-  return { daily: {}, totals: { mathProblems: 0, voiceSeconds: 0, tools: {} }, lastExtensionUseAt: "" };
+  return { daily: {}, totals: { mathProblems: 0, voiceSeconds: 0, timeSpentSeconds: 0, tools: {} }, lastExtensionUseAt: "" };
 }
 
 function pruneUsageBuckets(usage) {
@@ -931,30 +933,34 @@ function favoriteToolFromUsage(child) {
   return USAGE_TOOL_LABELS[best] || "";
 }
 
-function recordChildUsage(family, { childId, tool, mathProblems = 0, voiceSeconds = 0, tokens = 0, at } = {}) {
+function recordChildUsage(family, { childId, tool, mathProblems = 0, voiceSeconds = 0, timeSpentSeconds = 0, tokens = 0, at } = {}) {
   const child = childForUsage(family, childId);
   if (!child) return null;
   child.usage = { ...emptyUsage(), ...(child.usage || {}) };
   const usage = child.usage;
   usage.daily = usage.daily || {};
-  usage.totals = usage.totals || { mathProblems: 0, voiceSeconds: 0, tokens: 0, tools: {} };
+  usage.totals = usage.totals || { mathProblems: 0, voiceSeconds: 0, timeSpentSeconds: 0, tokens: 0, tools: {} };
+  usage.totals.timeSpentSeconds = Number(usage.totals.timeSpentSeconds) || 0;
   usage.totals.tools = usage.totals.tools || {};
   const day = usageDayKey(at ? new Date(at) : new Date());
-  const bucket = usage.daily[day] || { mathProblems: 0, voiceSeconds: 0, tokens: 0, tools: {} };
+  const bucket = usage.daily[day] || { mathProblems: 0, voiceSeconds: 0, timeSpentSeconds: 0, tokens: 0, tools: {} };
   // An existing bucket written before `tools` was tracked (or by a partial write)
   // has no tools map, and bucket.tools[tool] below would throw — failing the whole
   // AI call with a 502 after OpenAI had already been paid for.
   bucket.tools = bucket.tools || {};
   const math = Math.max(0, Number(mathProblems) || 0);
   const voice = Math.max(0, Number(voiceSeconds) || 0);
+  const spent = Math.max(0, Number(timeSpentSeconds) || 0);
   const tok = Math.max(0, Number(tokens) || 0);
   bucket.mathProblems += math;
   bucket.voiceSeconds += voice;
+  bucket.timeSpentSeconds = (bucket.timeSpentSeconds || 0) + spent;
   bucket.tokens = (bucket.tokens || 0) + tok;
   if (tool) bucket.tools[tool] = (bucket.tools[tool] || 0) + 1;
   usage.daily[day] = bucket;
   usage.totals.mathProblems += math;
   usage.totals.voiceSeconds += voice;
+  usage.totals.timeSpentSeconds += spent;
   usage.totals.tokens = (usage.totals.tokens || 0) + tok;
   if (tool) usage.totals.tools[tool] = (usage.totals.tools[tool] || 0) + 1;
   usage.lastExtensionUseAt = nowIso();
@@ -1024,6 +1030,7 @@ function usageWindow(child, days = 7) {
   const cutoff = Date.now() - (days - 1) * 86400000;
   let math = 0;
   let voiceSeconds = 0;
+  let timeSpentSeconds = 0;
   let tokens = 0;
   let activeDays = 0;
   Object.keys(daily).forEach((day) => {
@@ -1031,13 +1038,15 @@ function usageWindow(child, days = 7) {
     const bucket = daily[day] || {};
     const m = Number(bucket.mathProblems) || 0;
     const v = Number(bucket.voiceSeconds) || 0;
+    const s = Number(bucket.timeSpentSeconds || bucket.timeSeconds) || 0;
     const t = Number(bucket.tokens) || 0;
     math += m;
     voiceSeconds += v;
+    timeSpentSeconds += s;
     tokens += t;
-    if (m || v || t) activeDays += 1;
+    if (m || v || s || t) activeDays += 1;
   });
-  return { math, voiceMinutes: Math.round(voiceSeconds / 60), tokens, activeDays, avgDailyTokens: Math.round(tokens / days) };
+  return { math, voiceMinutes: Math.round(voiceSeconds / 60), timeSpentMinutes: Math.round(timeSpentSeconds / 60), tokens, activeDays, avgDailyTokens: Math.round(tokens / days) };
 }
 
 function audit(db, action, payload, actor) {
@@ -3302,7 +3311,7 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     // Tutor voice shortlist + default + speech model + narration length.
     // normaliseAiSettings re-validates everything below: only supported voices,
     // never empty, default must be allowed (auto-fixed to marin -> cedar -> sage),
-    // ttsModel constrained to SUPPORTED_TTS_MODELS, word targets/minutes clamped.
+    // and model IDs are length-limited.
     if (Object.prototype.hasOwnProperty.call(body, "ttsModel")) {
       next.ttsModel = normaliseTtsModel(body.ttsModel);
     }
@@ -3571,6 +3580,7 @@ app.post("/api/usage/report", requireParent, (req, res) => {
       tool,
       mathProblems: body.mathProblems,
       voiceSeconds: body.voiceSeconds,
+      timeSpentSeconds: body.timeSpentSeconds,
       at: body.at
     });
     if (!child) return { error: "no_child" };
@@ -3579,7 +3589,8 @@ app.post("/api/usage/report", requireParent, (req, res) => {
       childId: child.id,
       tool,
       mathProblems: Math.max(0, Number(body.mathProblems) || 0),
-      voiceSeconds: Math.max(0, Number(body.voiceSeconds) || 0)
+      voiceSeconds: Math.max(0, Number(body.voiceSeconds) || 0),
+      timeSpentSeconds: Math.max(0, Number(body.timeSpentSeconds) || 0)
     }, req.auth.email);
     return { ok: true, remaining: usageRemaining(family, settings, child.id) };
   });
@@ -4083,7 +4094,7 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     return res.status(413).json({ error: "input_too_large", limit: TTS_MAX_INPUT_CHARS, received: text.length });
   }
   // Resolve the voice server-side: student pick if allowed, else admin default,
-  // else fallback order (marin -> cedar -> sage). Never trust a raw client voice.
+  // else fallback order (alloy -> marin -> cedar). Never trust a raw client voice.
   const voice = resolveTtsVoice(body.voice, settings);
   try {
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
@@ -4106,7 +4117,7 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     const seconds = Math.max(1, Number(body.estSeconds) || Math.ceil(text.length / 14));
     mutateDb((store) => {
       const fam = parentFamilyForIdentity(store, req.auth);
-      if (fam) recordChildUsage(fam, { childId: body.childId, tool: "voice", voiceSeconds: seconds });
+      if (fam) recordChildUsage(fam, { childId: body.childId, tool: "voice", voiceSeconds: seconds, timeSpentSeconds: seconds });
     });
     const audio = Buffer.from(await response.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
@@ -5585,13 +5596,16 @@ app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
   const yearlyPriceId = req.body?.yearlyPriceId || yearlyPlan.stripePriceId;
   const normalisedPricing = normalisePricing(dbSnapshot.pricing);
   const upgradeConfig = normalisedPricing.yearlyUpgrade;
-  const upgradeDiscountAmount = Number(upgradeConfig.discountAmount || 0);
+  const upgradeEnabled = upgradeConfig.enabled !== false;
+  const upgradeDiscountAmount = upgradeEnabled ? Number(upgradeConfig.discountAmount || 0) : 0;
   // Monthly-to-yearly upgrades use their dedicated offer. The generic yearly
   // promotion is reserved for new sign-ups and must not replace the upgrade's
   // configured bonus months or upgrade discount.
   const yearlyPromotion = null;
-  const bonusMonths = Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3);
-  const upgradeNote = String(upgradeConfig.note || "");
+  const bonusMonths = upgradeEnabled
+    ? Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3)
+    : 0;
+  const upgradeNote = upgradeEnabled ? String(upgradeConfig.note || "") : "";
   const initialPrice = yearlyPromotion
     ? Number(yearlyPromotion.promoPrice || yearlyPlan.amount || 0)
     : upgradeDiscountAmount > 0

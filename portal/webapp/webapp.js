@@ -142,6 +142,7 @@
         durationDays: 7
       },
       yearlyUpgrade: {
+        enabled: true,
         bonusMonths: 3,
         discountAmount: 0,
         note: ""
@@ -198,6 +199,7 @@
     delete promotion.discountPercent;
     delete promotion.endDate;
     var yearlyUpgrade = Object.assign({}, defaults.yearlyUpgrade, rawYearlyUpgrade);
+    yearlyUpgrade.enabled = yearlyUpgrade.enabled !== false;
     yearlyUpgrade.bonusMonths = Math.max(0, Math.round(Number(yearlyUpgrade.bonusMonths) || 0));
     // Mirrors legacyAmountOff() on the server. The server normalises what it
     // serves, but pricing is cached in localStorage, so a copy stored before the
@@ -206,7 +208,7 @@
     delete yearlyUpgrade.discountPercent;
     yearlyUpgrade.note = String(yearlyUpgrade.note || "");
     cancellationPromo.enabled = cancellationPromo.enabled !== false;
-    cancellationPromo.amountOff = legacyAmountOff(cancellationPromo.amountOff, cancellationPromo.percentOff, monthly.amount);
+    cancellationPromo.amountOff = Math.min(999, legacyAmountOff(cancellationPromo.amountOff, cancellationPromo.percentOff, monthly.amount));
     delete cancellationPromo.percentOff;
     cancellationPromo.duration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
     cancellationPromo.description = String(cancellationPromo.description || "");
@@ -2801,14 +2803,15 @@
     function yearlyUpgradeOffer() {
       var pricing = readPricing();
       var up = pricing.yearlyUpgrade || { bonusMonths: 3, discountAmount: 0, note: "" };
+      var enabled = up.enabled !== false;
       var base = Number((pricing.yearly || {}).amount || 0);
-      var off = Math.max(0, Number(up.discountAmount || 0));
+      var off = enabled ? Math.max(0, Number(up.discountAmount || 0)) : 0;
       var upgradePrice = off > 0 ? Math.max(0, Math.round((base - off) * 100) / 100) : 0;
       // Monthly-to-yearly is a targeted retention offer. It must take
       // precedence over the generic yearly promotion, so a standard signup
       // promotion cannot replace the extra months promised to an existing
       // monthly subscriber.
-      var usesUpgradeOffer = off > 0 || Boolean(String(up.note || "").trim()) || Number(up.bonusMonths || 0) > 0;
+      var usesUpgradeOffer = enabled && (off > 0 || Boolean(String(up.note || "").trim()) || Number(up.bonusMonths || 0) > 0);
       var price = upgradePrice > 0 ? upgradePrice : base;
       var effectiveOff = base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0;
       // What a year on this plan costs versus twelve monthly charges — the
@@ -2818,14 +2821,15 @@
         ? Math.max(0, Math.round((monthlyAmount * 12 - price) * 100) / 100)
         : 0;
       return {
-        bonusMonths: Math.max(0, Number(up.bonusMonths || 0)),
+        enabled: enabled,
+        bonusMonths: enabled ? Math.max(0, Number(up.bonusMonths || 0)) : 0,
         annualSavings: annualSavings,
         discountAmount: effectiveOff || off,
         basePrice: base,
         price: price,
         priceStr: moneyStr(price),
         baseStr: moneyStr(base),
-        note: up.note || "",
+        note: enabled ? up.note || "" : "",
         promoCode: "",
         promoDescription: up.note || "",
         usesPlanPromotion: false,
@@ -2879,9 +2883,16 @@
       if (!el || !newUserEl) return;
       var noCardTrial = onNoCardTrial();
       var monthlySubscriber = paid && activePlanKey === "monthly" && !noCardTrial;
-      var blockedState = parentEntitlement && ["past_due", "locked"].indexOf(parentEntitlement.status) >= 0;
-      var newUser = !paid && !blockedState && (!parentEntitlement || noCardTrial);
-      var showYearlyOffer = monthlySubscriber && !yearlyUpgradeScheduled;
+      var entitlementStatus = String(parentEntitlement && parentEntitlement.status || "").toLowerCase();
+      var blockedState = ["past_due", "locked"].indexOf(entitlementStatus) >= 0;
+      // A newly created family is reported as `pending`, while a family whose
+      // access has ended is reported as `expired` or `cancelled`. All three
+      // states need the same gentle path back to the plan picker. Keep billing
+      // problems and locked accounts out of this marketing prompt so they see
+      // the recovery action that applies to them instead.
+      var signupState = ["pending", "expired", "cancelled", "canceled"].indexOf(entitlementStatus) >= 0;
+      var newUser = !paid && !blockedState && (!parentEntitlement || noCardTrial || signupState);
+      var showYearlyOffer = monthlySubscriber && !yearlyUpgradeScheduled && yearlyUpgradeOffer().enabled;
       el.classList.toggle("hidden", !showYearlyOffer);
       newUserEl.classList.toggle("hidden", !newUser);
       if (!showYearlyOffer) return;
@@ -3715,6 +3726,8 @@
     var title = document.getElementById("admin-title");
     var navButtons = Array.from(document.querySelectorAll("[data-admin-view]"));
     var panels = Array.from(document.querySelectorAll("[data-admin-panel]"));
+    var aiSectionTabs = Array.from(document.querySelectorAll("[data-ai-section-target]"));
+    var aiSectionPanels = Array.from(document.querySelectorAll("[data-ai-section]"));
     var search = document.getElementById("family-search");
     var statusFilter = document.getElementById("status-filter");
     var lockedFilter = document.getElementById("locked-filter");
@@ -3727,6 +3740,11 @@
     var paidDateFilter = document.getElementById("paid-date-filter");
     var deletedDateFilter = document.getElementById("deleted-date-filter");
     var trialForm = document.getElementById("trial-form");
+    var usageSearch = document.getElementById("usage-search");
+    var usageDateFilter = document.getElementById("usage-date-filter");
+    var usageFlaggedFilter = document.getElementById("usage-flagged-filter");
+    var usageLogSearch = document.getElementById("usage-log-search");
+    var usageLogDateFilter = document.getElementById("usage-log-date-filter");
     var paymentSearch = document.getElementById("payment-search");
     var paymentStatusFilter = document.getElementById("payment-status-filter");
     var paymentPlanFilter = document.getElementById("payment-plan-filter");
@@ -3765,7 +3783,10 @@
     var pricingForm = document.getElementById("pricing-form");
     // False until syncPricingForm() has loaded live values into the inputs.
     var pricingFormSynced = false;
-    var aiSettingsForm = document.getElementById("ai-settings-form");
+    // The controls panel is also the settings form. Keep the JS reference on
+    // the current panel ID so hydration and save actions cannot drift apart
+    // when the AI screen is rearranged.
+    var aiSettingsForm = document.getElementById("ai-controls-panel");
     var clearOpenaiKey = document.getElementById("clear-openai-key");
     var aiSettingsState = document.getElementById("ai-settings-state");
     var stripeTestForm = document.getElementById("stripe-test-form");
@@ -3786,6 +3807,19 @@
     var customerDrawerTitle = document.getElementById("customer-drawer-title");
     var customerDrawerEmail = document.getElementById("customer-drawer-email");
     var openCustomerFamilyId = "";
+
+    function setAiSection(name) {
+      var selected = ["controls", "usage", "logs"].indexOf(name) >= 0 ? name : "controls";
+      aiSectionTabs.forEach(function (button) {
+        var active = button.dataset.aiSectionTarget === selected;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      aiSectionPanels.forEach(function (panel) {
+        panel.hidden = panel.dataset.aiSection !== selected;
+      });
+      renderIcons();
+    }
 
     function setAdminView(name) {
       var labels = {
@@ -3809,6 +3843,7 @@
       if (name === "support") loadSupportConversations();
       if (name === "logs") loadLogDigest();
       if (name === "email-studio") loadEmailStudio();
+      if (name === "ai-usage") loadAiSettings();
       renderIcons();
     }
 
@@ -4988,11 +5023,9 @@
       var body = document.getElementById(bodyId);
       if (!state || !body || !body.children.length) return;
       if (body.querySelector(".empty-state")) return;
-      // Keep each expandable row glued to its detail row.
       var groups = [];
       Array.prototype.forEach.call(body.children, function (row) {
-        if (row.classList.contains("family-detail-row") && groups.length) groups[groups.length - 1].push(row);
-        else groups.push([row]);
+        groups.push([row]);
       });
       if (groups.length < 2) return;
       groups.sort(function (a, b) {
@@ -5184,8 +5217,17 @@
     }
 
     var SUPPORTED_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
-    var VOICE_LABELS = { marin: "Marin — calm tutor", cedar: "Cedar — steady tutor", sage: "Sage — gentle guide" };
-    function voiceLabel(v) { return VOICE_LABELS[v] || (String(v).charAt(0).toUpperCase() + String(v).slice(1)); }
+    var DEFAULT_TTS_VOICES = ["alloy", "marin", "cedar"];
+    function voiceLabel(v) { return String(v).charAt(0).toUpperCase() + String(v).slice(1); }
+
+    function parseVoiceNames(value) {
+      var names = String(value || "").split(",").map(function (voice) {
+        return voice.trim().toLowerCase();
+      }).filter(function (voice) {
+        return SUPPORTED_TTS_VOICES.indexOf(voice) >= 0;
+      });
+      return Array.from(new Set(names)).slice(0, SUPPORTED_TTS_VOICES.length);
+    }
 
     function defaultAiSettings() {
       return {
@@ -5197,8 +5239,8 @@
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
         supportedTtsModels: ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
-        ttsDefaultVoice: "marin",
-        ttsAllowedVoices: ["marin", "cedar", "sage"],
+        ttsDefaultVoice: "alloy",
+        ttsAllowedVoices: DEFAULT_TTS_VOICES.slice(),
         supportedTtsVoices: SUPPORTED_TTS_VOICES,
         tutorExplainMaxWords: { "K-2": 160, "3-5": 400, "6-8": 700, "9-12": 1000 },
         tutorStandardFraction: 0.5,
@@ -5216,6 +5258,10 @@
       if (!sel) return;
       var models = (settings.supportedTtsModels && settings.supportedTtsModels.length) ? settings.supportedTtsModels.slice() : ["gpt-4o-mini-tts"];
       var current = settings.ttsModel || models[0];
+      if (sel.tagName === "INPUT") {
+        sel.value = current;
+        return;
+      }
       if (models.indexOf(current) < 0) models = [current].concat(models);
       sel.innerHTML = models.map(function (m) {
         return '<option value="' + text(m) + '"' + (m === current ? " selected" : "") + ">" + text(m) + "</option>";
@@ -5252,35 +5298,21 @@
       return out;
     }
 
-    function checkedShortlistVoices() {
-      return Array.from(document.querySelectorAll('#tts-voice-list input[data-tts-voice]:checked')).map(function (i) { return i.value; });
-    }
-
-    // Rebuild the default-voice dropdown from the currently-checked shortlist,
-    // keeping `preferred` selected if it's still allowed (else marin/cedar/sage).
-    function rebuildDefaultVoiceOptions(preferred) {
-      var defaultEl = document.getElementById("tts-default-voice");
-      if (!defaultEl) return;
-      var allowed = checkedShortlistVoices();
-      if (!allowed.length) allowed = ["marin", "cedar", "sage"];
-      var current = preferred && allowed.indexOf(preferred) >= 0
-        ? preferred
-        : (["marin", "cedar", "sage"].filter(function (v) { return allowed.indexOf(v) >= 0; })[0] || allowed[0]);
-      defaultEl.innerHTML = allowed.map(function (v) {
-        return '<option value="' + v + '"' + (v === current ? " selected" : "") + ">" + text(voiceLabel(v)) + "</option>";
+    function renderVoiceNames(settings) {
+      var input = document.getElementById("tts-allowed-voices");
+      var examples = document.getElementById("tts-voice-examples");
+      var allowed = parseVoiceNames((settings.ttsAllowedVoices || DEFAULT_TTS_VOICES).join(","));
+      if (!allowed.length) allowed = DEFAULT_TTS_VOICES.slice();
+      if (input) input.value = allowed.map(voiceLabel).join(", ");
+      if (examples) examples.innerHTML = allowed.map(function (voice) {
+        return "<span>" + text(voiceLabel(voice)) + "</span>";
       }).join("");
     }
 
-    function renderVoiceShortlist(settings) {
-      var listEl = document.getElementById("tts-voice-list");
-      if (!listEl) return;
-      var supported = (settings.supportedTtsVoices && settings.supportedTtsVoices.length) ? settings.supportedTtsVoices : SUPPORTED_TTS_VOICES;
-      var allowed = (settings.ttsAllowedVoices && settings.ttsAllowedVoices.length) ? settings.ttsAllowedVoices : ["marin", "cedar", "sage"];
-      listEl.innerHTML = supported.map(function (v) {
-        var checked = allowed.indexOf(v) >= 0;
-        return '<label class="' + (checked ? "is-checked" : "") + '"><input type="checkbox" value="' + v + '" data-tts-voice' + (checked ? " checked" : "") + "><span>" + text(voiceLabel(v)) + "</span></label>";
-      }).join("");
-      rebuildDefaultVoiceOptions(settings.ttsDefaultVoice || allowed[0]);
+    function collectVoiceNames() {
+      var input = document.getElementById("tts-allowed-voices");
+      var parsed = parseVoiceNames(input ? input.value : "");
+      return parsed.length ? parsed : DEFAULT_TTS_VOICES.slice();
     }
 
     function setAiSettingsState(label, state) {
@@ -5306,7 +5338,7 @@
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
         if (aiSettingsForm.elements.tutorStandardPercent) aiSettingsForm.elements.tutorStandardPercent.value = Math.round((Number(settings.tutorStandardFraction) || 0.5) * 100);
         renderTtsModelOptions(settings);
-        renderVoiceShortlist(settings);
+        renderVoiceNames(settings);
         renderWordTargets(settings);
       }
       renderMarkup("ai-runtime-rules", [
@@ -5331,6 +5363,7 @@
     async function saveAiSettings(clearKey) {
       if (!aiSettingsForm) return;
       setAiSettingsState("Saving", "warning");
+      var voiceNames = collectVoiceNames();
       try {
         aiSettingsCache = await fetchJson("/api/admin/ai-settings", {
           method: "PUT",
@@ -5345,8 +5378,8 @@
             tokensPerFamilyDaily: aiSettingsForm.elements.tokensPerFamilyDaily ? Number(aiSettingsForm.elements.tokensPerFamilyDaily.value || 0) : undefined,
             tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
             ttsModel: (document.getElementById("tts-model") || {}).value || undefined,
-            ttsAllowedVoices: checkedShortlistVoices(),
-            ttsDefaultVoice: (document.getElementById("tts-default-voice") || {}).value || undefined,
+            ttsAllowedVoices: voiceNames,
+            ttsDefaultVoice: voiceNames[0] || "alloy",
             tutorStandardFraction: (Number((aiSettingsForm.elements.tutorStandardPercent || {}).value || 0) / 100) || undefined,
             tutorExplainMaxWords: collectMaxWords()
           })
@@ -5376,13 +5409,17 @@
       if (pricingForm.elements.promoYearlyPrice) pricingForm.elements.promoYearlyPrice.value = promoYearlyValue ? Number(promoYearlyValue) : "";
       if (pricingForm.elements.promoDescription) pricingForm.elements.promoDescription.value = pricing.promotion.description || "";
       var upgrade = pricing.yearlyUpgrade || {};
+      if (pricingForm.elements.yearlyUpgradeEnabled) pricingForm.elements.yearlyUpgradeEnabled.checked = upgrade.enabled !== false;
       if (pricingForm.elements.upgradeBonusMonths) pricingForm.elements.upgradeBonusMonths.value = Number(upgrade.bonusMonths != null ? upgrade.bonusMonths : 3);
       if (pricingForm.elements.upgradeDiscountAmount) pricingForm.elements.upgradeDiscountAmount.value = Number(upgrade.discountAmount || 0);
       if (pricingForm.elements.upgradeNote) pricingForm.elements.upgradeNote.value = upgrade.note || "";
       var cancellationPromo = pricing.cancellationPromo || {};
       if (pricingForm.elements.cancellationPromoEnabled) pricingForm.elements.cancellationPromoEnabled.checked = cancellationPromo.enabled !== false;
       if (pricingForm.elements.cancellationPromoAmountOff) pricingForm.elements.cancellationPromoAmountOff.value = Number(cancellationPromo.amountOff || 0);
-      if (pricingForm.elements.cancellationPromoDuration) pricingForm.elements.cancellationPromoDuration.value = cancellationPromo.duration === "repeating" ? "repeating" : "once";
+      var cancellationDuration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
+      pricingForm.querySelectorAll('input[name="cancellationPromoDuration"]').forEach(function (input) {
+        input.checked = input.value === cancellationDuration;
+      });
       if (pricingForm.elements.cancellationPromoDescription) pricingForm.elements.cancellationPromoDescription.value = cancellationPromo.description || "";
       if (stripeTestForm && stripeTestForm.elements.priceId) {
         stripeTestForm.elements.priceId.value = pricing.monthly.stripePriceId || "price_demo_monthly";
@@ -5851,43 +5888,165 @@
       } catch (error) { /* ignore */ }
     }
 
-    function renderAiUsageTable() {
-      var FLAG_TOKENS_PER_DAY = 50000;
-      var cutoff = Date.now() - 6 * 86400000;
-      var rows = [];
-      var flagged = 0;
-      readFamilies().forEach(function (f) {
-        if (familyDeleted(f)) return;
-        childrenOf(f).forEach(function (kid) {
-          var daily = (kid.usage && kid.usage.daily) || {};
-          var tokens = 0;
-          var used = false;
-          Object.keys(daily).forEach(function (d) {
-            if (new Date(d + "T00:00:00Z").getTime() < cutoff) return;
-            tokens += Number(daily[d].tokens) || 0;
-            used = true;
-          });
-          var avg = Math.round(tokens / 7);
-          var flag = avg > FLAG_TOKENS_PER_DAY;
-          if (flag) flagged += 1;
-          rows.push({
-            parent: f.parentName || "Parent",
-            student: kid.studentName || "Student",
-            last: (kid.usage && kid.usage.lastExtensionUseAt) || f.lastExtensionUseAt || "",
-            avg: avg,
-            used: used,
-            flag: flag
-          });
+    function usageDayInWindow(day, mode) {
+      return withinDateWindow(day + "T12:00:00", mode);
+    }
+
+    function usageToolCount(tools, names) {
+      var total = 0;
+      Object.keys(tools || {}).forEach(function (key) {
+        var normalized = String(key).toLowerCase().replace(/[^a-z]/g, "");
+        if (names.some(function (name) { return normalized.indexOf(name) >= 0; })) total += Number(tools[key]) || 0;
+      });
+      return total;
+    }
+
+    function usageSummary(child, mode) {
+      var daily = (child && child.usage && child.usage.daily) || {};
+      var summary = { tokens: 0, math: 0, voiceSeconds: 0, quiz: 0, flashcards: 0, write: 0, explain: 0, timeSeconds: 0, used: false };
+      Object.keys(daily).forEach(function (day) {
+        if (!usageDayInWindow(day, mode)) return;
+        var bucket = daily[day] || {};
+        var tools = bucket.tools || {};
+        summary.tokens += Number(bucket.tokens) || 0;
+        summary.math += Number(bucket.mathProblems) || 0;
+        summary.voiceSeconds += Number(bucket.voiceSeconds) || 0;
+        summary.quiz += usageToolCount(tools, ["quiz"]);
+        summary.flashcards += usageToolCount(tools, ["flashcard"]);
+        summary.write += usageToolCount(tools, ["write", "writing"]);
+        summary.explain += usageToolCount(tools, ["explain", "tutor"]);
+        summary.timeSeconds += Number(bucket.timeSpentSeconds || bucket.timeSeconds) || 0;
+        if (Number(bucket.tokens) || Number(bucket.mathProblems) || Number(bucket.voiceSeconds) || Object.keys(tools).length) summary.used = true;
+      });
+      return summary;
+    }
+
+    function familyExceedsTokenCeiling(family, mode) {
+      var settings = Object.assign(defaultAiSettings(), aiSettingsCache || {});
+      var ceiling = Math.max(0, Number(settings.tokensPerFamilyDaily) || 0);
+      if (!ceiling) return false;
+      var dailyTotals = {};
+      childrenOf(family).forEach(function (child) {
+        var daily = (child.usage && child.usage.daily) || {};
+        Object.keys(daily).forEach(function (day) {
+          if (!usageDayInWindow(day, mode)) return;
+          dailyTotals[day] = (dailyTotals[day] || 0) + (Number(daily[day].tokens) || 0);
         });
       });
-      rows.sort(function (a, b) { return b.avg - a.avg; });
-      setMetric("ai-usage-flags", flagged + " flagged");
-      renderMarkup("ai-usage-table", rows.length ? rows.map(function (r) {
-        var flagCell = r.flag
+      return Object.keys(dailyTotals).some(function (day) { return dailyTotals[day] > ceiling; });
+    }
+
+    function usageStudentLabel(child) {
+      var grade = String(child.grade || "").replace(/^grade\s*/i, "").trim();
+      return (child.studentName || "Student") + (grade ? " (Grade " + grade + ")" : "");
+    }
+
+    function usageFilterMatch(family, child, query) {
+      if (!query) return true;
+      return [family.parentName, family.email, child.studentName, child.grade].join(" ").toLowerCase().indexOf(query) >= 0;
+    }
+
+    function renderUsageTable(families) {
+      var mode = usageDateFilter ? usageDateFilter.value || "week" : "week";
+      var query = usageSearch ? usageSearch.value.trim().toLowerCase() : "";
+      var flaggedOnly = Boolean(usageFlaggedFilter && usageFlaggedFilter.checked);
+      var rows = [];
+      var flaggedFamilies = 0;
+      families.forEach(function (family) {
+        if (familyDeleted(family)) return;
+        var familyFlagged = familyExceedsTokenCeiling(family, mode);
+        if (familyFlagged) flaggedFamilies += 1;
+        if (flaggedOnly && !familyFlagged) return;
+        childrenOf(family).forEach(function (child) {
+          if (!usageFilterMatch(family, child, query)) return;
+          var summary = usageSummary(child, mode);
+          var last = (child.usage && child.usage.lastExtensionUseAt) || family.lastExtensionUseAt || "";
+          if (!withinDateWindow(last, mode) && mode !== "all") last = "";
+          rows.push({ family: family, child: child, summary: summary, last: last, flagged: familyFlagged });
+        });
+      });
+      rows.sort(function (a, b) {
+        return (b.summary.tokens - a.summary.tokens) || String(a.family.parentName || "").localeCompare(String(b.family.parentName || ""));
+      });
+      setMetric("ai-usage-flags", flaggedFamilies + " flagged");
+      renderMarkup("usage-table", rows.length ? rows.map(function (row) {
+        var s = row.summary;
+        var flagCell = row.flagged
           ? "<span class='priority-pill high'>Review</span>"
-          : (r.used ? "<span class='priority-pill low'>OK</span>" : "<span class='priority-pill'>—</span>");
-        return "<tr><td>" + text(r.parent) + "</td><td>" + text(r.student) + "</td><td>" + (r.last ? rowDateTime(r.last) : "—") + "</td><td>" + r.avg.toLocaleString() + "</td><td>" + flagCell + "</td></tr>";
-      }).join("") : "<tr><td colspan='5' class='empty-state'>No AI usage recorded yet.</td></tr>");
+          : (s.used ? "<span class='priority-pill low'>OK</span>" : "<span class='priority-pill'>—</span>");
+        return "<tr>" +
+          "<td>" + escapeHtml(text(row.family.parentName)) + "<small>" + escapeHtml(text(row.family.email)) + "</small></td>" +
+          "<td>" + escapeHtml(usageStudentLabel(row.child)) + "</td>" +
+          "<td>" + (row.last ? rowDateTime(row.last) : "—") + "</td>" +
+          "<td class='usage-number'>" + s.tokens.toLocaleString() + "</td>" +
+          "<td>" + flagCell + "</td>" +
+          "<td class='usage-number'>" + s.math.toLocaleString() + "</td>" +
+          "<td class='usage-number'>" + Math.round(s.voiceSeconds / 60).toLocaleString() + " min</td>" +
+          "<td class='usage-number'>" + s.quiz.toLocaleString() + "</td>" +
+          "<td class='usage-number'>" + s.flashcards.toLocaleString() + "</td>" +
+          "<td class='usage-number'>" + s.write.toLocaleString() + "</td>" +
+          "<td class='usage-number'>" + s.explain.toLocaleString() + "</td>" +
+          "<td class='usage-number'>" + Math.round(s.timeSeconds / 60).toLocaleString() + " min</td>" +
+        "</tr>";
+      }).join("") : "<tr><td colspan='12' class='empty-state'>No usage matches these filters.</td></tr>");
+    }
+
+    function familyForRawLog(log, families) {
+      var payload = log.payload || {};
+      var familyId = payload.familyId || payload.familyID;
+      var byId = families.find(function (family) { return family.id === familyId || familyRowId(family) === familyId; });
+      if (byId) return byId;
+      var email = normalizeEmail(payload.email || payload.parentEmail || payload.to || log.actor || "");
+      return families.find(function (family) { return email && normalizeEmail(family.email) === email; }) || null;
+    }
+
+    function studentForRawLog(log, family) {
+      if (!family) return "—";
+      var childId = log.payload && log.payload.childId;
+      var child = childrenOf(family).find(function (item) { return item.id === childId; });
+      if (!child && childrenOf(family).length === 1) child = childrenOf(family)[0];
+      return child ? usageStudentLabel(child) : "—";
+    }
+
+    function rawLogDetail(log) {
+      var payload = log.payload || {};
+      var details = Object.keys(payload).filter(function (key) { return key !== "familyId" && key !== "childId"; }).slice(0, 7).map(function (key) {
+        return key + ": " + String(payload[key]);
+      }).join(" · ");
+      var action = String(log.action || "event").replace(/[._]/g, " ");
+      return "<strong>" + escapeHtml(action) + "</strong>" + (details ? "<small>" + escapeHtml(details) + "</small>" : "");
+    }
+
+    function renderRawUsageLogs(families) {
+      var mode = usageLogDateFilter ? usageLogDateFilter.value || "week" : "week";
+      var query = usageLogSearch ? usageLogSearch.value.trim().toLowerCase() : "";
+      var logs = auditLogsCache.map(function (log) {
+        var family = familyForRawLog(log, families);
+        var payload = log.payload || {};
+        var email = family ? family.email : (payload.email || payload.parentEmail || log.actor || "—");
+        var student = studentForRawLog(log, family);
+        var searchable = [
+          family ? family.parentName : "System",
+          email,
+          student,
+          log.action || "",
+          Object.keys(payload).map(function (key) { return key + " " + payload[key]; }).join(" ")
+        ].join(" ").toLowerCase();
+        return { log: log, family: family, email: email, student: student, searchable: searchable };
+      }).filter(function (item) {
+        return withinDateWindow(item.log.createdAt, mode) && (!query || item.searchable.indexOf(query) >= 0);
+      });
+      renderMarkup("ai-log-table", logs.length ? logs.map(function (item) {
+        var log = item.log;
+        var family = item.family;
+        return "<tr>" +
+          "<td>" + escapeHtml(family ? text(family.parentName) : "System") + "</td>" +
+          "<td>" + escapeHtml(text(item.email)) + "</td>" +
+          "<td>" + escapeHtml(item.student) + "</td>" +
+          "<td>" + rowDateTime(log.createdAt) + "</td>" +
+          "<td class='raw-log-detail'>" + rawLogDetail(log) + "</td>" +
+        "</tr>";
+      }).join("") : "<tr><td colspan='5' class='empty-state'>No logs in this period.</td></tr>");
     }
 
     function renderAdmin() {
@@ -6001,28 +6160,14 @@
       renderRows("family-table", visible.map(function (family) {
         var rowId = familyRowId(family);
         var kids = childrenOf(family);
-        var child = kids[0] || family;
         var locked = familyLocked(family);
         var deleted = familyDeleted(family);
         var subscriptionActive = familySubscriptionActive(family);
         var studentCount = kids.length || (family.studentName ? 1 : 0);
-        var detail = kids.length
-          ? "<div class='family-detail-grid'>" + kids.map(function (kid) {
-              var u = usageToday(kid);
-              return "<div class='family-detail-kid'>" +
-                "<strong>" + text(kid.studentName || "Student") + "</strong>" +
-                "<span>Grade: " + text(kid.grade || "—") + "</span>" +
-                "<span>Learning level: " + text(kid.readingLevel || "—") + "</span>" +
-                "<span>Today: " + u.math + " math, " + u.voiceMin + " min voice</span>" +
-                "<span>Goals: " + ((kid.learningGoals && kid.learningGoals.length) || (kid.goal ? 1 : 0)) + "</span>" +
-              "</div>";
-            }).join("") + "</div>"
-          : "<div class='family-detail-empty'>No student profiles yet.</div>";
         var planType = familySubscriptionLabel(family);
         var risk = familyRisk(family);
         var next = familyNextAction(family);
-        return "<tr class='family-row' data-family-expand='" + rowId + "'>" +
-          "<td class='expand-cell'><i data-lucide='chevron-right'></i></td>" +
+        return "<tr class='family-row' data-family-open='" + rowId + "'>" +
           "<td>" + text(family.parentName) + "</td>" +
           "<td>" + text(family.email) + "</td>" +
           "<td>" + text(familyLoginType(family)) + "</td>" +
@@ -6040,13 +6185,13 @@
             "<button type='button' class='table-action " + (locked ? "" : "danger") + "' data-user-action='toggle-lock' data-family-id='" + rowId + "'" + (deleted ? " disabled" : "") + ">" + (locked ? "Unlock" : "Lock") + "</button>" +
             "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-user-subscription-toggle data-family-id='" + rowId + "' data-subscription-action='" + (subscriptionActive ? "end" : "start") + "'" + (deleted ? " disabled" : "") + ">" + (subscriptionActive ? "Pause" : "Start") + "</button>" +
           "</div></td>" +
-        "</tr>" +
-        "<tr class='family-detail-row' data-family-detail='" + rowId + "' hidden><td colspan='14'>" + detail + "</td></tr>";
+        "</tr>";
       }));
 
       populateExceptionFamilies();
       renderExceptionLog();
-      renderAiUsageTable();
+      renderUsageTable(families);
+      renderRawUsageLogs(families);
       loadIssues();
 
       renderMarkup("entitlement-rules", [
@@ -6192,15 +6337,6 @@
       }));
       populateExceptionFamilies();
       refreshExceptionComposer();
-
-      renderRows("usage-table", families.flatMap(function (family, familyIndex) {
-        return childrenOf(family).map(function (child, index) {
-          var today = usageToday(child);
-          var favTool = family.favoriteTool || favoriteTool(family, familyIndex + index);
-          var since = daysSinceActivity(family);
-          return "<tr><td><strong>" + text(child.studentName) + "</strong><small>" + text(family.parentName) + "</small></td><td>" + text(child.grade) + "</td><td>" + today.math + "</td><td>" + today.voiceMin + " min</td><td>" + text(favTool) + "</td><td>" + (since === 0 ? "Today" : since + " days ago") + "</td></tr>";
-        });
-      }));
 
       renderRows("email-table", [
         ["Welcome parent", "Parent", "Signup complete", "active"],
@@ -6393,9 +6529,20 @@
       });
     });
 
+    aiSectionTabs.forEach(function (button) {
+      button.addEventListener("click", function () {
+        setAiSection(button.dataset.aiSectionTarget);
+      });
+    });
+
     search.addEventListener("input", renderAdmin);
     statusFilter.addEventListener("change", renderAdmin);
     if (lockedFilter) lockedFilter.addEventListener("change", renderAdmin);
+    if (usageSearch) usageSearch.addEventListener("input", renderAdmin);
+    if (usageDateFilter) usageDateFilter.addEventListener("change", renderAdmin);
+    if (usageFlaggedFilter) usageFlaggedFilter.addEventListener("change", renderAdmin);
+    if (usageLogSearch) usageLogSearch.addEventListener("input", renderAdmin);
+    if (usageLogDateFilter) usageLogDateFilter.addEventListener("change", renderAdmin);
     if (trialForm) {
       trialForm.addEventListener("submit", async function (event) {
         event.preventDefault();
@@ -6722,13 +6869,9 @@
     if (table) {
       table.addEventListener("click", function (event) {
         if (event.target.closest("button, a, input, .row-actions")) return; // don't hijack action buttons
-        var row = event.target.closest("[data-family-expand]");
+        var row = event.target.closest("[data-family-open]");
         if (!row) return;
-        var detailRow = table.querySelector("[data-family-detail='" + row.dataset.familyExpand + "']");
-        if (!detailRow) return;
-        var opening = detailRow.hasAttribute("hidden");
-        if (opening) detailRow.removeAttribute("hidden"); else detailRow.setAttribute("hidden", "");
-        row.classList.toggle("expanded", opening);
+        openCustomerDrawer(row.dataset.familyOpen);
       });
     }
 
@@ -6757,6 +6900,7 @@
         targetPlan.amount = Number(pricingForm.elements.planAmount.value) || Number(targetPlan.amount || 19);
         targetPlan.stripePriceId = pricingForm.elements.planStripePriceId.value.trim();
         targetPlan.familyMemberCount = Number(pricingForm.elements.planFamilyMemberCount.value) || Number(targetPlan.familyMemberCount || 3);
+        var selectedCancellationDuration = pricingForm.querySelector('input[name="cancellationPromoDuration"]:checked');
         await writePricing({
           monthly: monthlyPlan,
           yearly: yearlyPlan,
@@ -6775,6 +6919,7 @@
             description: pricingForm.elements.promoDescription ? pricingForm.elements.promoDescription.value.trim() : ""
           }),
           yearlyUpgrade: {
+            enabled: pricingForm.elements.yearlyUpgradeEnabled ? pricingForm.elements.yearlyUpgradeEnabled.checked : true,
             bonusMonths: Number(pricingForm.elements.upgradeBonusMonths ? pricingForm.elements.upgradeBonusMonths.value : 3) || 0,
             discountAmount: Number(pricingForm.elements.upgradeDiscountAmount ? pricingForm.elements.upgradeDiscountAmount.value : 0) || 0,
             note: pricingForm.elements.upgradeNote ? pricingForm.elements.upgradeNote.value.trim() : ""
@@ -6782,7 +6927,7 @@
           cancellationPromo: {
             enabled: pricingForm.elements.cancellationPromoEnabled ? pricingForm.elements.cancellationPromoEnabled.checked : true,
             amountOff: Number(pricingForm.elements.cancellationPromoAmountOff ? pricingForm.elements.cancellationPromoAmountOff.value : 0) || 0,
-            duration: pricingForm.elements.cancellationPromoDuration ? pricingForm.elements.cancellationPromoDuration.value : "once",
+            duration: selectedCancellationDuration ? selectedCancellationDuration.value : "once",
             description: pricingForm.elements.cancellationPromoDescription ? pricingForm.elements.cancellationPromoDescription.value.trim() : ""
           }
         });
@@ -6800,19 +6945,6 @@
       aiSettingsForm.addEventListener("submit", async function (event) {
         event.preventDefault();
         await saveAiSettings(false);
-      });
-    }
-
-    // Tutor voice shortlist: toggling a voice updates its chip + the default menu.
-    var ttsVoiceListEl = document.getElementById("tts-voice-list");
-    if (ttsVoiceListEl) {
-      ttsVoiceListEl.addEventListener("change", function (event) {
-        var box = event.target.closest('input[data-tts-voice]');
-        if (!box) return;
-        var label = box.closest("label");
-        if (label) label.classList.toggle("is-checked", box.checked);
-        var keepDefault = (document.getElementById("tts-default-voice") || {}).value;
-        rebuildDefaultVoiceOptions(keepDefault);
       });
     }
 
@@ -7362,7 +7494,13 @@
         // syncPricingForm() must not be gated on loadAiSettings(): if that
         // rejects, the pricing form keeps its blank HTML defaults, and the next
         // Save writes an unchecked promotion and $0 prices over real config.
-        syncPricingForm();
+        try {
+          syncPricingForm();
+        } catch (error) {
+          // A stale or partially migrated Plans form must never prevent the AI
+          // controls, usage tables, or other admin screens from hydrating.
+          writeDevOutput("Pricing form sync skipped", error);
+        }
         loadAiSettings().then(function () {
           renderAdmin();
         });

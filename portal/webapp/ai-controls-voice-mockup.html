@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiddieGPT AI Controls Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #18333a;
+      --muted: #70838a;
+      --green: #0b665d;
+      --green-dark: #07564f;
+      --green-soft: #e8f4ed;
+      --line: #dce8e2;
+      --canvas: #f4f8f6;
+      --yellow: #edf67b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-width: 320px;
+      margin: 0;
+      padding: 42px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, system-ui, sans-serif;
+    }
+    .mockup-shell { max-width: 1180px; margin: 0 auto; }
+    .mockup-top { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 7px; color: #9a9c0b; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(26px, 3vw, 38px); letter-spacing: -.04em; line-height: 1.05; }
+    .mockup-top p { max-width: 500px; margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .save-button { border: 0; border-radius: 10px; padding: 12px 17px; background: var(--green); color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
+    .control-card { padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 16px 38px rgba(17, 66, 54, .08); }
+    .control-grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 18px; }
+    .control-panel { min-width: 0; padding: 19px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdfb; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+    .panel-head h2 { margin: 0; font-size: 19px; letter-spacing: -.025em; }
+    .panel-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .voice-form { display: grid; gap: 8px; }
+    .field-label { color: #587078; font-size: 12px; font-weight: 700; }
+    .voice-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid #cfe0d9;
+      border-radius: 10px;
+      padding: 0 12px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(11, 102, 93, .12); }
+    .enable-voice { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 11px; border: 1px solid #cfe0d9; border-radius: 10px; background: var(--green-soft); color: var(--green-dark); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .enable-voice input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
+    .field-note { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .voice-example { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .voice-chip { padding: 6px 9px; border: 1px solid #cfe0d9; border-radius: 999px; background: #fff; color: var(--green-dark); font-size: 11px; font-weight: 700; }
+    .voice-chip:first-child { border-color: #b8d8c6; background: var(--green-soft); }
+    .length-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .length-card { display: grid; grid-template-columns: 1fr 82px; gap: 8px 12px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+    .length-card strong { color: var(--green-dark); font-size: 13px; }
+    .length-card input { min-height: 36px; padding: 0 8px; font-size: 13px; text-align: right; }
+    .length-card small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .mockup-note { margin: 13px 2px 0; color: #8a9a96; font-size: 11px; }
+    @media (max-width: 760px) {
+      body { padding: 22px 14px; }
+      .mockup-top { align-items: flex-start; flex-direction: column; }
+      .control-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .control-card { padding: 12px; }
+      .control-panel { padding: 14px; }
+      .voice-row { grid-template-columns: 1fr; }
+      .enable-voice { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <main class="mockup-shell">
+    <header class="mockup-top">
+      <div>
+        <p class="eyebrow">AI controls</p>
+        <h1>Voice and lesson length</h1>
+        <p>Keep tutor voice simple to configure, with lesson limits visible beside it.</p>
+      </div>
+      <button class="save-button" type="button">Save AI controls</button>
+    </header>
+
+    <section class="control-card" aria-label="Tutor voice and lesson length mockup">
+      <div class="control-grid">
+        <section class="control-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Tutor voice</h2>
+              <p>Enter the voices students may use.</p>
+            </div>
+          </div>
+          <div class="voice-form">
+            <label class="field-label" for="mock-voices">Voice names</label>
+            <div class="voice-row">
+              <input id="mock-voices" type="text" value="Alloy, Marin, Cedar">
+              <label class="enable-voice"><input type="checkbox" checked> Enable voice</label>
+            </div>
+            <p class="field-note">Use comma-separated voice names. The first voice is used as the default.</p>
+          </div>
+          <div class="voice-example" aria-label="Default voice examples">
+            <span class="voice-chip">Alloy</span>
+            <span class="voice-chip">Marin</span>
+            <span class="voice-chip">Cedar</span>
+          </div>
+        </section>
+
+        <section class="control-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Lesson length</h2>
+              <p>Maximum spoken words by grade band.</p>
+            </div>
+          </div>
+          <div class="length-grid">
+            <label class="length-card"><strong>K-2</strong><input type="number" value="160"><small>Standard only</small></label>
+            <label class="length-card"><strong>3-5</strong><input type="number" value="400"><small>Standard + Deep Dive</small></label>
+            <label class="length-card"><strong>6-8</strong><input type="number" value="700"><small>Standard + Deep Dive</small></label>
+            <label class="length-card"><strong>9-12</strong><input type="number" value="1000"><small>Standard + Deep Dive</small></label>
+          </div>
+          <p class="mockup-note">These limits cap spoken explanations by grade band.</p>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

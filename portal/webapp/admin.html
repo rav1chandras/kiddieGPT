@@ -8,18 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=173">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=178">
   <style>
     tr.family-row { cursor: pointer; }
-    tr.family-row .expand-cell { width: 26px; color: #6a827d; }
-    tr.family-row .expand-cell i { transition: transform .15s ease; }
-    tr.family-row.expanded .expand-cell i { transform: rotate(90deg); }
-    tr.family-detail-row > td { background: #f6faf8; padding: 14px 18px; }
-    .family-detail-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-    .family-detail-kid { border: 1px solid #e4ece9; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; background: #fff; }
-    .family-detail-kid strong { color: #004f48; font-size: 14px; }
-    .family-detail-kid span { color: #5f7772; font-size: 12px; font-weight: 600; }
-    .family-detail-empty { color: #6a827d; font-weight: 600; }
+    tr.family-row:hover > td { background: #f8fbfa; }
   </style>
 </head>
 <body data-page="admin">
@@ -183,7 +175,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th></th><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Risk</th><th>Next action</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Risk</th><th>Next action</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
               </table>
             </div>
@@ -524,130 +516,161 @@
             </div>
           </article>
 
-          <article class="admin-table-card pricing-card cancellation-promo-section">
-            <div class="admin-card-head">
-              <div><p class="eyebrow">Retention</p><h2>Cancellation promo</h2></div>
-            </div>
-            <div class="pricing-section-grid">
-              <label class="checkbox-field"><input type="checkbox" name="cancellationPromoEnabled"> Offer this when a parent starts cancellation</label>
-              <label>Discount amount ($)<input type="number" name="cancellationPromoAmountOff" min="0" step="0.01" placeholder="5"></label>
-              <label>Duration<select name="cancellationPromoDuration"><option value="once">Next renewal only</option><option value="repeating">Every renewal</option></select></label>
-              <label>Parent-facing description<input type="text" name="cancellationPromoDescription" placeholder="Keep your plan and get 50% off the next renewal."></label>
-              <small class="pricing-help">This offer is shown for monthly plans, including card-upfront trials. Stripe applies it automatically to the next invoice; no code is needed.</small>
-            </div>
-          </article>
+          <div class="plan-offer-grid">
+            <article class="admin-table-card pricing-card cancellation-promo-section">
+              <div class="admin-card-head">
+                <div><p class="eyebrow">Retention</p><h2>Cancellation promo</h2></div>
+                <label class="promo-enable-toggle"><input type="checkbox" name="cancellationPromoEnabled"><span>Enable</span></label>
+              </div>
+              <div class="pricing-section-grid">
+                <label class="retention-amount-field">Discount amount ($)<input type="number" name="cancellationPromoAmountOff" min="0" max="999" step="0.01" placeholder="5"></label>
+                <fieldset class="duration-radio-field">
+                  <legend>Duration</legend>
+                  <div class="duration-radio-options">
+                    <label><input type="radio" name="cancellationPromoDuration" value="once" checked><span>Next renewal only</span></label>
+                    <label><input type="radio" name="cancellationPromoDuration" value="repeating"><span>Every renewal</span></label>
+                  </div>
+                </fieldset>
+                <label class="plan-detail-wide">Parent-facing description<input type="text" name="cancellationPromoDescription" placeholder="Keep your plan and get 50% off the next renewal."></label>
+                <small class="pricing-help">Shown for monthly plans, including card-upfront trials. Stripe applies it automatically; no code is needed.</small>
+              </div>
+            </article>
 
-          <article class="admin-table-card pricing-card yearly-upgrade-section">
-            <div class="admin-card-head">
-              <div><p class="eyebrow">Yearly upgrade</p><h2>Monthly → yearly offer</h2></div>
-            </div>
-            <div class="pricing-section-grid">
-              <label class="upgrade-bonus-field">Bonus months<input type="number" name="upgradeBonusMonths" min="0" step="1" placeholder="3"><small>Extra months on top of 12 (plus prorated remaining days).</small></label>
-              <label class="upgrade-discount-field">Upgrade discount ($)<input type="number" name="upgradeDiscountAmount" min="0" step="0.01" placeholder="0"><small>Dollars off the yearly price for upgraders.</small></label>
-              <label class="upgrade-note-field">Offer note<input type="text" name="upgradeNote" placeholder="Example: July 4th sale — limited time"><small>Shown to monthly parents on the upgrade offer.</small></label>
-              
-            </div>
-          </article>
-        </form>
-
-        <article class="admin-table-card pricing-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">Entitlements</p><h2>Access rules</h2></div>
+            <article class="admin-table-card pricing-card yearly-upgrade-section">
+              <div class="admin-card-head">
+                <div><p class="eyebrow">Yearly upgrade</p><h2>Monthly → yearly offer</h2></div>
+                <label class="promo-enable-toggle"><input type="checkbox" name="yearlyUpgradeEnabled"><span>Enable</span></label>
+              </div>
+              <div class="pricing-section-grid">
+                <label class="upgrade-bonus-field">Bonus months<input type="number" name="upgradeBonusMonths" min="0" step="1" placeholder="3"><small>Extra months on top of 12 plus prorated remaining days.</small></label>
+                <label class="upgrade-discount-field">Upgrade discount ($)<input type="number" name="upgradeDiscountAmount" min="0" step="0.01" placeholder="0"><small>Dollars off the yearly price for upgraders.</small></label>
+                <label class="upgrade-note-field plan-detail-wide">Offer note<input type="text" name="upgradeNote" placeholder="Example: July 4th sale — limited time"><small>Shown to monthly parents on the upgrade offer.</small></label>
+              </div>
+            </article>
           </div>
-          <div class="rules-list" id="entitlement-rules"></div>
-        </article>
+        </form>
       </section>
 
       <section class="admin-view" data-admin-panel="ai-usage">
-        <form class="admin-table-card ai-settings-card" id="ai-settings-form">
+        <div class="ai-section-tabs" role="tablist" aria-label="AI and usage sections">
+          <button class="ai-section-tab is-active" id="ai-controls-tab" type="button" role="tab" aria-selected="true" aria-controls="ai-controls-panel" data-ai-section-target="controls"><i data-lucide="sliders-horizontal"></i><span>AI Controls</span></button>
+          <button class="ai-section-tab" id="ai-usage-tab" type="button" role="tab" aria-selected="false" aria-controls="ai-usage-panel" data-ai-section-target="usage"><i data-lucide="activity"></i><span>Usage</span></button>
+          <button class="ai-section-tab" id="ai-logs-tab" type="button" role="tab" aria-selected="false" aria-controls="ai-logs-panel" data-ai-section-target="logs"><i data-lucide="file-text"></i><span>Logs</span></button>
+        </div>
+
+        <form class="admin-table-card ai-settings-card ai-section-panel" id="ai-controls-panel" data-ai-section="controls" role="tabpanel" aria-labelledby="ai-controls-tab">
           <div class="admin-card-head">
             <div><p class="eyebrow">AI controls</p><h2>Model access and usage limits</h2></div>
-            <span class="state-chip ready" id="ai-settings-state" hidden></span>
+            <div class="ai-control-actions"><span class="state-chip ready" id="ai-settings-state" hidden></span><button class="button primary ai-save-button" type="submit">Save AI controls</button></div>
           </div>
-          <div class="pricing-section-grid ai-settings-grid">
-            <label>OpenAI API key
-              <input type="password" name="openaiApiKey" placeholder="sk-..." autocomplete="off">
-              <small>Stored server-side and used by the extension proxy. Leave blank to keep the current key.</small>
-            </label>
-            <label>OpenAI model
-              <input type="text" name="openaiModel" placeholder="gpt-5.6-luna" autocomplete="off">
-              <small>Model the tutor proxy uses for standard responses.</small>
-            </label>
-            <label>OpenAI model (Adv)
-              <input type="text" name="openaiModelAdv" placeholder="Leave blank to reuse the standard model" autocomplete="off">
-              <small>Used for "Reconsider and solve it again" and geometry retries. Blank falls back to the standard model.</small>
-            </label>
-            <label>Math problems per user/day
-              <input type="number" name="mathProblemsPerUserDaily" min="0" step="1" required>
-              <small>Use 0 only if you want to block Math Step Tutor.</small>
-            </label>
-            <label>Tutor voice minutes per user/day
-              <input type="number" name="tutorVoiceMinutesPerUserDaily" min="0" step="1" required>
-              <small>Daily cap for spoken explanations.</small>
-            </label>
-            <label>Account token ceiling per day
-              <input type="number" name="tokensPerFamilyDaily" min="0" step="1000" required>
-              <small>Whole-account daily limit across every child and every tool — including writing and follow-up chat, which the per-child caps do not cover. 0 = unlimited.</small>
-            </label>
-            <label class="ai-toggle-field">
-              <input type="checkbox" name="tutorVoiceEnabled" checked>
-              <span>Tutor voice enabled</span>
-              <small>Turn off voice while keeping text tutoring active.</small>
-            </label>
-            <label>Tutor voice (TTS) model
-              <select name="ttsModel" id="tts-model"></select>
-              <small>Speech model the voice proxy uses. Change to A/B test without shipping a new extension.</small>
-            </label>
-            <label>Standard length (% of Deep Dive)
-              <input type="number" name="tutorStandardPercent" min="30" max="90" step="5">
-              <small>Standard mode = this % of a band's Deep Dive max (below). Deep Dive = 100%. K-2 is always Standard.</small>
-            </label>
-            <div class="tts-voice-field" id="tts-voice-section">
-              <div class="tts-voice-head">
-                <b>Tutor voice</b>
-                <small>Check which voices students may choose from, and pick the default. Recommended for middle school: Marin, Cedar, Sage.</small>
-              </div>
-              <div class="tts-voice-list" id="tts-voice-list"></div>
-              <label class="tts-default-field">Default voice
-                <select name="ttsDefaultVoice" id="tts-default-voice"></select>
-                <small>Used when a student hasn't chosen, or their choice is no longer allowed.</small>
-              </label>
+          <div class="ai-settings-grid">
+            <div class="ai-controls-columns">
+              <section class="ai-control-pane ai-model-pane">
+                <div class="ai-pane-head"><p class="eyebrow">Models &amp; agents</p><h3>Choose the engines</h3><small>These model names control which service handles each kind of request.</small></div>
+                <label class="ai-key-control">OpenAI API key
+                  <span class="ai-key-input-row"><input type="password" name="openaiApiKey" placeholder="sk-..." autocomplete="off"><button class="table-action danger" type="button" id="clear-openai-key">Clear key</button></span>
+                  <small>Stored server-side and used by the extension proxy. Leave blank to keep the current key.</small>
+                </label>
+                <label>OpenAI model
+                  <input type="text" name="openaiModel" placeholder="gpt-5.6-luna" autocomplete="off">
+                  <small>Model the tutor proxy uses for standard responses.</small>
+                </label>
+                <label>OpenAI model (Adv)
+                  <input type="text" name="openaiModelAdv" placeholder="Leave blank to reuse the standard model" autocomplete="off">
+                  <small>Used for “Reconsider and solve it again” and geometry retries.</small>
+                </label>
+                <label>Tutor voice (TTS) model
+                  <input type="text" name="ttsModel" id="tts-model" placeholder="gpt-4o-mini-tts" autocomplete="off">
+                  <small>Speech model used for spoken explanations.</small>
+                </label>
+              </section>
+
+              <section class="ai-control-pane ai-limits-pane">
+                <div class="ai-pane-head"><p class="eyebrow">Usage controls</p><h3>Set family guardrails</h3><small>Limits apply to the extension and are enforced by the server.</small></div>
+                <label>Math problems per user/day
+                  <input type="number" name="mathProblemsPerUserDaily" min="0" step="1" required>
+                  <small>Use 0 only if you want to block Math Step Tutor.</small>
+                </label>
+                <label>Tutor voice minutes per user/day
+                  <input type="number" name="tutorVoiceMinutesPerUserDaily" min="0" step="1" required>
+                  <small>Daily cap for spoken explanations.</small>
+                </label>
+                <label>Account token ceiling per day
+                  <input type="number" name="tokensPerFamilyDaily" min="0" step="1000" required>
+                  <small>Whole-account daily limit across every child and tool. 0 = unlimited.</small>
+                </label>
+                <label>Standard length (% of Deep Dive)
+                  <input type="number" name="tutorStandardPercent" min="30" max="90" step="5">
+                  <small>Standard mode uses this percentage of each grade band’s Deep Dive maximum.</small>
+                </label>
+              </section>
             </div>
-            <div class="tts-voice-field" id="tutor-length-section">
-              <div class="tts-voice-head">
-                <b>Explain lesson length — Deep Dive max words</b>
-                <small>Max spoken words per band for a Deep Dive lesson — also the hard ceiling; nothing exceeds it. Standard mode is the % above. K-2 is Standard only.</small>
-              </div>
-              <div id="tutor-word-targets"></div>
-            </div>
-            <div class="ai-settings-actions">
-              <button class="button primary" type="submit">Save AI controls</button>
-              <button class="table-action danger" type="button" id="clear-openai-key">Clear key</button>
+            <div class="ai-bottom-controls">
+              <section class="tts-voice-field ai-simple-voice" id="tts-voice-section">
+                <div class="tts-voice-head">
+                  <div class="tts-voice-copy"><b>Tutor voice</b><small>Enter the voices students may use.</small></div>
+                  <label class="promo-enable-toggle"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></label>
+                </div>
+                <div class="tts-voice-form">
+                  <label class="tts-input-label" for="tts-allowed-voices">Voice names</label>
+                  <div class="tts-voice-input-row">
+                    <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
+                  </div>
+                  <small class="tts-voice-help">Use comma-separated voice names. The first voice is used as the default.</small>
+                </div>
+                <div class="tts-voice-examples" id="tts-voice-examples" aria-label="Configured voices">
+                  <span>Alloy</span><span>Marin</span><span>Cedar</span>
+                </div>
+              </section>
+              <section class="tts-voice-field tts-length-section" id="tutor-length-section">
+                <div class="tts-voice-head"><div class="tts-voice-copy"><b>Lesson length</b><small>Maximum spoken words by grade band.</small></div></div>
+                <div id="tutor-word-targets">
+                  <div class="word-target-row"><span>K-2</span><input type="number" min="40" max="4000" step="10" data-band="K-2" value="160"><span>Standard only</span></div>
+                  <div class="word-target-row"><span>3-5</span><input type="number" min="40" max="4000" step="10" data-band="3-5" value="400"><span>Standard + Deep Dive</span></div>
+                  <div class="word-target-row"><span>6-8</span><input type="number" min="40" max="4000" step="10" data-band="6-8" value="700"><span>Standard + Deep Dive</span></div>
+                  <div class="word-target-row"><span>9-12</span><input type="number" min="40" max="4000" step="10" data-band="9-12" value="1000"><span>Standard + Deep Dive</span></div>
+                </div>
+                <small class="tts-voice-help">These limits cap spoken explanations by grade band.</small>
+              </section>
             </div>
           </div>
         </form>
 
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">Usage</p><h2>Student activity</h2></div>
+        <article class="admin-table-card ai-section-panel usage-report-card" id="ai-usage-panel" data-ai-section="usage" role="tabpanel" aria-labelledby="ai-usage-tab" hidden>
+          <div class="admin-filters usage-filters" aria-label="Usage filters">
+            <input type="search" id="usage-search" placeholder="Search parent, student, or email" autocomplete="off">
+            <select id="usage-date-filter" aria-label="Usage date range">
+              <option value="week" selected>This week</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
+            <label class="locked-filter usage-flag-filter"><input type="checkbox" id="usage-flagged-filter"><span>Flagged only</span></label>
+            <span class="state-chip" id="ai-usage-flags">0 flagged</span>
           </div>
-          <div class="table-wrap compact-table">
-            <table>
-              <thead><tr><th>Student</th><th>Grade</th><th>Math today</th><th>Voice today</th><th>Favorite tool</th><th>Last activity</th></tr></thead>
+          <p class="usage-card-note"><i data-lucide="shield-alert"></i>Flagged when a family exceeds its configured account token ceiling on any single day in the selected period.</p>
+          <div class="table-wrap compact-table usage-table-wrap">
+            <table class="usage-table">
+              <thead><tr><th>Parent name</th><th>Student name (grade)</th><th>Last used</th><th>Tokens consumed</th><th>Flag</th><th>Math</th><th>Voice</th><th>Quiz</th><th>Flashcards</th><th>Write</th><th>Explain</th><th>Time spent</th></tr></thead>
               <tbody id="usage-table"></tbody>
             </table>
           </div>
         </article>
 
-        <article class="admin-table-card">
-          <div class="admin-card-head">
-            <div><p class="eyebrow">AI usage</p><h2>Tokens &amp; abuse</h2></div>
-            <span class="state-chip" id="ai-usage-flags">0 flagged</span>
+        <article class="admin-table-card ai-section-panel usage-report-card" id="ai-logs-panel" data-ai-section="logs" role="tabpanel" aria-labelledby="ai-logs-tab" hidden>
+          <div class="admin-filters usage-filters usage-log-filters" aria-label="Log filters">
+            <input type="search" id="usage-log-search" placeholder="Search parent, email, or log keywords" autocomplete="off">
+            <select id="usage-log-date-filter" aria-label="Log date range">
+              <option value="week" selected>This week</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
           </div>
-          <div class="table-wrap compact-table">
-            <table>
-              <thead><tr><th>Parent</th><th>Student</th><th>Last used</th><th>Avg daily tokens</th><th>Flag</th></tr></thead>
-              <tbody id="ai-usage-table"></tbody>
+          <div class="table-wrap compact-table usage-table-wrap">
+            <table class="usage-log-table">
+              <thead><tr><th>Parent name</th><th>Email</th><th>Student name</th><th>Date</th><th>Logs</th></tr></thead>
+              <tbody id="ai-log-table"></tbody>
             </table>
           </div>
         </article>
@@ -699,6 +722,13 @@
             <div class="rules-list" id="journey-list"></div>
           </article>
         </div>
+
+        <article class="admin-table-card lifecycle-entitlements-card">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Entitlements</p><h2>Access rules</h2></div>
+          </div>
+          <div class="rules-list" id="entitlement-rules"></div>
+        </article>
       </section>
 
       <section class="admin-view" data-admin-panel="email-studio">
@@ -870,6 +900,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=188"></script>
+  <script src="/webapp/webapp.js?v=196"></script>
 </body>
 </html>
