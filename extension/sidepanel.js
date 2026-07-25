@@ -3109,7 +3109,7 @@ function renderMathFullSolutionPanel(current) {
     </div>
     <div class="math-answer-panel">
       <div class="ma-head"><span class="ma-label">Answer</span></div>
-      <div class="ma-value">${answerOption ? `<span class="ma-option" aria-label="Correct option">${escapeHtml(answerOption)}</span>` : ""}${renderMathHtml(answerText)}</div>
+      <div class="ma-value">${answerOption ? `<span class="ma-option" aria-label="Correct option">${escapeHtml(answerOption)}</span>` : ""}<div class="ma-answer">${renderMathHtml(answerText)}</div></div>
     </div>`;
 }
 
