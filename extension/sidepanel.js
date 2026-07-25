@@ -3067,9 +3067,12 @@ function getMathAnswerOption(current) {
 
 function stripMathAnswerOption(value) {
   const answer = cleanMathText(value || "See final line");
+  // Remove a trailing multiple-choice marker in ANY form the model emits — bare
+  // " (D)", or wrapped as \text{(D)} / \mathrm{(d)} / \mathbf{(D)} / \operatorname{(D)},
+  // optionally after a LaTeX spacer (\, \; \! or a literal "\ "). The option letter
+  // is rendered separately in the .ma-option badge, so it must not double up here.
   return answer
-    .replace(/\s*\\text\s*\{\s*\(\s*[A-H]\s*\)\s*\}\s*$/i, "")
-    .replace(/\s*\(\s*[A-H]\s*\)\s*$/i, "")
+    .replace(/\s*(?:\\[\s,;!]+)?\s*(?:\\(?:text|mathrm|mathbf|mathsf|operatorname)\s*\{\s*)?\(\s*[A-H]\s*\)\s*\}?\s*$/i, "")
     .trim() || "See final line";
 }
 
@@ -3781,19 +3784,11 @@ async function solveMathOnce({ settings, parts = [], sourceText, gradeBand, disp
     advanced,  // true for "Reconsider and solve it again" -> backend uses the Adv model
     moderate: false, // math equations/steps are inherently safe; skip the extra round-trip
     maxOutputTokens: MATH_SOLVE_MAX_TOKENS, // help + full solution + check won't fit in the chat cap
-    instructions: "You are KiddieGPT Math Tutor, a careful teacher for K-8 students (support harder topics like algebra, geometry, vectors, combinatorics, trigonometry, and early calculus when the source shows them). Accuracy is critical: a wrong answer is worse than no answer. If the source contains no readable math problem — it is blank, too blurry or low-quality to read, or simply not math (like a photo, a paragraph of text, or a random screenshot) — do NOT invent a problem. Instead return exactly {\"noMath\": true, \"reason\": \"<one short, kind, kid-friendly sentence explaining what you see and what to do>\"} and nothing else. Otherwise: read EVERY label, number, symbol, and multiple-choice option carefully so nothing is missed. If there is a diagram, state exactly where the unknown sits and never assume. A small square in a diagram is a right-angle mark: those two segments are perpendicular, so one of them is a height or leg — use it, and never treat a marked height as a slanted side or assume an included angle between them. For circle geometry, identify centers, radii, diameters, chords, tangent lines, intersections, and arcs before choosing a method. Solve with the SIMPLEST correct method a student at the given grade would use. Return a learning-safe help section AND a complete solution section. The help section must teach the setup and next moves, but it must NOT reveal the final answer, final numerical value, matching multiple-choice letter, or last simplification. The solution section must show the complete textbook derivation, final answer, and check. For multiple-choice questions, use the original choices and select the exact matching choice. For binomial expansions, remember T_{r+1} uses r, so the fifth term uses r=4; do not choose r=5. Never return an equivalent expression that is not one of the listed choices. Write every math expression as clean inline LaTeX (for example \\frac{a}{b}, \\sqrt{48}, x^{2}, a_{1}, \\binom{n}{4}, 90^{\\circ}, \\int, \\sum, \\vec{AB}); do NOT wrap it in $, $$, \\( \\), or \\[ \\] delimiters, and use no markdown. If several problems are visible, split them. Return only valid JSON." + visualGuidance,
+    instructions: "You are KiddieGPT Math Tutor for K-8 students (also handle harder algebra, geometry, trigonometry, combinatorics, and early calculus when the source shows them). Accuracy is critical: a wrong answer is worse than no answer. If the source has no readable math (blank, too blurry, or not math), return exactly {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Otherwise read every number, symbol, and multiple-choice option; honor right-angle marks (a small square means those segments are perpendicular, so one is a height or leg) and circle parts (center, radius, diameter, chord, tangent, arc) before choosing a method. Use the SIMPLEST correct method for the grade. Return a HELP section that teaches the setup and next moves but must NOT reveal the final answer, final value, or matching choice letter, and a SOLUTION section with a full textbook derivation, a check, and the answer. For multiple choice return the exact listed choice (a binomial's fifth term uses r=4, i.e. T_{r+1} with r=4; never an equivalent expression that is not a listed choice). Never output a blank or placeholder like \\square, \\Box, \\underline{}, \"?\", or an empty box — always compute the real value. In EVERY math field put ONLY a short equation or expression (symbols and numbers), never a sentence or \\text{...}; put all words in why. Write math as clean inline LaTeX (\\frac{a}{b}, \\sqrt{48}, x^{2}, \\binom{n}{4}, 90^{\\circ}, \\pi, \\theta, \\vec{AB}) with no $, $$, \\( \\), or \\[ \\] delimiters and no markdown. If several problems are visible, split them. Return only valid JSON." + visualGuidance,
     text: `${sourceText}
 ${disputeNote ? `IMPORTANT: ${disputeNote}
-` : ""}Student grade band: ${gradeBand}. ${mathGradeGuidance(gradeBand)}
-Return JSON with a problems array. Solve at most 15 problems; if the page shows more than 15, include only the first 15. Each problem object must have:
-- title: like "Problem 1 of 2".
-- friendlyProblem: the original question only, such as "Find the missing side b when the angle is 30 degrees and the hypotenuse is 8" or "Determine the 5th term in the expansion of (3x+2y)^n". No derivations, filenames, source descriptions, or metadata.
-- meta: short topic line. tags: array of up to 4 short skill words.
-- choices: when the source is multiple-choice, copy every choice exactly as objects with label (A, B, C...) and expression. Return [] when there are no choices.
-- help: object with concept, formula, plan, lines, tryNext. formula is the key formula as LaTeX. lines is up to 5 objects with math and why. Help math must stop before the final answer and must not include a multiple-choice letter.
-- solution: object with lines, check, answer. lines is the worked solution as a textbook derivation, an array of objects with math and why. The math field must be ONLY a short equation or expression (symbols and numbers), never a sentence, rule name, or description, and never more than one relation per line. Put every explanation, property, or rule statement in why, not in math. Write it the way a math textbook does. When useful, state the general formula first (like "a^{2} + b^{2} = c^{2}" or "T_{r+1}=\\binom{n}{r}a^{n-r}b^{r}"), then show each simplification on its own line. When a line simply continues simplifying the same quantity, start that line with "=" and drop the left side, like "= \\sqrt{64 - 16}" then "= \\sqrt{48}" then "= 4\\sqrt{3}". Write the math as inline LaTeX: \\frac{}{} for fractions, \\sqrt{} for roots, \\binom{}{} for combinations, ^{} for powers, _{} for subscripts, \\cdot or \\times for multiplication, \\pi \\theta for symbols; no $ or \\( \\) delimiters. Keep at most one relation per line. why is one short plain sentence for this grade band explaining that line. The lines must read top to bottom as one connected derivation. NEVER write a blank or placeholder where a number belongs — do not output \\square, \\Box, \\underline{}, \\rule{}{}, "?", or an empty box. Even when the original worksheet shows a blank to fill in, YOU must compute and write the actual value.
-- solution.check: object with math and why that substitutes or verifies the final answer against the original relationship and confirms it agrees with ALL the givens.
-- solution.answer: the final solved VALUE only, as inline LaTeX — never an instruction, a step for the student to finish, or a blank/placeholder such as \\square or an empty box. For a multiple-choice question, give the exact matching choice expression followed by its option letter, like "\\binom{n}{4}(3x)^{n-4}(2y)^4\\text{ (A)}".`
+` : ""}Grade band: ${gradeBand}. ${mathGradeGuidance(gradeBand)}
+Return JSON {problems:[{title (like "Problem 1 of 2"), friendlyProblem (the original question only — no derivations, filenames, or metadata), meta (one short topic STRING, not an object), tags (up to 4 short strings), choices ([{label,expression}] with label like A,B,C copied exactly when the source is multiple choice, else []), help ({concept, formula (key formula as LaTeX), lines (up to 5 {math,why})}), solution ({lines ([{math,why}] as a textbook derivation, one short relation per line, continuation lines start with "="), check ({math,why} that substitutes the answer back and confirms it fits every given), answer})}]}. Solve at most 15 problems (if more than 15 are shown, include only the first 15). help must NOT reveal the final answer, value, or choice letter. why is one short plain sentence for this grade band. answer: the final value only as inline LaTeX; for multiple choice give the exact matching choice expression followed by its option letter at the END, like "\\binom{n}{4}(3x)^{n-4}(2y)^4 \\text{(A)}".`
   };
   return callOpenAIJson(request);
 }
@@ -4414,7 +4409,9 @@ async function correctMathProblem() {
       button.setAttribute("aria-pressed", "false");
     });
     if (send) send.disabled = true;
-    setMathCorrectStatus("Updated with your correction.", "blue");
+    setMathCorrectStatus("", ""); // success is obvious from the updated solution — no status row
+    const panel = document.getElementById("mathCorrectPanel"); // collapse after a successful redo
+    if (panel) panel.hidden = true;
   } catch (error) {
     console.warn("Math correction failed", error);
     setMathCorrectStatus(`Could not re-solve: ${friendlyError(error)}`, "warn");
@@ -4645,8 +4642,7 @@ function initMathTool() {
         option.setAttribute("aria-pressed", String(active));
       });
       const send = document.getElementById("mathCorrectSend");
-      if (send) send.disabled = false;
-      setMathCorrectStatus("Ready to try that correction.", "blue");
+      if (send) send.disabled = false; // enabling the send arrow is the cue; no status row
     });
   });
   document.getElementById("mathCorrectSend")?.addEventListener("click", correctMathProblem);

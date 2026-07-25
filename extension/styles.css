@@ -376,14 +376,14 @@ body{background:#f6f8f5}
     .math-correct-toggle{justify-self:end;border:1px solid #e3d18a;border-radius:999px;background:#fffdf4;color:#7a5300;min-height:26px;padding:3px 11px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;cursor:pointer}
     .math-correct-panel{position:relative;border:1px solid #dce8df;border-radius:14px;background:#fbfdf8;padding:11px;display:grid;gap:9px}
     .math-correct-panel[hidden]{display:none}
-    .math-correction-chat-head{display:grid;gap:2px}
+    .math-correction-chat-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .math-correction-chat-head span{font-size:12px;font-weight:800;color:#0b2d43}
     .math-correction-chat-head small{font-size:11px;line-height:1.35;color:#60747d}
     .math-correction-pills{display:flex;gap:6px;flex-wrap:wrap}
     .math-correction-pill{border:1px solid #dce8df;border-radius:999px;background:#fff;color:#29495b;padding:7px 9px;font-size:10px;font-weight:800;cursor:pointer}
     .math-correction-pill:hover,.math-correction-pill.selected{border-color:#b9ce58;background:#eef6b5;color:#536b00}
     .math-correction-pill.selected{box-shadow:inset 0 0 0 1px rgba(113,153,0,.12)}
-    .math-correction-send{position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;padding:0;cursor:pointer}
+    .math-correction-send{flex:0 0 auto;width:34px;height:34px;border:0;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;padding:0;cursor:pointer}
     .math-correction-send svg{width:17px;height:17px}
     .math-correction-send:hover:not(:disabled){background:#01605a}
     .math-correction-send:disabled{opacity:.4;cursor:default}
@@ -578,11 +578,12 @@ body{background:#f6f8f5}
     .math-answer-card span{font-size:10px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.72)}
     .math-answer-card b{font-size:18px;color:#fff;font-weight:800}
     /* Consolidated answer panel: answer + verify badge + watch-out + controls */
-    .math-answer-panel{border:1px solid #dce8df;border-radius:15px;background:#fff;padding:13px 15px;margin-top:11px;box-shadow:0 10px 22px rgba(12,42,60,.05)}
+    .math-answer-panel{border:1px solid #004f48;border-radius:15px;background:var(--green);padding:13px 15px;margin-top:11px;box-shadow:0 12px 26px rgba(0,79,72,.22)}
     .ma-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
-    .ma-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
-    .ma-value{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px;font-size:21px;font-weight:800;color:#004f48;overflow-wrap:anywhere;line-height:1.25}
-    .ma-option{display:inline-grid;place-items:center;width:38px;height:38px;padding:0;box-sizing:border-box;border:1px solid #cfe6bd;border-radius:9px;background:#eef8e6;color:#3e7e2e;font-size:15px;font-weight:900;line-height:1;flex:0 0 38px}
+    .ma-label{font-size:10px;font-weight:900;color:#dce96a;text-transform:uppercase;letter-spacing:.08em}
+    .ma-value{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px;font-size:21px;font-weight:800;color:#fff;overflow-wrap:anywhere;line-height:1.25}
+    .ma-value .katex{color:#fff}
+    .ma-option{display:inline-grid;place-items:center;width:38px;height:38px;padding:0;box-sizing:border-box;border:0;border-radius:9px;background:#dce96a;color:#1f4d10;font-size:15px;font-weight:900;line-height:1;flex:0 0 38px}
     .parent-note{display:grid;gap:8px}
     .parent-note .policy{background:#fff}
     .tool-flow{display:grid;gap:12px}
