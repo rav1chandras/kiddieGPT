@@ -171,11 +171,25 @@
             </div>
           </section>
           <section class="panel panel-pad mission-reading-panel" id="missionReadingPanel" hidden>
-            <div class="section-title"><h3>Read first</h3><span class="status" id="missionReadStatus">Not started</span></div>
+            <div class="mission-read-header">
+              <div class="mission-read-head-copy">
+                <div class="mission-read-kicker"><span class="mission-read-step-dot">1</span><span>Build your base</span></div>
+                <h3>Read first</h3>
+                <p>Give the big idea a minute before you practice it.</p>
+              </div>
+              <div class="mission-read-controls">
+                <button class="mission-read-icon-button" id="missionReadPauseButton" type="button" hidden aria-label="Pause reading" title="Pause reading">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M17 5v14"/></svg>
+                </button>
+                <button class="small-button primary-action mission-read-start" id="missionReadToggleButton" type="button" aria-label="Start reading">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6V6Z"/></svg><span>Start Reading</span>
+                </button>
+              </div>
+            </div>
             <div class="mission-read-card">
               <div class="mission-read-copy">
-                <span class="mission-eyebrow">Step 1</span>
-                <h3>Read the mission before practice</h3>
+                <div class="mission-read-card-label"><span>Today's focus</span><small>Read, then recall</small></div>
+                <h3>Understand the main idea</h3>
                 <p id="missionReadMainIdea">Generate a Study Mission, then spend a few focused minutes reading the main idea and key terms before making cards or taking the quiz.</p>
               </div>
               <div class="mission-read-timer">
@@ -184,17 +198,15 @@
               </div>
             </div>
             <div class="mission-overview" id="missionOverview" hidden>
-              <div class="mission-overview-remember"><span>Remember</span><p id="missionReadRemember"></p></div>
+              <div class="mission-overview-remember"><span>Big idea to keep</span><p id="missionReadRemember"></p></div>
               <div class="mission-overview-terms" id="missionReadTerms"></div>
               <div class="mission-overview-counts" id="missionReadCounts"></div>
             </div>
             <div class="mission-read-actions">
-              <button class="small-button primary-action" id="missionReadToggleButton" type="button">Start Reading</button>
-              <button class="small-button" id="missionReadDoneButton" type="button">I read this</button>
-              <button class="small-button" data-view="read" type="button">Need a teacher voice?</button>
+              <button class="small-button" data-view="read" type="button">Hear it explained</button>
             </div>
             <div class="mission-read-next" id="missionReadNext" hidden>
-              <span>Nice. Now practice what you read.</span>
+              <span><b>Nice work.</b> Choose your next move.</span>
               <button class="small-button" data-mission-step="cards" type="button">Make Flashcards</button>
               <button class="small-button primary-action" data-mission-step="quiz" type="button">Take Quiz</button>
             </div>

@@ -943,9 +943,8 @@ function formatMissionReadTime(seconds) {
 function updateMissionReadUi() {
   const panel = document.getElementById("missionReadingPanel");
   const timer = document.getElementById("missionReadTimer");
-  const status = document.getElementById("missionReadStatus");
   const toggle = document.getElementById("missionReadToggleButton");
-  const done = document.getElementById("missionReadDoneButton");
+  const pause = document.getElementById("missionReadPauseButton");
   const next = document.getElementById("missionReadNext");
   const mainIdea = document.getElementById("missionReadMainIdea");
   if (panel) panel.hidden = !currentStudyPack || activeMissionStep !== "study";
@@ -954,17 +953,26 @@ function updateMissionReadUi() {
   if (timer) timer.textContent = formatMissionReadTime(missionReadSeconds);
   if (mainIdea && currentStudyPack) mainIdea.textContent = currentStudyPack.mainIdea || "Read the mission first, then turn it into practice.";
   const isRunning = Boolean(missionReadTimerId);
-  if (status) {
-    status.textContent = missionReadDone ? "Read" : isRunning ? "Reading" : missionReadSeconds ? "Paused" : "Not started";
-    status.className = `status ${missionReadDone ? "blue" : ""}`.trim();
-  }
   if (toggle) {
-    toggle.textContent = isRunning ? "Pause Reading" : missionReadSeconds ? "Resume Reading" : "Start Reading";
+    const hasStarted = isRunning || missionReadSeconds > 0;
+    const icon = missionReadDone || hasStarted
+      ? '<path d="m5 12 4 4L19 6"/>'
+      : '<path d="m9 6 9 6-9 6V6Z"/>';
+    const label = missionReadDone ? "Reading done" : hasStarted ? "Finished Reading?" : "Start Reading";
+    toggle.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>`;
+    toggle.setAttribute("aria-label", label);
     toggle.disabled = missionReadDone;
   }
-  if (done) {
-    done.textContent = missionReadDone ? "Reading done" : "I read this";
-    done.classList.toggle("primary-action", missionReadDone);
+  if (pause) {
+    const canPause = !missionReadDone && (isRunning || missionReadSeconds > 0);
+    const pauseIcon = isRunning
+      ? '<path d="M7 5v14M17 5v14"/>'
+      : '<path d="m9 6 9 6-9 6V6Z"/>';
+    const pauseLabel = isRunning ? "Pause reading" : "Resume reading";
+    pause.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${pauseIcon}</svg>`;
+    pause.hidden = !canPause;
+    pause.setAttribute("aria-label", pauseLabel);
+    pause.title = pauseLabel;
   }
   if (next) next.hidden = !missionReadDone;
 }
@@ -2897,9 +2905,12 @@ function initPdfTool() {
   document.getElementById("pdfBuildButton")?.addEventListener("click", buildPdfStudyPack);
   document.getElementById("missionChallengeSlider")?.addEventListener("input", updateMissionChallengeLabel);
   document.getElementById("missionReadToggleButton")?.addEventListener("click", () => {
+    if (missionReadTimerId || missionReadSeconds > 0) markMissionReadDone();
+    else setMissionReadTimer(true);
+  });
+  document.getElementById("missionReadPauseButton")?.addEventListener("click", () => {
     setMissionReadTimer(!missionReadTimerId);
   });
-  document.getElementById("missionReadDoneButton")?.addEventListener("click", markMissionReadDone);
   document.getElementById("uploadCollapseButton")?.addEventListener("click", () => {
     const panel = document.getElementById("pdfUploadPanel");
     setUploadCollapsed(!panel?.classList.contains("collapsed"));

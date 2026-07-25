@@ -652,7 +652,7 @@ body{background:#f6f8f5}
     .mission-quiz-hero p{font-size:12px;line-height:1.4;color:rgba(255,255,255,.78);margin:0}
     .mission-question-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff,#fbfdf8);box-shadow:0 10px 22px rgba(12,42,60,.045)}
     .mission-question-card:after{content:"";position:absolute;right:-20px;bottom:-24px;width:72px;height:72px;border-radius:24px;background:rgba(220,233,106,.16);transform:rotate(12deg);pointer-events:none}
-    .mission-question-head{position:relative;z-index:1;display:grid;grid-template-columns:34px minmax(0,1fr);gap:9px;align-items:start;margin-bottom:9px}
+    .mission-question-head{position:relative;z-index:1;display:grid;grid-template-columns:34px minmax(0,1fr);gap:9px;align-items:center;margin-bottom:9px}
     .mission-question-head span{width:34px;height:34px;border-radius:12px;background:#eef6b5;color:var(--green);display:grid;place-items:center;font-size:11px;font-weight:900}
     .mission-question-head h4{margin:0;font-size:13px;line-height:1.35;color:#0b2d43;font-weight:500}
     .mission-question-card .choice-list{position:relative;z-index:1}
@@ -754,25 +754,42 @@ body{background:#f6f8f5}
     .mission-reading-panel{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff,#f7fbf2);border-color:#dce8df;box-shadow:0 14px 34px rgba(12,42,60,.06)}
     .mission-reading-panel:after{content:"";position:absolute;right:-34px;bottom:-42px;width:130px;height:130px;border-radius:38px;background:rgba(220,233,106,.18);transform:rotate(14deg);pointer-events:none}
     .mission-reading-panel[hidden]{display:none}
-    .mission-reading-panel>.section-title,.mission-read-card,.mission-read-actions,.mission-read-next{position:relative;z-index:1}
-    .mission-read-card{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:12px;align-items:center;border:1px solid #dce8df;border-radius:15px;background:#fff;padding:13px}
-    .mission-read-copy h3{font-size:18px;line-height:1.15;margin:1px 0 6px;color:#0b2d43}
-    .mission-read-copy p{font-size:12px;line-height:1.48;color:#60747d;margin:0}
-    .mission-read-timer{height:92px;border-radius:16px;background:#004f48;color:#fff;display:grid;place-items:center;text-align:center;padding:10px;box-shadow:0 12px 24px rgba(0,79,72,.16)}
+    .mission-reading-panel>.mission-read-header,.mission-read-card,.mission-read-actions,.mission-read-next{position:relative;z-index:1}
+    .mission-read-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}
+    .mission-read-head-copy{min-width:0}
+    .mission-read-kicker{display:flex;align-items:center;gap:7px;color:#719900;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+    .mission-read-step-dot{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:#eef6b5;color:#536b00;font-size:11px;letter-spacing:0}
+    .mission-read-head-copy h3{font-size:21px;line-height:1.1;margin:0 0 4px;color:#0b2d43}
+    .mission-read-head-copy p{font-size:11.5px;line-height:1.4;color:#60747d;margin:0}
+    .mission-read-controls{display:flex;align-items:center;gap:7px;margin-top:2px;flex:0 0 auto}
+    .mission-read-icon-button{display:inline-grid;place-items:center;width:40px;height:40px;border:1px solid #cfe0d4;border-radius:11px;background:#fff;color:#004f48;cursor:pointer;box-shadow:0 5px 12px rgba(12,42,60,.06)}
+    .mission-read-icon-button:hover{background:#f3f8f2;border-color:#a9c8b5}
+    .mission-read-icon-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+    .mission-read-start{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:148px;height:40px;flex:0 0 auto}
+    .mission-read-start svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .mission-read-card{display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:16px;align-items:center;border:1px solid #dce8df;border-radius:17px;background:rgba(255,255,255,.92);padding:17px;box-shadow:0 10px 24px rgba(12,42,60,.045)}
+    .mission-read-copy{min-width:0}
+    .mission-read-card-label{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+    .mission-read-card-label span{font-size:10px;font-weight:900;color:#719900;letter-spacing:.08em;text-transform:uppercase}
+    .mission-read-card-label small{font-size:10px;color:#9aa8a2;border-left:1px solid #dce8df;padding-left:8px}
+    .mission-read-copy h3{font-size:19px;line-height:1.15;margin:0 0 6px;color:#0b2d43}
+    .mission-read-copy p{font-size:12.5px;line-height:1.52;color:#536b76;margin:0}
+    .mission-read-timer{height:98px;border-radius:18px;background:#004f48;color:#fff;display:grid;place-items:center;text-align:center;padding:10px;box-shadow:0 12px 24px rgba(0,79,72,.16)}
     .mission-read-timer strong{display:block;font-size:27px;line-height:1;color:#fff}
     .mission-read-timer small{display:block;font-size:9px;text-transform:uppercase;color:rgba(255,255,255,.72);font-weight:900;margin-top:3px}
-    .mission-read-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
-    .mission-read-actions .small-button{min-width:118px;height:36px}
-    .mission-overview{position:relative;z-index:1;display:grid;gap:9px;border:1px solid #dce8df;border-radius:14px;background:#fbfdf8;padding:12px;margin-top:10px}
+    .mission-read-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px}
+    .mission-read-actions .small-button{min-width:126px;height:38px}
+    .mission-read-actions .primary-action{box-shadow:0 8px 16px rgba(0,79,72,.14)}
+    .mission-overview{position:relative;z-index:1;display:grid;gap:10px;border:1px solid #dce8df;border-radius:15px;background:#fbfdf8;padding:14px;margin-top:11px}
     .mission-overview[hidden]{display:none}
     .mission-overview-remember{display:grid;gap:4px}
     .mission-overview-remember span{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase}
-    .mission-overview-remember p{font-size:12.5px;line-height:1.5;color:#29495b;margin:0}
+    .mission-overview-remember p{font-size:13px;line-height:1.5;color:#29495b;margin:0}
     .mission-overview-terms{display:flex;flex-wrap:wrap;gap:6px}
     .mission-overview-terms span{border-radius:999px;background:#eef6b5;color:#536b00;padding:5px 9px;font-size:11px;font-weight:800}
-    .mission-overview-counts{display:flex;gap:8px;flex-wrap:wrap;border-top:1px dashed #dce8df;padding-top:9px}
-    .mission-overview-counts span{font-size:11px;color:#60747d;font-weight:700}
-    .mission-overview-counts b{color:#004f48;font-size:13px}
+    .mission-overview-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;border-top:1px dashed #dce8df;padding-top:10px}
+    .mission-overview-counts span{display:flex;align-items:baseline;justify-content:center;gap:4px;border:1px solid #e1e9e0;border-radius:10px;background:#fff;padding:8px 5px;font-size:10px;color:#60747d;font-weight:700;text-align:center}
+    .mission-overview-counts b{color:#004f48;font-size:17px;line-height:1}
     .mission-progress{display:grid;gap:7px;margin:10px 0;justify-items:stretch}
     .mission-progress-bar{height:8px;border-radius:999px;background:#e2ecd9;overflow:hidden}
     .mission-progress-bar span{display:block;height:100%;background:#4f9a2e;border-radius:999px;transition:width .45s ease}
@@ -815,9 +832,10 @@ body{background:#f6f8f5}
     .mission-empty{display:grid;justify-items:center;text-align:center;gap:9px;padding:26px 16px}
     .mission-empty b{font-size:15px;color:#0b2d43}
     .mission-empty p{font-size:12.5px;line-height:1.5;color:#60747d;max-width:300px;margin:0}
-    .mission-read-next{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #d4e56d;border-radius:14px;background:#fbfde6;padding:10px;margin-top:10px}
+    .mission-read-next{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #d4e56d;border-radius:14px;background:#fbfde6;padding:11px;margin-top:11px;box-shadow:0 8px 18px rgba(113,153,0,.08)}
     .mission-read-next[hidden]{display:none}
-    .mission-read-next span{font-size:12px;line-height:1.35;color:#29495b;font-weight:800}
+    .mission-read-next span{font-size:12px;line-height:1.35;color:#29495b;font-weight:700}
+    .mission-read-next span b{display:block;color:#004f48;font-weight:900;margin-bottom:2px}
     .study-celebration{position:relative;overflow:hidden;border-radius:16px;background:linear-gradient(135deg,#004f48,#006257);color:#fff;padding:15px;display:grid;gap:13px}
     .study-celebration:after{content:"";position:absolute;right:-28px;bottom:-36px;width:120px;height:120px;border-radius:34px;background:rgba(255,255,255,.08);transform:rotate(14deg)}
     .study-celebration>div,.study-celebration button{position:relative;z-index:1}
@@ -1234,10 +1252,13 @@ body{background:#f6f8f5}
       .mission-link-card{grid-template-columns:32px minmax(0,1fr)}
       .mission-link-card button{grid-column:1/-1;width:100%}
       .mission-link-actions .small-button{width:100%}
+      .mission-read-header{align-items:flex-start}
+      .mission-read-head-copy h3{font-size:19px}
       .mission-read-card{grid-template-columns:1fr}
       .mission-read-timer{height:78px}
       .mission-read-actions{justify-content:stretch}
       .mission-read-actions .small-button{flex:1 1 132px}
+      .mission-overview-counts{grid-template-columns:repeat(3,minmax(0,1fr))}
       .mission-read-next{grid-template-columns:1fr}
       .mission-read-next .small-button{width:100%}
       .hero-actions button{flex:1 1 130px}
