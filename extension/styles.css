@@ -360,40 +360,36 @@ body{background:#f6f8f5}
     .math-upload-strip b{display:block;font-size:13px;color:#0b2d43;font-weight:500;margin-bottom:2px}
     .math-upload-strip small{display:block;font-size:11px;color:#60747d;line-height:1.3}
     .math-solution-panel{position:relative;overflow:hidden;background:#fff;border-color:#dce8df}
-    .math-solution-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;margin-bottom:12px}
-    .math-solution-top h3{font-size:19px;line-height:1.16;margin:2px 0 0;color:#0b2d43}
-    .math-skill-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-    .math-skill-tags span{border-radius:999px;background:#eef6b5;color:#536b00;padding:6px 8px;font-size:9px;font-weight:900}
+    .math-solution-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin-bottom:8px}
+    .math-solution-top h3{font-size:15px;line-height:1.2;margin:0;color:#0b2d43}
+    .math-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+    /* Match the source-pills toggle (Paste / Screenshot / ...) exactly. */
+    .math-mode-switch{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px;flex-shrink:0}
+    .math-mode-switch button{border:0;border-radius:999px;background:transparent;color:#506677;padding:7px 11px;font-size:10px;font-weight:900;cursor:pointer;white-space:nowrap}
+    .math-mode-switch button.active{background:var(--green);color:#fff}
     .math-problem-nav{display:flex;align-items:center;gap:7px}
-    .math-problem-nav button{width:34px;height:34px;border:1px solid #dce8df;border-radius:50%;background:#fff;color:var(--green);font-size:23px;font-weight:800;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 8px 18px rgba(12,42,60,.055)}
-    .math-problem-nav span{border-radius:999px;background:#eef6b5;color:#536b00;padding:8px 10px;font-size:10px;font-weight:900;white-space:nowrap}
+    .math-problem-nav button{width:30px;height:30px;border:1px solid #dce8df;border-radius:50%;background:#fff;color:var(--green);font-size:20px;font-weight:800;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 5px 12px rgba(12,42,60,.045)}
+    .math-problem-nav span{border-radius:999px;background:#eef6b5;color:#536b00;padding:7px 9px;font-size:9px;font-weight:900;white-space:nowrap}
     .math-solution-layout{display:block}
-    .math-problem-header{position:relative;overflow:hidden;border:1px solid #dce8df;border-radius:14px;background:linear-gradient(135deg,#fbfdf8,#eef6f3);padding:12px 14px;display:grid;gap:5px}
-    .math-problem-header:after{content:"";position:absolute;right:-24px;bottom:-30px;width:84px;height:84px;border-radius:28px;background:rgba(220,233,106,.3);transform:rotate(12deg)}
-    .math-problem-header>*{position:relative;z-index:1}
-    .math-problem-header span,.math-big-idea span{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase}
-    .math-problem-header p{font-size:11px;line-height:1.35;color:#60747d;margin:0;font-weight:600}
-    .math-problem-header .math-equation-large{font-size:clamp(19px,2.6vw,26px);line-height:1.2;font-weight:800}
-    .math-figure{border:1px solid #dce8df;border-radius:14px;background:#fff;padding:12px;display:grid;gap:8px;justify-items:center}
-    .math-figure[hidden]{display:none}
-    .math-figure>span{justify-self:start;font-size:10px;font-weight:900;color:#719900;text-transform:uppercase}
-    .math-figure-canvas{width:100%;max-width:250px}
-    .math-figure.photo .math-figure-canvas{max-width:100%}
-    .math-figure-canvas svg{width:100%;height:auto;display:block}
-    .math-figure-canvas img{width:100%;border-radius:10px;display:block}
-    .math-figure small{font-size:11px;line-height:1.4;color:#60747d;text-align:center}
-    .math-correct{display:grid;gap:8px;margin-top:-4px}
-    .math-correct-toggle{justify-self:start;border:1px solid #e3d18a;border-radius:9px;background:#fdf8e6;color:#7a5300;min-height:28px;padding:4px 9px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-    .math-correct-toggle span{width:16px;height:16px;border-radius:6px;background:#e5b45c;color:#fff;display:grid;place-items:center;font-size:10px;font-weight:900;flex-shrink:0}
-    .math-correct-panel{border:1px solid #dce8df;border-radius:14px;background:#fbfdf8;padding:11px;display:grid;gap:9px}
+    .math-correct{display:grid;gap:8px;margin-top:0}
+    .math-result-footer{display:grid;gap:8px;margin-top:2px;padding-top:8px;border-top:1px solid #edf1ef}
+    .math-correct-toggle{justify-self:end;border:1px solid #e3d18a;border-radius:999px;background:#fffdf4;color:#7a5300;min-height:26px;padding:3px 11px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;cursor:pointer}
+    .math-correct-panel{position:relative;border:1px solid #dce8df;border-radius:14px;background:#fbfdf8;padding:11px;display:grid;gap:9px}
     .math-correct-panel[hidden]{display:none}
-    .math-correct-panel p{font-size:11.5px;line-height:1.45;color:#60747d;margin:0}
-    .math-correct-chips{display:flex;gap:7px;flex-wrap:wrap}
-    .math-correct-chips button{border:1px solid #dce8df;border-radius:999px;background:#fff;color:#29495b;padding:6px 9px;font-size:10px;font-weight:800;cursor:pointer}
-    .math-correct-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
-    .math-correct-row input{height:38px;border:1px solid #dce8df;border-radius:12px;background:#fff;color:#0b2d43;padding:0 11px;font:inherit;font-size:12px}
-    .math-correct-row button{border:0;border-radius:12px;background:var(--green);color:#fff;padding:0 14px;font-size:11px;font-weight:900;cursor:pointer}
-    .math-correct-row button:disabled{opacity:.6;cursor:default}
+    .math-correction-chat-head{display:grid;gap:2px}
+    .math-correction-chat-head span{font-size:12px;font-weight:800;color:#0b2d43}
+    .math-correction-chat-head small{font-size:11px;line-height:1.35;color:#60747d}
+    .math-correction-pills{display:flex;gap:6px;flex-wrap:wrap}
+    .math-correction-pill{border:1px solid #dce8df;border-radius:999px;background:#fff;color:#29495b;padding:7px 9px;font-size:10px;font-weight:800;cursor:pointer}
+    .math-correction-pill:hover,.math-correction-pill.selected{border-color:#b9ce58;background:#eef6b5;color:#536b00}
+    .math-correction-pill.selected{box-shadow:inset 0 0 0 1px rgba(113,153,0,.12)}
+    .math-correction-send{position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;padding:0;cursor:pointer}
+    .math-correction-send svg{width:17px;height:17px}
+    .math-correction-send:hover:not(:disabled){background:#01605a}
+    .math-correction-send:disabled{opacity:.4;cursor:default}
+    .math-correction-send.busy{opacity:.55;cursor:default}
+    .math-nudge-button{display:grid;place-items:center;align-content:center;gap:1px;line-height:1.05;text-align:center}
+    .math-nudge-button span{display:block}
     .math-thinking{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;border:1px solid #d4e56d;border-radius:15px;background:linear-gradient(135deg,#fbfde6,#eef6f3);padding:14px;margin-bottom:12px}
     .math-thinking[hidden]{display:none}
     .math-thinking-orb{display:flex;gap:5px}
@@ -410,53 +406,61 @@ body{background:#f6f8f5}
     .math-detected-card:after{content:"";position:absolute;right:-24px;bottom:-30px;width:92px;height:92px;border-radius:30px;background:rgba(220,233,106,.32);transform:rotate(12deg)}
     .math-detected-card span,.math-detected-card div,.math-detected-card p{position:relative;z-index:1}
     .math-detected-card span{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;margin-bottom:10px}
-    .math-equation-large{font-size:clamp(22px,4vw,32px);line-height:1.12;font-weight:900;color:#004f48;overflow-wrap:anywhere}
     .math-frac{display:inline-grid;grid-template-rows:auto auto;justify-items:center;align-items:center;vertical-align:middle;margin:0 .1em;line-height:.98;text-align:center;font-size:.82em;transform:translateY(-.04em)}
     .math-frac span:first-child{width:100%;border-bottom:1.6px solid currentColor;padding:0 .22em .06em;white-space:nowrap}
     .math-frac span:last-child{padding:.06em .22em 0;white-space:nowrap}
     .math-detected-card p{font-size:11px;color:#60747d;margin:10px 0 0;font-weight:700}
-    .math-guide-card{border:1px solid #dce8df;border-radius:16px;background:#fff;padding:12px;display:grid;gap:10px}
+    .math-guide-card{border:0;border-radius:0;background:transparent;padding:0;display:grid;gap:9px}
     .teacher-note{display:grid;grid-template-columns:34px minmax(0,1fr);gap:9px;align-items:start;border-radius:13px;background:#fbfde6;border:1px solid #d4e56d;padding:10px}
     .teacher-note i{width:34px;height:34px;border-radius:12px;background:#004f48;color:#fff;display:grid;place-items:center;font-style:normal;font-size:14px;font-weight:900}
     .teacher-note p{font-size:12px;line-height:1.45;color:#29495b;margin:0}
-    .math-big-idea{border:1px solid #edf1ef;border-radius:13px;background:#fbfdf8;padding:10px}
-    .math-big-idea span{display:block;margin-bottom:5px}
-    .math-big-idea p{font-size:12px;line-height:1.42;color:#29495b;margin:0}
     .math-step-list{display:grid;gap:8px}
-    .math-step-card{border:1.5px solid #d4e56d;border-radius:15px;background:#fbfde6;padding:12px;display:grid;gap:9px}
-    .math-step-card-head{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:center}
-    .math-step-card-head span{border-radius:999px;background:#dce96a;color:#536b00;padding:6px 8px;font-size:9px;font-weight:900;white-space:nowrap}
-    .math-step-card-head b{font-size:14px;line-height:1.25;color:#0b2d43;font-weight:800}
-    .math-step-card p{font-size:14px;line-height:1.45;color:#29495b;margin:0}
-    .math-step-card>div:last-child:not(.math-step-card-head){border:1px solid rgba(0,79,72,.12);border-radius:11px;background:#fff;padding:10px;font-size:13px;line-height:1.35;color:#004f48;font-weight:800;overflow-wrap:anywhere}
-    .wb-dispute{border:1.5px solid #e5b45c;border-radius:13px;background:#fdf6e3;padding:10px 12px;font-size:12px;line-height:1.45;color:#7a5300}
-    .wb-dispute b{color:#7a5300}
-    .wb-known,.wb-goal{display:grid;gap:5px}
-    .wb-known span,.wb-goal span{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase}
-    .wb-known-chips{display:flex;flex-wrap:wrap;gap:6px}
-    .wb-known-chips em{font-style:normal;border:1px solid #dce8df;border-radius:999px;background:#fbfdf8;color:#004f48;padding:6px 10px;font-size:12px;font-weight:800}
-    .wb-goal p{font-size:13px;line-height:1.4;color:#29495b;margin:0;font-weight:700}
-    .wb-board{border:1.5px solid #d4e56d;border-radius:15px;background:#fbfde6;padding:6px;display:grid}
-    .wb-line{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;align-items:start;padding:10px 8px;border-bottom:1px dashed rgba(0,79,72,.14)}
-    .wb-line:last-child{border-bottom:0}
-    .wb-line i{width:26px;height:26px;border-radius:9px;background:#dce96a;color:#536b00;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:900;margin-top:2px}
-    .wb-math{font-size:15px;line-height:1.4;color:#004f48;font-weight:800;overflow-wrap:anywhere}
-    .wb-line small{display:block;font-size:11.5px;line-height:1.45;color:#60747d;margin-top:3px}
-    .wb-check{background:#eef6f3;border-radius:11px;border-bottom:0;margin-top:2px}
-    .wb-check i{background:#004f48;color:#fff}
+    .math-mode-note{position:relative;overflow:hidden;border:1px solid #dce8df;border-radius:12px;padding:9px 11px;background:linear-gradient(135deg,#fbfdf8,#eef6f3);display:grid;gap:3px}
+    .math-mode-note:after{content:"";position:absolute;right:-22px;bottom:-28px;width:84px;height:84px;border-radius:28px;background:rgba(220,233,106,.28);transform:rotate(12deg)}
+    .math-mode-note>*{position:relative;z-index:1}
+    .math-mode-note span,.math-help-hero>span,.math-try-card>span{font-size:10px;font-weight:900;text-transform:uppercase;color:#719900;letter-spacing:.06em}
+    .math-mode-note p{font-size:11px;line-height:1.35;color:#29495b;margin:0}
+    .math-mode-note.solution{background:linear-gradient(135deg,#fffdf8,#f6fbef)}
+    .math-help-panel{display:grid;gap:10px}
+    .math-help-hero{border:1px solid #dce8df;border-radius:16px;background:#fff;color:#29495b;padding:15px;box-shadow:0 10px 22px rgba(12,42,60,.045)}
+    /* The "Help Me" intro (concept + key formula) sits in a light-green card. */
+    .math-help-intro{background:#eef8e6;border:1px solid #d9ecc6;border-radius:12px;padding:12px 13px}
+    .math-help-hero span{color:#719900}
+    .math-help-hero h4{font-size:15px;line-height:1.25;color:#29495b;margin:4px 0 4px;font-weight:400}
+    .math-help-hero p{font-size:11.5px;line-height:1.4;color:#60747d;margin:0}
+    .math-help-formula{display:grid;gap:4px;margin-top:8px}
+    .math-help-formula div{font-size:16px;line-height:1.6;color:#004f48;font-weight:700;overflow-wrap:anywhere}
+    .math-help-inline-steps{display:grid;gap:6px;margin-top:12px}
+    .math-help-inline-steps>span{font-size:10px;font-weight:900;text-transform:uppercase;color:#719900;letter-spacing:.06em}
+    .math-help-inline-steps .tb-derivation{gap:8px}
+    .math-help-steps .tb-lhs,.math-help-steps .tb-op,.math-help-steps .tb-rhs,.math-help-steps .tb-prose{color:#004f48}
+    .math-help-steps .tb-why{color:#3f6d63}
+    .math-try-card{border:1px solid #dce8df;border-radius:12px;background:#fff;padding:10px 12px;display:grid;gap:5px}
+    .math-try-card{background:#fbfde6;border-color:#d4e56d}
+    .math-try-card p{font-size:13px;line-height:1.5;color:#29495b;margin:0}
     .tb-solution{border:1px solid #e2ead2;border-radius:16px;background:linear-gradient(180deg,#fffdf6,#fbfcf1);padding:15px 15px 13px;box-shadow:0 12px 26px rgba(12,42,60,.06),inset 0 1px 0 #fff}
+    .math-full-solution{background:#fff;border-color:#dce8df;box-shadow:0 10px 22px rgba(12,42,60,.045)}
+    .math-full-solution .tb-solution-label{color:#004f48}
+    .math-full-solution .tb-lhs,.math-full-solution .tb-op,.math-full-solution .tb-rhs,.math-full-solution .tb-prose{color:#004f48}
+    .math-full-solution .tb-why{color:#3f6d63}
+    .math-full-solution .tb-check{background:#f4fbf5;border-radius:11px;padding:10px;border-top:1px solid #cfe6d2}
     .tb-solution-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid rgba(113,153,0,.16)}
     .tb-solution-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
-    .tb-mode-toggle{margin-left:auto;background:#fff;flex-shrink:1}
-    .tb-mode-toggle button{padding:6px 12px}
-    .tb-solution.notes-hidden .tb-why,.tb-solution.notes-hidden .tb-check small{display:none}
-    .tb-solution.notes-hidden .tb-derivation{gap:7px 9px}
-    .tb-derivation{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:2px 9px;align-items:baseline}
+    .tb-derivation{display:grid;gap:9px}
+    /* One row per step: equation, then explanation. Stacked by default (Help, and
+       narrow Solution). At >=560px the Solution rows use display:contents so every
+       equation and explanation shares ONE grid — the left (equation) and right
+       (explanation) columns line up across all steps instead of zig-zagging. */
+    .tb-row{display:grid;grid-template-columns:1fr;gap:1px}
+    .tb-eq{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 6px;min-width:0}
     .tb-lhs,.tb-op,.tb-rhs{font-size:16px;line-height:1.6;color:#0f3d38;font-weight:700;overflow-wrap:anywhere;min-width:0}
-    .tb-lhs{text-align:right}
-    .tb-prose{grid-column:1 / -1;min-width:0;font-size:16px;line-height:1.5;color:#0f3d38;font-weight:700;overflow-wrap:anywhere;margin-bottom:2px}
-    .tb-why{grid-column:1 / -1;font-size:11.5px;line-height:1.45;color:#6b7d84;font-weight:500;margin:2px 0 10px;padding-left:2px}
-    .tb-why:last-child{margin-bottom:0}
+    .tb-prose{min-width:0;font-size:16px;line-height:1.5;color:#0f3d38;font-weight:700;overflow-wrap:anywhere}
+    .tb-why{font-size:11.5px;line-height:1.45;color:#6b7d84;font-weight:500;margin:0;padding-left:2px}
+    @media (min-width:560px){
+      .math-full-solution .tb-derivation{grid-template-columns:auto minmax(0,1fr);column-gap:20px;row-gap:11px;align-items:baseline}
+      .math-full-solution .tb-row{display:contents}
+      .math-full-solution .tb-prose{grid-column:1 / -1}
+    }
     .tb-check{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;margin-top:11px;padding-top:11px;border-top:1px dashed rgba(0,79,72,.22)}
     .tb-check i{width:24px;height:24px;border-radius:8px;background:#004f48;color:#fff;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:900}
     .tb-check-math{font-size:14px;line-height:1.45;color:#004f48;font-weight:800;overflow-wrap:anywhere}
@@ -466,7 +470,7 @@ body{background:#f6f8f5}
     .tb-reveal small{font-size:11px;line-height:1.4;color:#60747d}
     .math-reveal-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px solid #cfe0b6;border-radius:11px;background:#eef8e6;color:#215c1e;padding:8px 13px;font-size:12px;font-weight:800;cursor:pointer}
     .math-reveal-btn:hover{background:#e2f2d4}
-    .math-reveal-btn i{font-style:normal;font-size:13px;line-height:1}
+    .math-reveal-btn i{font-style:normal;font-size:10px;line-height:1;text-transform:uppercase;letter-spacing:.04em}
     .tb-reveal.locked{justify-items:stretch}
     .pin-label{font-size:11.5px;font-weight:800;color:#0b2d43}
     .pin-row{display:flex;gap:8px;align-items:center}
@@ -480,10 +484,15 @@ body{background:#f6f8f5}
     .pin-note{font-size:11px;line-height:1.4;color:#60747d;font-weight:600}
     .parent-pin{display:grid;gap:7px}
     .pin-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:#215c1e;background:#eef8e6;border:1px solid #cfe0b6;border-radius:999px;padding:4px 9px;width:max-content}
-    .math-reveal-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:11px;padding:10px 12px;border:1px solid #dce8df;border-radius:13px;background:#fbfdf8}
-    .math-reveal-bar .reveal-state{font-size:12px;font-weight:700;color:#60747d}
-    .math-reveal-bar .reveal-link{border:0;background:transparent;color:#0f6f52;font-size:12px;font-weight:800;cursor:pointer;text-decoration:underline}
-    .math-reveal-bar .reveal-pin{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .math-pin-backdrop{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(0,45,41,.28);backdrop-filter:blur(3px)}
+    .math-pin-dialog{width:min(360px,100%);box-sizing:border-box;border:1px solid #d4e56d;border-radius:18px;background:#fff;padding:18px;display:grid;gap:9px;box-shadow:0 18px 42px rgba(12,42,60,.22)}
+    .math-pin-kicker{font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#719900}
+    .math-pin-dialog h4{font-size:17px;line-height:1.25;color:#0b2d43;margin:0;font-weight:700}
+    .math-pin-dialog>p{font-size:12px;line-height:1.45;color:#60747d;margin:0}
+    .math-pin-dialog .reveal-pin{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .math-pin-dialog .pin-label{width:100%}
+    .math-pin-no-pin{font-size:11px;line-height:1.4;color:#7a5300;background:#fff8e7;border:1px solid #e3d18a;border-radius:10px;padding:8px;margin:0}
+    .math-pin-cancel{justify-self:start;border:0;background:transparent;color:#0f6f52;font-size:11px;font-weight:800;text-decoration:underline;padding:2px 0;cursor:pointer}
     .math-intro{padding:8px 4px 12px}
     .math-intro-head .mission-eyebrow{margin-bottom:4px}
     .math-intro-head h3{font-size:20px;color:#0b2d43;margin:2px 0 5px}
@@ -544,9 +553,7 @@ body{background:#f6f8f5}
     .kx{display:inline-block;max-width:100%;overflow-x:auto;overflow-y:hidden;vertical-align:middle;scrollbar-width:none}
     .kx::-webkit-scrollbar{display:none}
     .kx .katex{font-size:1.12em;color:#0f3d38}
-    .math-equation-large .kx .katex{font-size:1.05em;color:#004f48}
     .tb-check-math .kx .katex{font-size:1.04em}
-    .wb-known-chips .kx .katex,.wb-goal .kx .katex{font-size:1.05em}
     .math-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .math-pending{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;border:1.5px solid #d4e56d;border-radius:15px;background:#fbfde6;padding:16px}
     .math-pending b{display:block;font-size:14px;color:#0b2d43;font-weight:800}
@@ -567,35 +574,15 @@ body{background:#f6f8f5}
     .math-continue-button{justify-self:center;border:1px solid var(--line);border-radius:11px;background:#fff;color:#29495b;height:36px;padding:0 14px;font-size:11px;font-weight:800;cursor:pointer}
     .math-continue-button[hidden]{display:none}
     .math-problem-nav button:disabled{opacity:.45;cursor:not-allowed}
-    .math-warning-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;border:1px solid #d4e56d;border-radius:13px;background:#fbfde6;padding:10px}
-    .math-warning-card span{border-radius:999px;background:#dce96a;color:#536b00;padding:5px 7px;font-size:9px;font-weight:900;white-space:nowrap}
-    .math-warning-card p{font-size:11px;line-height:1.4;color:#29495b;margin:0}
     .math-answer-card{display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:13px;background:#004f48;color:#fff;padding:11px 12px}
     .math-answer-card span{font-size:10px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.72)}
     .math-answer-card b{font-size:18px;color:#fff;font-weight:800}
     /* Consolidated answer panel: answer + verify badge + watch-out + controls */
-    .math-answer-panel{border:1px solid #dce8df;border-radius:15px;background:linear-gradient(180deg,#fffdf8,#fbfdf5);padding:13px 15px;margin-top:11px;box-shadow:0 10px 22px rgba(12,42,60,.05)}
+    .math-answer-panel{border:1px solid #dce8df;border-radius:15px;background:#fff;padding:13px 15px;margin-top:11px;box-shadow:0 10px 22px rgba(12,42,60,.05)}
     .ma-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
     .ma-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
-    .ma-verified{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:#215c1e;background:#dbeecb;border-radius:999px;padding:4px 10px}
-    .ma-verified i{font-style:normal;font-size:11px}
-    .ma-reveal-btn{display:inline-flex;align-items:center;gap:5px;border:1.5px solid #cfe0b6;border-radius:999px;background:#eef8e6;color:#215c1e;padding:5px 12px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
-    .ma-reveal-btn:hover{background:#e2f2d4}
-    .ma-reveal-btn i{font-style:normal;font-size:12px;line-height:1}
-    .ma-value{font-size:21px;font-weight:800;color:#004f48;overflow-wrap:anywhere;line-height:1.25}
-    .ma-blur{display:inline-block;filter:blur(8px);user-select:none;pointer-events:none}
-    .ma-reveal{margin-top:11px}
-    .ma-reveal .reveal-state{display:none}
-    .ma-hint{font-size:11px;font-weight:700;color:#8a99a0}
-    .ma-watch{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:#2f5b2a;background:#eef8e6;border:1px solid #cfe6bd;border-radius:12px;padding:9px 11px;margin-top:12px}
-    .ma-watch i{font-style:normal;font-weight:900;color:#fff;background:#5aa02f;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:11px;flex-shrink:0;margin-top:1px}
-    .ma-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #eef1ee;margin-top:12px;padding-top:10px}
-    .ma-linkbtn{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font-size:12px;font-weight:800;color:#7c8b93;cursor:pointer}
-    .ma-linkbtn.ma-hide{color:#0f6f52}
-    .ma-linkbtn:hover{text-decoration:underline}
-    .math-support-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
-    .math-support-actions button{border:1px solid var(--line);border-radius:11px;background:#fff;color:#29495b;height:36px;padding:0 12px;font-size:11px;font-weight:800;cursor:pointer}
-    .math-support-actions .primary-action{border:0;background:var(--green);color:#fff}
+    .ma-value{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px;font-size:21px;font-weight:800;color:#004f48;overflow-wrap:anywhere;line-height:1.25}
+    .ma-option{display:inline-grid;place-items:center;width:38px;height:38px;padding:0;box-sizing:border-box;border:1px solid #cfe6bd;border-radius:9px;background:#eef8e6;color:#3e7e2e;font-size:15px;font-weight:900;line-height:1;flex:0 0 38px}
     .parent-note{display:grid;gap:8px}
     .parent-note .policy{background:#fff}
     .tool-flow{display:grid;gap:12px}
@@ -1181,6 +1168,9 @@ body{background:#f6f8f5}
       .math-source-head,.math-solution-top{grid-template-columns:1fr}
       .math-source-head .source-pills{width:auto;margin-left:0;justify-content:flex-start}
       .math-source-head .source-pills button{flex:0 0 auto}
+      .math-top-actions{justify-items:stretch}
+      .math-mode-switch{justify-content:stretch;width:100%;box-sizing:border-box}
+      .math-mode-switch button{flex:1 1 0}
       .math-source-grid{grid-template-columns:1fr}
       .math-source-tile{min-height:84px}
       .math-input-card{grid-template-columns:1fr}
@@ -1192,15 +1182,11 @@ body{background:#f6f8f5}
       .math-upload-strip .small-button{grid-column:1/-1;width:100%}
       .math-solution-layout{grid-template-columns:1fr}
       .math-problem-card{min-height:0}
-      .math-warning-card{grid-template-columns:1fr}
       .math-problem-nav{justify-content:flex-end}
-      .math-step-card-head{grid-template-columns:1fr}
       .explain-question-row{grid-template-columns:1fr}
       .explain-input-card>.small-button{min-height:40px;width:100%}
       .tutor-actions{grid-template-columns:1fr}
       .tutor-actions .small-button{width:100%}
-      .math-support-actions{justify-content:stretch}
-      .math-support-actions button{flex:1 1 130px}
       .tool-compact-row{gap:8px;flex-wrap:wrap}
       .tool-compact-row h2{font-size:17px;white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 calc(100% - 44px)}
       .mission-header-row h2{font-size:17px}

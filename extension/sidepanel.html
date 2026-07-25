@@ -44,8 +44,8 @@
                 </button>
                 <button class="kg-tool-tile" data-tool="math">
                   <div class="kg-tool-top"><span class="kg-tool-icon">∑</span><span class="status warn">Hint</span></div>
-                  <div class="kg-tool-body"><h3>Math Tutor</h3><p>Solve steps</p></div>
-                  <div class="kg-tile-art"><span class="kg-bubble">Capture</span><span class="kg-bubble">Check</span></div>
+                  <div class="kg-tool-body"><h3>Math Tutor</h3><p>Help first</p></div>
+                  <div class="kg-tile-art"><span class="kg-bubble">Help</span><span class="kg-bubble">Solution</span></div>
                 </button>
                 <button class="kg-tool-tile lime" data-tool="write">
                   <div class="kg-tool-top"><span class="kg-tool-icon">✎</span><span class="status blue">Draft</span></div>
@@ -384,7 +384,7 @@
                   </div>
                 </div>
               </div>
-              <button class="small-button primary-action" id="mathSolveButton" type="button">Solve &amp; Explain</button>
+              <button class="small-button primary-action math-nudge-button" id="mathSolveButton" type="button"><span>Give Me</span><span>Nudge</span></button>
             </div>
           </section>
 
@@ -393,14 +393,18 @@
             <div class="math-intro" id="mathIntro" hidden></div>
             <div class="math-solution-top">
               <div>
-                <span class="mission-eyebrow">Learn the steps</span>
-                <div class="math-title-row"><h3 id="mathProblemTitle">Problem 1 of 3</h3><span class="status" id="mathVerifiedPill" hidden>Double-checked</span></div>
-                <div class="math-skill-tags" id="mathSkillTags"><span>Equation</span><span>Undo steps</span><span>Check answer</span></div>
+                <div class="math-title-row"><h3 id="mathProblemTitle">Problem 1 of 3</h3></div>
               </div>
-              <div class="math-problem-nav">
-                <button id="mathPrevProblem" type="button" aria-label="Previous problem">‹</button>
-                <span id="mathProblemCount">1 / 3</span>
-                <button id="mathNextProblem" type="button" aria-label="Next problem">›</button>
+              <div class="math-top-actions">
+                <div class="math-mode-switch" id="mathModeSwitch" role="group" aria-label="Math help mode">
+                  <button class="active" data-math-mode="help" type="button">Help Me</button>
+                  <button data-math-mode="solution" type="button">Solution</button>
+                </div>
+                <div class="math-problem-nav">
+                  <button id="mathPrevProblem" type="button" aria-label="Previous problem">‹</button>
+                  <span id="mathProblemCount">1 / 3</span>
+                  <button id="mathNextProblem" type="button" aria-label="Next problem">›</button>
+                </div>
               </div>
             </div>
             <div class="math-thinking" id="mathThinking" hidden>
@@ -412,25 +416,25 @@
             </div>
             <div class="math-solution-layout">
               <div class="math-guide-card">
-                <div class="math-problem-header">
-                  <span>Problem</span>
-                  <div class="math-equation-large" id="mathEquationDisplay">3x + 7 = 22</div>
-                  <p id="mathProblemMeta">Linear equation · solve for x</p>
-                </div>
-                <div class="math-figure" id="mathFigure" hidden></div>
-                <div class="math-correct" id="mathCorrect">
-                  <button class="math-correct-toggle" id="mathCorrectToggle" type="button"><span>!</span>Didn't capture it right? Fix it</button>
+                <div class="math-step-list" id="mathStepList"></div>
+                <button class="math-continue-button" id="mathContinueSteps" type="button" hidden>Continue steps</button>
+                <div class="math-result-footer" id="mathCorrect">
+                  <button class="math-correct-toggle" id="mathCorrectToggle" type="button">Something not right?</button>
                   <div class="math-correct-panel" id="mathCorrectPanel" hidden>
-                    <p>If the screenshot was blurry or KiddieGPT read it wrong, try copy pasting the problem here.</p>
-                    <div class="math-correct-row">
-                      <input id="mathCorrectInput" type="text" maxlength="200" placeholder="Type or paste the problem here" />
-                      <button id="mathCorrectSend" class="primary-action" type="button">Re-solve</button>
+                    <div class="math-correction-chat-head">
+                      <span>Hoo needs a redo?</span>
+                    </div>
+                    <button id="mathCorrectSend" class="math-correction-send" type="button" disabled aria-label="Send — take another look">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
+                    </button>
+                    <div class="math-correction-pills" role="group" aria-label="Math correction type">
+                      <button class="math-correction-pill" type="button" data-math-correction="Explain this solution step by step, making each step clear and easy to follow for this student.">Explain it step by step</button>
+                      <button class="math-correction-pill" type="button" data-math-correction="Solve this problem again using a simpler, more basic method suited to this student's grade level.">Solve it using a simpler method</button>
+                      <button class="math-correction-pill" type="button" data-math-advanced="1" data-math-correction="Reconsider this problem from scratch and solve it again carefully and independently, double-checking every number, symbol, label, and step.">Reconsider and solve it again</button>
                     </div>
                     <small class="pdf-status" id="mathCorrectStatus" hidden></small>
                   </div>
                 </div>
-                <div class="math-step-list" id="mathStepList"></div>
-                <button class="math-continue-button" id="mathContinueSteps" type="button" hidden>Continue steps</button>
               </div>
             </div>
           </section>
