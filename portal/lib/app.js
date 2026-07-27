@@ -4564,7 +4564,6 @@ app.post("/api/ai/moderations", requireParent, async (req, res) => {
 // the extension's existing solve pipeline. The raw image is transient — never
 // persisted; only the short transcription is stored, briefly, against a token.
 const CAPTURE_TTL_MS = 5 * 60 * 1000;                 // token lifetime (~5 min)
-const CAPTURE_MAX_IMAGE_BYTES = AI_MAX_FILE_BYTES;    // one upload ceiling, not two
 const CAPTURE_RATE_WINDOW_MS = 60 * 1000;
 const CAPTURE_RATE_MAX = 5;                           // sessions per family per window
 const CAPTURE_TRANSCRIBE_INSTRUCTION = "You are KiddieGPT's math reader. Your only job is to read the image exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.";
@@ -4858,9 +4857,12 @@ app.post("/api/capture/:token/image", async (req, res) => {
   const dataUrl = String((req.body && req.body.image) || "");
   const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl);
   if (!match) { setSession({ status: "error", reason: "That didn't look like a photo. Try again." }); return res.status(400).json({ error: "bad_image" }); }
-  if (Buffer.byteLength(match[2], "base64") > CAPTURE_MAX_IMAGE_BYTES) { setSession({ status: "error", reason: "That photo is too large. Try again." }); return res.status(413).json({ error: "too_large" }); }
 
   const settings = normaliseAiSettings(readDb().aiSettings);
+  // Read the cap from settings, not the constant: the admin console's "Max
+  // upload size" has to mean the same thing on every route, or lowering it
+  // would quietly leave the phone-capture path on the old ceiling.
+  if (Buffer.byteLength(match[2], "base64") > settings.maxFileBytes) { setSession({ status: "error", reason: "That photo is too large. Try again." }); return res.status(413).json({ error: "too_large" }); }
   if (!settings.openaiApiKey) { setSession({ status: "error", reason: "The tutor isn't set up yet. Ask a parent." }); return res.json({ ok: true }); }
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
