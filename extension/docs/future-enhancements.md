@@ -7,26 +7,11 @@ ships, delete it (git history keeps the record). Newest first.
 
 ## Open
 
-### FE-1 — Raise the portal output-token ceiling (per-tool) · owner: portal
-The extension now requests larger `max_output_tokens` for math (transcription 8000,
-solve 4000) so a full multi-problem worksheet isn't truncated. But the portal clamps
-every request to `AI_MAX_OUTPUT_TOKENS` (currently 2000, `portal/lib/app.js:4024`), so
-those larger budgets have **no effect** until the ceiling is raised.
-- Raise `AI_MAX_OUTPUT_TOKENS` (env) to ~8000, **or** make it per-tool (transcription
-  high, follow-up chat low) so the abuse cap on free-text chat stays tight.
-- Added 2026-07-24, from the "worksheet solved only 1 of 3 problems" trace. The
-  extension-side prompt fix (force per-item enumeration) likely resolves the common
-  case; this ceiling is what lets big worksheets (6–15 problems) transcribe fully.
-
 ### FE-2 — Recover complete items from a truncated transcription · owner: extension
 `parseOpenAIJson` currently fails (or drops to 1 problem) if the JSON is cut off.
 Make it salvage every complete element of the `problems` array so truncation degrades
 to "most problems" instead of one. Defensive backstop for FE-1.
 
-### FE-3 — Moderation: build `/api/ai/moderations` and fail **closed** · owner: portal
-`moderateFlagged` calls a portal route that doesn't exist yet and currently fails
-*open*, so kid input/output isn't screened. Undercuts the "grade safe" claim. Build
-the route and switch the extension guard to fail closed for a children's product.
 
 ### FE-4 — Narrow `<all_urls>` → `activeTab` · owner: extension
 All tools are user-initiated, so `activeTab` likely suffices. Broad host access draws
@@ -40,6 +25,25 @@ clause so the extension isn't trivially used as a general LLM.
 
 ---
 
+### FE-6 — Batch the math verification pass · owner: extension
+One worksheet costs ~31 AI calls (1 transcribe + 15 solve + 15 check) ≈ 52k tokens,
+which is the single largest driver of account spend. `checkMathOnce` already accepts
+a `problems` array but every caller passes one problem, so the verification pass
+could batch several per call and cut worksheet cost ~40%.
+- Not urgent: measured peak real usage is ~54k tokens/day against a 200k cap.
+- Not trivial: the flow is coupled to per-problem progressive reveal, per-problem
+  retry-on-failed-check, and `mathSolveToken` cancellation, so batching means
+  restructuring the answer-verification path. Do it on its own, not alongside
+  cost-control changes.
+- Added 2026-07-25 while hardening AI cost controls.
+
+---
+
 ## Shipped / handed off (kept briefly for context)
 - Model config from Admin Console (standard + "OpenAI model (Adv)"), reconsider →
   Adv model. Extension side done; portal side handed to the portal chat 2026-07-24.
+- FE-1 output-token ceiling: shipped 2026-07-25 as **per-tool** caps
+  (`maxOutputTokens` 2000 / `maxOutputTokensLong` 8000 for transcription), both
+  admin-configurable. Per-tool was load-bearing, not cosmetic: raising the global
+  ceiling to 8000 would have multiplied across a worksheet's ~30 solve/check calls
+  and cost ~264k tokens in one run, over the whole 200k daily account cap.

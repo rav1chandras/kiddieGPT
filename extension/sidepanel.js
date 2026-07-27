@@ -435,7 +435,12 @@ let missionReadSeconds = 0;
 let missionReadTimerId = 0;
 let missionReadDone = false;
 let activeMissionStep = "study";
-const maxStudyFileBytes = 5 * 1024 * 1024;
+// Mirrors the portal's AI_MAX_FILE_BYTES. It used to advertise 5 MB, which was
+// never actually accepted: base64 inflates a 5 MB file to ~6.99 MB against the
+// portal's body limit, so those uploads failed with an opaque error.
+const maxStudyFileBytes = 4 * 1024 * 1024;
+// Mirrors the portal's maxTokensPerRequest, for pre-flight messaging only.
+const maxRequestTokens = 40000;
 const maxStudyPdfPages = 20;
 const maxScannedPdfPages = 5;
 const maxTabChars = 30000;        // active-tab text extraction cap
@@ -1367,14 +1372,22 @@ const PORTAL_ERROR_MESSAGES = {
   auth_required: "Please sign in again to keep using KiddieGPT.",
   openai_error: "The tutor had trouble responding. Please try again.",
   openai_unreachable: "Couldn't reach the tutor. Check your connection and try again.",
-  content_blocked: "That can't be shown here. Try asking about your schoolwork in a different way."
+  content_blocked: "That can't be shown here. Try asking about your schoolwork in a different way.",
+  // Distinct from content_blocked on purpose: the content was never judged, so
+  // telling a student to "ask differently" would be wrong and unactionable.
+  safety_unavailable: "The safety check isn't available right now. Please try again in a moment."
 };
 
 // Kid-safety net: screen AI output (and student free-text) for unsafe content.
 // Uses the portal moderation proxy in production; falls back to a direct OpenAI
-// moderation call when a local dev key is present. Fails OPEN — a moderation
-// outage never blocks legitimate schoolwork, since the grade-safe prompts are
-// the primary guard and this is defense-in-depth.
+// moderation call when a local dev key is present.
+//
+// Fails CLOSED. This previously returned false on every error path, with a
+// "endpoint not live yet" note that outlived the endpoint actually shipping —
+// so nothing was screened at all while the product claimed to be grade safe.
+// An unverifiable response now throws rather than returning true, because the
+// content was never judged: reporting it as flagged would tell a student to
+// rephrase perfectly good schoolwork during what is really an outage.
 async function moderateFlagged(settings, text) {
   const input = String(text || "").trim().slice(0, 4000);
   if (!input) return false;
@@ -1385,21 +1398,23 @@ async function moderateFlagged(settings, text) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
         body: JSON.stringify({ model: MODELS.moderation, input })
       });
-      if (!res.ok) return false;
+      if (!res.ok) throw new PortalError("safety_unavailable", res.status);
       const data = await res.json().catch(() => ({}));
       return Boolean(data?.results?.some(result => result.flagged));
     }
-    // TODO(backend): POST /api/ai/moderations { input } -> { flagged: boolean }.
     const res = await fetch(`${portalBaseUrl()}/api/ai/moderations`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {}) },
       body: JSON.stringify({ input, childId: portalSession?.childId || undefined })
     });
-    if (!res.ok) return false; // endpoint not live yet -> fail open
+    // The portal returns 503 when it cannot reach the moderation API, precisely
+    // so this can tell "clean" apart from "unchecked". Honour that.
+    if (!res.ok) throw new PortalError("safety_unavailable", res.status);
     const data = await res.json().catch(() => ({}));
     return Boolean(data?.flagged ?? data?.results?.some(result => result.flagged));
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof PortalError) throw error;
+    throw new PortalError("safety_unavailable", 503);
   }
 }
 
@@ -2728,17 +2743,26 @@ async function handleStudyFile(file, tool = "pdf") {
     return;
   }
   if (file.size > maxStudyFileBytes) {
-    setToolUploadStatus(tool, "File is too large. Please use a file under 5 MB.", "warn");
+    selectedPdfFile = null;
+    setToolUploadStatus(tool, `File is too large. Please use a file under ${formatBytes(maxStudyFileBytes)}.`, "warn");
     return;
   }
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
-    const { pages, scanned } = await inspectPdf(file);
+    const { pages, scanned, reliable } = await inspectPdf(file);
     const cap = scanned ? maxScannedPdfPages : maxStudyPdfPages;
-    if (pages > cap) {
+    if (reliable && pages > cap) {
       selectedPdfFile = null;
       setToolUploadStatus(tool, scanned
         ? `This looks like a scanned PDF with ${pages} pages. Scanned pages are slower and cost more to read, so please use up to ${maxScannedPdfPages} pages at a time.`
         : `That PDF has ${pages} pages. Please use up to ${maxStudyPdfPages} pages (one chapter or section) at a time.`, "warn");
+      return;
+    }
+    // Page count was unknowable (compressed page tree). Fall back to size, which
+    // is what the server will judge it on, so the student gets a clear reason
+    // here instead of a slow rejection after the upload.
+    if (!reliable && estimateFileTokens(file.size) > maxRequestTokens) {
+      selectedPdfFile = null;
+      setToolUploadStatus(tool, `That PDF is too big to read in one go (${formatBytes(file.size)}). Please use one chapter or section at a time.`, "warn");
       return;
     }
   }
@@ -3724,24 +3748,49 @@ function setMathUploadState(file, error = "") {
       : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg>`;
   }
   if (title) title.textContent = uploaded ? `${file.name}` : "Choose a math file";
-  if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : "One page · PDF, JPG, or PNG · up to 5 MB");
+  if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : `One page · PDF, JPG, or PNG · up to ${formatBytes(maxStudyFileBytes)}`);
   if (browseLabel) browseLabel.textContent = uploaded ? "Change" : "Browse file";
 }
 
+// Page counting here is a UX affordance, not a security control — the portal's
+// per-request token ceiling is what actually bounds cost, and it does not depend
+// on parsing anything. This exists so an oversized file is refused up front with
+// a useful message instead of a slow 413.
+//
+// It reports `reliable: false` rather than guessing when the structure is
+// opaque. The previous version returned `pages: 1` in exactly that case, so a
+// 300-page PDF stored in compressed object streams (the default for most modern
+// producers) read as a single page and sailed past the cap.
 async function inspectPdf(file) {
   try {
     const buffer = await file.arrayBuffer();
     const text = new TextDecoder("latin1").decode(buffer);
+    // PDF 1.5+ keeps the page tree inside a compressed /ObjStm, so the markers
+    // below are simply not visible in the raw bytes. Anything we counted would
+    // be an undercount, so say so instead.
+    const compressed = /\/ObjStm\b/.test(text);
     const pageMatches = text.match(/\/Type\s*\/Page(?![s])/g);
     const countMatch = text.match(/\/Count\s+(\d+)/);
-    const pages = pageMatches && pageMatches.length ? pageMatches.length : (countMatch ? parseInt(countMatch[1], 10) : 1);
+    const marked = pageMatches ? pageMatches.length : 0;
+    const counted = countMatch ? parseInt(countMatch[1], 10) : 0;
+    // Take the larger signal: /Count can describe a subtree, and marker counting
+    // misses anything compressed, so neither is reliably the maximum on its own.
+    const pages = Math.max(marked, counted);
+    const reliable = !compressed && pages > 0;
     // No font references means there's no selectable text layer — the pages are
     // images the model must read with (expensive) vision. That's a "scanned" PDF.
     const scanned = !/\/Font\b/.test(text) && /\/Subtype\s*\/Image|\/DCTDecode|\/CCITTFaxDecode|\/JBIG2Decode/.test(text);
-    return { pages, scanned };
+    return { pages: pages || 1, scanned, reliable };
   } catch {
-    return { pages: 1, scanned: false };
+    // Unreadable: report it as unknown rather than as the smallest possible file.
+    return { pages: 1, scanned: false, reliable: false };
   }
+}
+
+// Mirrors the portal's estimator (TOKENS_PER_FILE_B64_CHAR) so the panel can
+// refuse a file the server would refuse anyway, with a message that explains it.
+function estimateFileTokens(bytes) {
+  return Math.ceil((bytes * 4 / 3) * 0.0375);
 }
 
 async function countPdfPages(file) {
@@ -3757,7 +3806,7 @@ async function handleMathFileChange(event) {
     return;
   }
   if (file.size > maxStudyFileBytes) {
-    setMathUploadState(null, "That file is too large. Use one under 5 MB.");
+    setMathUploadState(null, `That file is too large. Use one under ${formatBytes(maxStudyFileBytes)}.`);
     return;
   }
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
@@ -5492,7 +5541,7 @@ async function buildStudyPackFromActiveTab(settings, challenge = "Balanced", gra
 }
 
 async function buildPdfWithOpenAI(file, settings, challenge = "Balanced", gradeBand = "6-8") {
-  if (file.size > maxStudyFileBytes) throw new Error("Study file must be under 5 MB.");
+  if (file.size > maxStudyFileBytes) throw new Error(`Study file must be under ${formatBytes(maxStudyFileBytes)}.`);
   setPdfStatus("Reading study file...", "blue");
   const fileData = await readFileAsDataUrl(file);
   const studySourcePart = getOpenAIStudySourcePart(file, fileData);
