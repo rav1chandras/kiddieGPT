@@ -1891,13 +1891,26 @@ function studyFileKey(file) {
   return file ? `file:${file.name}:${file.size}` : "";
 }
 
+// Finished study packs, keyed on everything that changes the output. The source
+// text was already cached, but the pack built from it was not — so pressing
+// "Generate Study Aids" twice on the same file paid twice for an identical
+// result, which at ~22k tokens a build is the largest avoidable waste in the
+// product. Only the last pack is kept: going back and forth between two sources
+// is rare, and an unbounded cache in a long-lived panel is its own problem.
+let lastStudyPack = null; // { key, pack }
+
+function studyPackKey({ useFileSource, file, url, challenge, gradeBand }) {
+  const source = useFileSource ? studyFileKey(file) : `tab:${url || ""}`;
+  return source ? `${source}|${challenge}|${gradeBand}` : "";
+}
+
 // Read a file's text once, cache it, and reuse it for Tutor + Mission (no double read).
 async function getSharedFileText(file, settings) {
   const key = studyFileKey(file);
   if (currentSourceKey === key && currentSourceText) {
     return { label: currentSourceLabel || file.name, text: currentSourceText };
   }
-  const fileData = await readFileAsDataUrl(file);
+  const fileData = await readStudySourceDataUrl(file);
   const part = getOpenAIStudySourcePart(file, fileData);
   const result = await callOpenAIJson({
     settings,
@@ -2800,6 +2813,18 @@ function isImageFile(file) {
   return file.type.startsWith("image/") || /\.(jpe?g|png)$/i.test(file.name);
 }
 
+// Reads a study source for upload, downscaling images on the way through. PDFs
+// pass unchanged — their size is bounded by the page cap and the token ceiling.
+async function readStudySourceDataUrl(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+  if (!isImageFile(file)) return dataUrl;
+  try {
+    return (await prepareImageForUpload(dataUrl)).dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
 function getOpenAIStudySourcePart(file, fileData) {
   if (isImageFile(file)) {
     return {
@@ -2841,6 +2866,85 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error("Could not read PDF."));
     reader.readAsDataURL(file);
   });
+}
+
+// A phone photo is routinely 3-12 MB, which is mostly resolution the model
+// never uses — it downscales anyway, and image cost is tiered by size rather
+// than bytes. Shrinking here turns uploads that would be rejected outright into
+// ones that succeed, and cuts the wait noticeably on a slow connection.
+const maxImageEdge = 1600;
+// Below this a photo is almost certainly a mistake — a lens cap, a desk, a wall.
+// Sending it costs a full vision call to be told there is no math in it.
+//
+// Applied to the busiest tile, not the whole frame (see prepareImageForUpload).
+// The asymmetry sets the threshold: letting a blank through wastes one call,
+// but rejecting real homework breaks the product. A tile holding even light
+// pencil scores well into the tens, a genuinely empty frame ~0, so this sits
+// far below the sparsest real content rather than midway between them.
+// Measured: real content scores 7.2 (light pencil) to 70 (dense worksheet);
+// blanks score 0.0-0.8. 4 sits in the middle of that gap rather than close to
+// the faintest real writing.
+const minImageVariance = 4;
+const minImageEdge = 300;
+
+// Decodes once and returns both the measurement and the (possibly downscaled)
+// image, so a blurry-photo check doesn't cost a second decode.
+async function prepareImageForUpload(dataUrl) {
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Could not read that image."));
+    el.src = dataUrl;
+  });
+  const { naturalWidth: w, naturalHeight: h } = img;
+  if (!w || !h) return { dataUrl, tooSmall: true, blank: false };
+  if (Math.max(w, h) < minImageEdge) return { dataUrl, tooSmall: true, blank: false };
+
+  const scale = Math.min(1, maxImageEdge / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // Per-tile luminance spread, taking the busiest tile.
+  //
+  // Measuring the whole frame at once does not work: a page holding a single
+  // problem is ~99.99% white, so one line of real math scores 0.01 — identical
+  // to a lens-cap photo. Splitting into tiles means the few that contain the
+  // writing are judged on their own, and a mostly-empty page still registers.
+  const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const tiles = 12;
+  const tileW = Math.max(1, Math.floor(width / tiles));
+  const tileH = Math.max(1, Math.floor(height / tiles));
+  let busiest = 0;
+  for (let ty = 0; ty < tiles; ty += 1) {
+    for (let tx = 0; tx < tiles; tx += 1) {
+      let n = 0, sum = 0, sumSq = 0;
+      const x1 = tx * tileW, y1 = ty * tileH;
+      // Sample every other pixel — enough for a spread, a quarter of the work.
+      for (let y = y1; y < y1 + tileH && y < height; y += 2) {
+        for (let x = x1; x < x1 + tileW && x < width; x += 2) {
+          const i = (y * width + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          sum += lum;
+          sumSq += lum * lum;
+          n += 1;
+        }
+      }
+      if (!n) continue;
+      const sd = Math.sqrt(Math.max(0, sumSq / n - (sum / n) ** 2));
+      if (sd > busiest) busiest = sd;
+    }
+  }
+  return {
+    dataUrl: scale < 1 ? canvas.toDataURL("image/jpeg", 0.85) : dataUrl,
+    blank: busiest < minImageVariance,
+    tooSmall: false,
+    variance: busiest,
+    width: canvas.width,
+    height: canvas.height
+  };
 }
 
 let missionProgressTimer = 0;
@@ -2892,12 +2996,23 @@ async function buildPdfStudyPack() {
   }
   const challenge = getMissionChallenge();
   const gradeBand = settings.gradeBand || "6-8";
+  const packKey = studyPackKey({
+    useFileSource,
+    file: selectedPdfFile,
+    url: activeContext?.url,
+    challenge,
+    gradeBand
+  });
   setPdfBusy(true);
   startMissionProgress();
   try {
-    const pack = useFileSource
+    // Same source, same challenge, same grade -> same pack. Reuse it instead of
+    // paying to regenerate something the student already has on screen.
+    const cached = packKey && lastStudyPack?.key === packKey ? lastStudyPack.pack : null;
+    const pack = cached || (useFileSource
       ? await buildPdfWithOpenAI(selectedPdfFile, settings, challenge, gradeBand)
-      : await buildStudyPackFromActiveTab(settings, challenge, gradeBand, activeContext);
+      : await buildStudyPackFromActiveTab(settings, challenge, gradeBand, activeContext));
+    if (packKey) lastStudyPack = { key: packKey, pack };
     currentStudyPack = pack;
     missionQuizSets = [pack.quiz];
     missionCardSets = [pack.flashcards];
@@ -3761,25 +3876,82 @@ function setMathUploadState(file, error = "") {
 // opaque. The previous version returned `pages: 1` in exactly that case, so a
 // 300-page PDF stored in compressed object streams (the default for most modern
 // producers) read as a single page and sailed past the cap.
+// Counting markers in the raw bytes only works on PDFs that store their page
+// tree uncompressed. PDF 1.5+ puts it inside a Flate-compressed object stream —
+// which is what Word, Chrome's print-to-PDF and most LaTeX toolchains emit — so
+// the markers aren't missing, just deflated. Inflate first, then count.
+const PDF_MAX_INFLATE_STREAMS = 64;        // pathological files shouldn't stall the panel
+const PDF_MAX_INFLATE_BYTES = 8 * 1024 * 1024;
+
+async function inflateStream(bytes) {
+  // PDF /FlateDecode is zlib-wrapped (RFC1950), which is DecompressionStream's
+  // "deflate". Raw deflate would be "deflate-raw".
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new TextDecoder("latin1").decode(await new Response(stream).arrayBuffer());
+}
+
+// Inflates the object streams and returns their concatenated contents.
+async function pdfObjectStreamText(buffer, raw) {
+  const marker = /\/ObjStm\b/g;
+  let out = "";
+  let streams = 0;
+  let match;
+  while ((match = marker.exec(raw)) && streams < PDF_MAX_INFLATE_STREAMS && out.length < PDF_MAX_INFLATE_BYTES) {
+    // Find this object's stream payload: "stream\n" ... "endstream".
+    const open = raw.indexOf("stream", match.index);
+    if (open < 0) break;
+    let start = open + "stream".length;
+    if (raw[start] === "\r") start += 1;
+    if (raw[start] === "\n") start += 1;
+    let end = raw.indexOf("endstream", start);
+    if (end < 0) break;
+    // The spec allows an EOL between the data and `endstream` that is not part
+    // of the stream. DecompressionStream treats those trailing bytes as corrupt
+    // input and errors, so walk them back off.
+    while (end > start && (raw[end - 1] === "\n" || raw[end - 1] === "\r")) end -= 1;
+    streams += 1;
+    try {
+      out += await inflateStream(new Uint8Array(buffer, start, end - start));
+    } catch {
+      // A stream we can't inflate tells us nothing; keep going rather than
+      // failing the whole inspection over one bad object.
+    }
+  }
+  return out;
+}
+
+function countPdfPageMarkers(text) {
+  const marked = (text.match(/\/Type\s*\/Page(?![s])/g) || []).length;
+  const countMatch = text.match(/\/Count\s+(\d+)/);
+  const counted = countMatch ? parseInt(countMatch[1], 10) : 0;
+  // Take the larger signal: /Count can describe a subtree, and marker counting
+  // misses anything compressed, so neither is reliably the maximum on its own.
+  return Math.max(marked, Number.isFinite(counted) ? counted : 0);
+}
+
 async function inspectPdf(file) {
   try {
     const buffer = await file.arrayBuffer();
-    const text = new TextDecoder("latin1").decode(buffer);
-    // PDF 1.5+ keeps the page tree inside a compressed /ObjStm, so the markers
-    // below are simply not visible in the raw bytes. Anything we counted would
-    // be an undercount, so say so instead.
-    const compressed = /\/ObjStm\b/.test(text);
-    const pageMatches = text.match(/\/Type\s*\/Page(?![s])/g);
-    const countMatch = text.match(/\/Count\s+(\d+)/);
-    const marked = pageMatches ? pageMatches.length : 0;
-    const counted = countMatch ? parseInt(countMatch[1], 10) : 0;
-    // Take the larger signal: /Count can describe a subtree, and marker counting
-    // misses anything compressed, so neither is reliably the maximum on its own.
-    const pages = Math.max(marked, counted);
-    const reliable = !compressed && pages > 0;
+    const raw = new TextDecoder("latin1").decode(buffer);
+    let pages = countPdfPageMarkers(raw);
+    let fonts = /\/Font\b/.test(raw);
+    let reliable = pages > 0;
+
+    if (/\/ObjStm\b/.test(raw)) {
+      const inflated = await pdfObjectStreamText(buffer, raw);
+      if (inflated) {
+        pages = Math.max(pages, countPdfPageMarkers(inflated));
+        fonts = fonts || /\/Font\b/.test(inflated);
+        reliable = pages > 0;
+      } else {
+        // Compressed page tree we couldn't read: an undercount would be worse
+        // than admitting we don't know, since the caller falls back to size.
+        reliable = false;
+      }
+    }
     // No font references means there's no selectable text layer — the pages are
     // images the model must read with (expensive) vision. That's a "scanned" PDF.
-    const scanned = !/\/Font\b/.test(text) && /\/Subtype\s*\/Image|\/DCTDecode|\/CCITTFaxDecode|\/JBIG2Decode/.test(text);
+    const scanned = !fonts && /\/Subtype\s*\/Image|\/DCTDecode|\/CCITTFaxDecode|\/JBIG2Decode/.test(raw);
     return { pages: pages || 1, scanned, reliable };
   } catch {
     // Unreadable: report it as unknown rather than as the smallest possible file.
@@ -3811,11 +3983,29 @@ async function handleMathFileChange(event) {
   }
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
   if (isPdf) {
-    const pages = await countPdfPages(file);
-    if (pages > 1) {
+    const { pages, reliable } = await inspectPdf(file);
+    if (reliable && pages > 1) {
       selectedMathFile = null;
       setMathUploadState(null, `This PDF has ${pages} pages. Please upload just one page at a time.`);
       return;
+    }
+  } else if (isImageFile(file)) {
+    // Catch the unreadable photo here rather than paying a vision call to be
+    // told there's no math in it.
+    try {
+      const check = await prepareImageForUpload(await readFileAsDataUrl(file));
+      if (check.tooSmall) {
+        selectedMathFile = null;
+        setMathUploadState(null, "That image is too small to read. Try a closer, larger photo.");
+        return;
+      }
+      if (check.blank) {
+        selectedMathFile = null;
+        setMathUploadState(null, "That photo looks blank or too blurry to read. Try again with more light.");
+        return;
+      }
+    } catch {
+      // Couldn't decode it here; let the upload proceed and be judged upstream.
     }
   }
   selectedMathFile = file;
@@ -4327,7 +4517,7 @@ async function solveMathWithAI() {
 
   const parts = [];
   if (selectedMathFile) {
-    const fileData = await readFileAsDataUrl(selectedMathFile);
+    const fileData = await readStudySourceDataUrl(selectedMathFile);
     parts.push(getOpenAIStudySourcePart(selectedMathFile, fileData));
   } else if (selectedMathCapture) {
     parts.push({ type: "input_image", image_url: selectedMathCapture });
@@ -5543,7 +5733,7 @@ async function buildStudyPackFromActiveTab(settings, challenge = "Balanced", gra
 async function buildPdfWithOpenAI(file, settings, challenge = "Balanced", gradeBand = "6-8") {
   if (file.size > maxStudyFileBytes) throw new Error(`Study file must be under ${formatBytes(maxStudyFileBytes)}.`);
   setPdfStatus("Reading study file...", "blue");
-  const fileData = await readFileAsDataUrl(file);
+  const fileData = await readStudySourceDataUrl(file);
   const studySourcePart = getOpenAIStudySourcePart(file, fileData);
   setPdfStatus("Sending study source to the tutor...", "blue");
   const result = await callOpenAIJson({
