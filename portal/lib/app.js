@@ -44,24 +44,104 @@ function maxInputCharsForTool(tool) {
   return LONG_INPUT_TOOLS.has(String(tool || "").trim().toLowerCase()) ? AI_MAX_INPUT_CHARS_LONG : AI_MAX_INPUT_CHARS;
 }
 const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 2000);
+// Transcribing a multi-problem worksheet needs a bigger reply than a chat turn.
+// This is per-TOOL on purpose: raising the global ceiling would multiply across
+// the ~30 solve/check calls one worksheet makes and blow the account cap in a
+// single run, whereas transcription is one call.
+const AI_MAX_OUTPUT_TOKENS_LONG = Number(process.env.AI_MAX_OUTPUT_TOKENS_LONG || 8000);
+const LONG_OUTPUT_TOOLS = new Set(["transcribe", "transcription"]);
+function maxOutputTokensForTool(tool, settings) {
+  const long = LONG_OUTPUT_TOOLS.has(String(tool || "").trim().toLowerCase());
+  const configured = long
+    ? settings?.maxOutputTokensLong ?? AI_MAX_OUTPUT_TOKENS_LONG
+    : settings?.maxOutputTokens ?? AI_MAX_OUTPUT_TOKENS;
+  const ceiling = long ? AI_MAX_OUTPUT_TOKENS_LONG : AI_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.max(1, Number(configured) || ceiling), ceiling);
+}
 // OpenAI's TTS endpoint rejects >4096 characters, so stay just under it.
 const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
 
-// Sum the text an OpenAI Responses `input` carries, ignoring image parts.
-function aiInputTextLength(input) {
-  if (typeof input === "string") return input.length;
-  if (Array.isArray(input)) {
-    return input.reduce((sum, item) => {
-      if (typeof item === "string") return sum + item.length;
-      if (item && typeof item === "object") {
-        if (typeof item.text === "string") return sum + item.text.length;
-        if (Array.isArray(item.content)) return sum + aiInputTextLength(item.content);
-      }
-      return sum;
-    }, 0);
+// ---- Cost ceilings ----------------------------------------------------------
+// A hard, non-configurable ceiling on what one account can spend in a day.
+// Admin settings and env can only tune BELOW this — there is deliberately no
+// "unlimited" state, because the previous `0 = unlimited` convention meant an
+// operator typing 0 to mean "allow nothing" silently got "allow everything".
+const HARD_FAMILY_TOKENS_DAILY = 200000;
+// Largest single request we will forward, estimated before the call. This is
+// the defense that does not depend on parsing the payload: a 300-page PDF and a
+// 300-page anything-else are both rejected on estimated size alone.
+const AI_MAX_TOKENS_PER_REQUEST = Number(process.env.AI_MAX_TOKENS_PER_REQUEST || 40000);
+// Binary budget for file/image parts. base64 inflates ~4/3, so this must stay
+// under the express.json body limit or uploads fail with an opaque 413.
+const AI_MAX_FILE_BYTES = Number(process.env.AI_MAX_FILE_BYTES || 4 * 1024 * 1024);
+const AI_BODY_LIMIT_BYTES = Math.ceil(AI_MAX_FILE_BYTES * 4 / 3) + 512 * 1024;
+// Velocity limits, per family.
+const AI_RATE_WINDOW_MS = 60 * 1000;
+// 40, not 20: one 15-problem worksheet fires 31 sequential calls (transcribe,
+// then solve+check per problem). At 1.5-2s per call that clears 20/min and the
+// solve would stall midway through the student's own worksheet. 40 still bounds
+// a scripted burst without breaking the product's heaviest legitimate flow.
+const AI_RATE_MAX = Number(process.env.AI_RATE_MAX || 40);
+const AI_MAX_CONCURRENT = Number(process.env.AI_MAX_CONCURRENT || 2);
+// Auto-pause an account after this many abuse signals in a day. 0 = never.
+const AI_ABUSE_PAUSE_THRESHOLD = Number(process.env.AI_ABUSE_PAUSE_THRESHOLD || 25);
+
+// Token estimation, by part type — bytes mean very different things depending
+// on what they encode, so a single bytes->tokens ratio would be wrong for both.
+const TOKENS_PER_TEXT_CHAR = 1 / 4;
+// OpenAI downscales images, so an image's cost is bounded by its resolution
+// tier, not its file size. Charge the high-detail ceiling per image.
+const TOKENS_PER_IMAGE = 1500;
+// A document is the dangerous case: base64 -> raw (x0.75), of which roughly 20%
+// is extractable text, at ~4 chars/token. The 20% is measured against real
+// files rather than guessed — a 20-page/200 KB PDF carries ~40,000 characters,
+// since fonts and structure dominate the bytes. Calibration matters in both
+// directions: at 40% the ceiling would reject any PDF over ~371 KB and break
+// ordinary worksheets, while this accepts up to ~742 KB and still refuses
+// everything from 1 MB up. The estimate is reconciled against real usage
+// immediately after the call, so erring high only over-restricts briefly.
+const TOKENS_PER_FILE_B64_CHAR = 0.75 * 0.2 / 4;
+
+// Measure everything an OpenAI Responses `input` carries. The previous version
+// summed text only and said so ("ignoring image parts") — which meant a 5.5 MB
+// base64 document measured 33 characters and sailed through a 48,000 cap.
+function aiInputCost(input, acc = { textChars: 0, fileB64Chars: 0, images: 0 }) {
+  if (typeof input === "string") {
+    acc.textChars += input.length;
+    return acc;
   }
-  if (input && typeof input === "object" && Array.isArray(input.content)) return aiInputTextLength(input.content);
-  return 0;
+  if (Array.isArray(input)) {
+    input.forEach((item) => aiInputCost(item, acc));
+    return acc;
+  }
+  if (input && typeof input === "object") {
+    if (typeof input.text === "string") acc.textChars += input.text.length;
+    // Image and file payloads arrive as data: URLs on these fields.
+    // Images are charged per-image (resolution-tiered), never per-byte.
+    if (typeof input.image_url === "string" || (input.image_url && typeof input.image_url.url === "string")) {
+      acc.images += 1;
+    }
+    if (typeof input.file_data === "string") acc.fileB64Chars += input.file_data.length;
+    if (Array.isArray(input.content)) aiInputCost(input.content, acc);
+  }
+  return acc;
+}
+
+// Back-compat shim: some call sites only care about the text length.
+function aiInputTextLength(input) {
+  return aiInputCost(input).textChars;
+}
+
+// Estimated total tokens a request will cost, input + reserved output.
+function estimateRequestTokens(input, instructions, maxOutputTokens) {
+  const cost = aiInputCost(input);
+  const textChars = cost.textChars + String(instructions || "").length;
+  return Math.ceil(
+    textChars * TOKENS_PER_TEXT_CHAR +
+    cost.images * TOKENS_PER_IMAGE +
+    cost.fileB64Chars * TOKENS_PER_FILE_B64_CHAR +
+    Math.max(0, Number(maxOutputTokens) || 0)
+  );
 }
 // ---- Autopilot (lifecycle sweep + dunning) --------------------------------
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== "false";
@@ -370,8 +450,18 @@ function defaultAiSettings() {
     tutorVoiceMinutesPerUserDaily: 10,
     // Account-wide daily token ceiling across every child and every tool. The
     // per-child math/voice caps only bound those two tools, so writing and
-    // follow-up chat were previously unlimited. 0 = no ceiling.
-    tokensPerFamilyDaily: 60000,
+    // follow-up chat would otherwise be unbounded.
+    // 0 = AI OFF for the account. There is no "unlimited" value: the ceiling is
+    // clamped to HARD_FAMILY_TOKENS_DAILY no matter what is configured here.
+    tokensPerFamilyDaily: HARD_FAMILY_TOKENS_DAILY,
+    // Per-request bounds (see the "Cost ceilings" block for the rationale).
+    maxTokensPerRequest: AI_MAX_TOKENS_PER_REQUEST,
+    maxFileBytes: AI_MAX_FILE_BYTES,
+    maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
+    maxOutputTokensLong: AI_MAX_OUTPUT_TOKENS_LONG,
+    // Velocity + containment.
+    requestsPerFamilyMinute: AI_RATE_MAX,
+    abusePauseThreshold: AI_ABUSE_PAUSE_THRESHOLD,
     tutorVoiceEnabled: true,
     ttsModel: TTS_MODEL,
     ttsDefaultVoice: "alloy",
@@ -399,7 +489,32 @@ function normaliseAiSettings(settings = {}) {
     openaiModelAdv: String(settings.openaiModelAdv || "").trim(),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
-    tokensPerFamilyDaily: Math.max(0, Number(settings.tokensPerFamilyDaily ?? defaults.tokensPerFamilyDaily) || 0),
+    // Clamped into [0, HARD_FAMILY_TOKENS_DAILY]. 0 means AI off, not unlimited,
+    // and no configured value can raise the account above the hard ceiling.
+    tokensPerFamilyDaily: Math.min(
+      HARD_FAMILY_TOKENS_DAILY,
+      Math.max(0, Number(settings.tokensPerFamilyDaily ?? defaults.tokensPerFamilyDaily) || 0)
+    ),
+    // Floored, not zeroable: a stray 0 here would disable the primary per-request
+    // cost defense, so the field can be tuned but never switched off.
+    maxTokensPerRequest: Math.min(
+      HARD_FAMILY_TOKENS_DAILY,
+      Math.max(1000, Number(settings.maxTokensPerRequest ?? defaults.maxTokensPerRequest) || defaults.maxTokensPerRequest)
+    ),
+    maxFileBytes: Math.min(
+      AI_MAX_FILE_BYTES,
+      Math.max(0, Number(settings.maxFileBytes ?? defaults.maxFileBytes) || defaults.maxFileBytes)
+    ),
+    maxOutputTokens: Math.min(
+      AI_MAX_OUTPUT_TOKENS,
+      Math.max(1, Number(settings.maxOutputTokens ?? defaults.maxOutputTokens) || defaults.maxOutputTokens)
+    ),
+    maxOutputTokensLong: Math.min(
+      AI_MAX_OUTPUT_TOKENS_LONG,
+      Math.max(1, Number(settings.maxOutputTokensLong ?? defaults.maxOutputTokensLong) || defaults.maxOutputTokensLong)
+    ),
+    requestsPerFamilyMinute: Math.max(0, Number(settings.requestsPerFamilyMinute ?? defaults.requestsPerFamilyMinute) || 0),
+    abusePauseThreshold: Math.max(0, Number(settings.abusePauseThreshold ?? defaults.abusePauseThreshold) || 0),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
     // Speech model is admin-configurable and accepts a provider model ID.
     ttsModel: normaliseTtsModel(settings.ttsModel),
@@ -439,6 +554,15 @@ function safeAiSettings(settings = {}) {
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
     tutorVoiceMinutesPerUserDaily: normalised.tutorVoiceMinutesPerUserDaily,
     tokensPerFamilyDaily: normalised.tokensPerFamilyDaily,
+    maxTokensPerRequest: normalised.maxTokensPerRequest,
+    maxFileBytes: normalised.maxFileBytes,
+    maxOutputTokens: normalised.maxOutputTokens,
+    maxOutputTokensLong: normalised.maxOutputTokensLong,
+    requestsPerFamilyMinute: normalised.requestsPerFamilyMinute,
+    abusePauseThreshold: normalised.abusePauseThreshold,
+    // Ceilings the admin form cannot exceed, so the UI can show them rather than
+    // hard-coding a duplicate copy of the limits.
+    hardFamilyTokensDaily: HARD_FAMILY_TOKENS_DAILY,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
     ttsModel: normalised.ttsModel,
     supportedTtsModels: SUPPORTED_TTS_MODELS,
@@ -996,7 +1120,7 @@ function usageRemaining(family, settings, childId) {
 // ceiling, sending an oversized prompt (only possible by bypassing the client's
 // caps), and tripping moderation. Counted per family so the operator can see who
 // to look at, and dismissible once reviewed.
-function recordAbuseSignal(db, familyId, kind) {
+function recordAbuseSignal(db, familyId, kind, threshold = AI_ABUSE_PAUSE_THRESHOLD) {
   const fam = (db.families || []).find((item) => item.id === familyId);
   if (!fam) return;
   fam.abuse = { capHits: 0, oversized: 0, moderation: 0, lastAt: "", dismissedAt: "", ...(fam.abuse || {}) };
@@ -1004,6 +1128,25 @@ function recordAbuseSignal(db, familyId, kind) {
   else if (kind === "oversized") fam.abuse.oversized += 1;
   else if (kind === "moderation") fam.abuse.moderation += 1;
   fam.abuse.lastAt = nowIso();
+  // Containment: counting signals only helps if somebody is watching. Past the
+  // threshold the account pauses itself and waits for an operator, instead of
+  // burning budget until someone notices the flag.
+  //
+  // capHits is deliberately excluded from the tally. Exhausting your own daily
+  // ceiling is ordinary behaviour — the client retries, and a busy family would
+  // accumulate 25 of these in a normal evening and pause itself. Only oversized
+  // payloads and moderation hits imply a client that is not ours.
+  const total = fam.abuse.oversized + fam.abuse.moderation;
+  if (threshold > 0 && total >= threshold && !fam.aiPausedAt) {
+    fam.aiPausedAt = nowIso();
+    fam.aiPausedReason = `Automatic: ${total} abuse signals (threshold ${threshold}).`;
+  }
+}
+
+// An operator clears this from the family row; it is deliberately separate from
+// accountLocked so a cost pause does not look like a billing lock.
+function aiPaused(family) {
+  return Boolean(family?.aiPausedAt);
 }
 
 // Flagged while there are signals newer than the operator's last dismissal.
@@ -1026,11 +1169,74 @@ function familyTokensToday(family) {
 // Account-wide daily token ceiling. Unlike the per-child math/voice caps this
 // covers every tool — including writing and follow-up chat, which had no limit
 // at all — and every child, so adding children cannot multiply the spend.
-// A cap of 0 means unlimited.
+// A cap of 0 means AI is OFF for the account (not unlimited), and the cap can
+// never exceed HARD_FAMILY_TOKENS_DAILY however it was configured.
 function familyTokenBudget(family, settings) {
-  const cap = Math.max(0, Number(settings.tokensPerFamilyDaily) || 0);
+  const cap = Math.min(
+    HARD_FAMILY_TOKENS_DAILY,
+    Math.max(0, Number(settings.tokensPerFamilyDaily) || 0)
+  );
   const used = familyTokensToday(family);
-  return { cap, used, remaining: cap ? Math.max(0, cap - used) : Infinity, exhausted: cap > 0 && used >= cap };
+  return { cap, used, remaining: Math.max(0, cap - used), exhausted: used >= cap };
+}
+
+// ---- Token reservation ------------------------------------------------------
+// The budget check used to read already-recorded usage, then spend, then record.
+// Nothing was reserved in between, so N parallel requests all saw `used = 0` and
+// all proceeded. Reserving the estimate up front closes that window; the real
+// cost replaces the estimate as soon as the response lands, so a pessimistic
+// estimate only over-restricts for the duration of the call.
+//
+// mutateDb is an unlocked read-modify-write, which drops concurrent increments
+// under exactly the load this is meant to bound. Serialise the usage path (only
+// this path, to keep the blast radius small) behind a promise chain.
+let aiUsageQueue = Promise.resolve();
+function withUsageLock(fn) {
+  const run = aiUsageQueue.then(fn, fn);
+  // Keep the chain alive even if a link rejects.
+  aiUsageQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+// Adds `tokens` to today's bucket for the child (negative to refund a
+// reservation). Mirrors recordChildUsage's shape so daily and totals stay in
+// step; it deliberately does not touch tool counters, since a reservation is not
+// a tool use until the call actually completes.
+function addChildTokens(family, childId, tokens) {
+  const child = childForUsage(family, childId);
+  if (!child) return;
+  child.usage = { ...emptyUsage(), ...(child.usage || {}) };
+  const usage = child.usage;
+  usage.daily = usage.daily || {};
+  usage.totals = usage.totals || { mathProblems: 0, voiceSeconds: 0, timeSpentSeconds: 0, tokens: 0, tools: {} };
+  const day = usageDayKey();
+  const bucket = usage.daily[day] || { mathProblems: 0, voiceSeconds: 0, timeSpentSeconds: 0, tokens: 0, tools: {} };
+  bucket.tools = bucket.tools || {};
+  bucket.tokens = Math.max(0, (Number(bucket.tokens) || 0) + tokens);
+  usage.daily[day] = bucket;
+  usage.totals.tokens = Math.max(0, (Number(usage.totals.tokens) || 0) + tokens);
+}
+
+// Reserve `estimate` tokens if the account can afford them. Returns the budget
+// snapshot so the caller can report cap/used on refusal.
+function reserveFamilyTokens(auth, childId, estimate, settings) {
+  return withUsageLock(() => mutateDb((store) => {
+    const fam = parentFamilyForIdentity(store, auth);
+    const budget = familyTokenBudget(fam, settings);
+    if (budget.remaining < estimate) return { ok: false, ...budget };
+    addChildTokens(fam, childId, estimate);
+    return { ok: true, ...budget };
+  }));
+}
+
+// Swap the reservation for what the call actually cost.
+function reconcileFamilyTokens(auth, childId, estimate, actual) {
+  const delta = (Number(actual) || 0) - estimate;
+  if (!delta) return Promise.resolve();
+  return withUsageLock(() => mutateDb((store) => {
+    const fam = parentFamilyForIdentity(store, auth);
+    addChildTokens(fam, childId, delta);
+  }));
 }
 
 // Sum a child's usage across the trailing `days` window (default 7).
@@ -2146,7 +2352,38 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 // 6mb accommodates base64 image payloads (AI vision calls + phone capture uploads);
 // the capture page downscales photos client-side so real uploads stay well under this.
-app.use(express.json({ limit: "6mb" }));
+// Derived from the file budget rather than hand-picked: base64 inflates ~4/3, so
+// a flat "6mb" here silently rejected the 5 MB upload the extension advertised.
+// ---- Security headers -------------------------------------------------------
+// The webapp previously pulled an icon library from unpkg at `@latest` and fonts
+// from Google, on the same documents that hold the admin session token, every
+// parent session token, and the OpenAI key input. Those assets are now vendored
+// under /webapp/vendor, and this policy is what keeps it that way: a third-party
+// script tag added later fails to load instead of silently gaining the page.
+//
+// 'unsafe-inline' is allowed for styles only — admin.html carries one inline
+// <style> block. Scripts need no such exception: neither page has an inline
+// <script> or an on* handler, so script-src can stay strict.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'"
+].join("; ");
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", CSP);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  next();
+});
+
+app.use(express.json({ limit: AI_BODY_LIMIT_BYTES }));
 
 async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
@@ -3242,18 +3479,33 @@ app.delete("/api/admin/trials/:familyId", requireAdmin, (req, res) => {
 // Dismiss abuse alerts. Marks signals reviewed rather than deleting them: the
 // counters stay for history, and a family only re-flags on a NEW signal.
 // Pass { familyId } to clear one account, omit it to clear all flagged ones.
+//
+// This is also how an operator lifts an automatic AI pause, so it targets paused
+// accounts as well as flagged ones — otherwise a family auto-paused after its
+// signals were already dismissed would have no route back.
 app.post("/api/admin/abuse-alerts/dismiss", requireAdmin, (req, res) => {
   const familyId = String(req.body?.familyId || "").trim();
   const at = nowIso();
-  const cleared = mutateDb((db) => {
+  const result = mutateDb((db) => {
     const targets = (db.families || []).filter((family) =>
-      abuseFlagged(family) && (!familyId || family.id === familyId)
+      (abuseFlagged(family) || aiPaused(family)) && (!familyId || family.id === familyId)
     );
-    targets.forEach((family) => { family.abuse = { ...(family.abuse || {}), dismissedAt: at }; });
-    audit(db, "abuse.alerts.dismiss", { familyId: familyId || "all", cleared: targets.length }, req.auth?.email);
-    return targets.length;
+    let resumed = 0;
+    targets.forEach((family) => {
+      // Counters reset on review, not just `dismissedAt`: the auto-pause counts
+      // total signals, so leaving them at the threshold would re-pause the
+      // account on its very next signal.
+      family.abuse = { ...(family.abuse || {}), capHits: 0, oversized: 0, moderation: 0, dismissedAt: at };
+      if (aiPaused(family)) {
+        resumed += 1;
+        delete family.aiPausedAt;
+        delete family.aiPausedReason;
+      }
+    });
+    audit(db, "abuse.alerts.dismiss", { familyId: familyId || "all", cleared: targets.length, resumed }, req.auth?.email);
+    return { cleared: targets.length, resumed };
   });
-  res.json({ ok: true, cleared, dismissedAt: at });
+  res.json({ ok: true, ...result, dismissedAt: at });
 });
 
 app.post("/api/admin/state", requireAdmin, (req, res) => {
@@ -3311,8 +3563,29 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceMinutesPerUserDaily")) {
       next.tutorVoiceMinutesPerUserDaily = Math.max(0, Number(body.tutorVoiceMinutesPerUserDaily) || 0);
     }
+    // Every bound below is re-clamped in normaliseAiSettings too — the admin form
+    // is just another client, so the handler cannot be the only place a value is
+    // validated. 0 here means AI off for the account, never "unlimited".
     if (Object.prototype.hasOwnProperty.call(body, "tokensPerFamilyDaily")) {
-      next.tokensPerFamilyDaily = Math.max(0, Number(body.tokensPerFamilyDaily) || 0);
+      next.tokensPerFamilyDaily = Math.min(HARD_FAMILY_TOKENS_DAILY, Math.max(0, Number(body.tokensPerFamilyDaily) || 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "maxTokensPerRequest")) {
+      next.maxTokensPerRequest = Math.min(HARD_FAMILY_TOKENS_DAILY, Math.max(1000, Number(body.maxTokensPerRequest) || AI_MAX_TOKENS_PER_REQUEST));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "maxFileBytes")) {
+      next.maxFileBytes = Math.min(AI_MAX_FILE_BYTES, Math.max(0, Number(body.maxFileBytes) || AI_MAX_FILE_BYTES));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokens")) {
+      next.maxOutputTokens = Math.min(AI_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokens) || AI_MAX_OUTPUT_TOKENS));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokensLong")) {
+      next.maxOutputTokensLong = Math.min(AI_MAX_OUTPUT_TOKENS_LONG, Math.max(1, Number(body.maxOutputTokensLong) || AI_MAX_OUTPUT_TOKENS_LONG));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "requestsPerFamilyMinute")) {
+      next.requestsPerFamilyMinute = Math.max(0, Number(body.requestsPerFamilyMinute) || 0);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "abusePauseThreshold")) {
+      next.abusePauseThreshold = Math.max(0, Number(body.abusePauseThreshold) || 0);
     }
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
@@ -3965,7 +4238,10 @@ app.get("/api/admin/logs/digest", requireAdmin, async (req, res) => {
         body: JSON.stringify({
           model: settings.openaiModel || "gpt-5.6-luna",
           instructions: `You are an operations assistant for KiddieGPT, a kids' learning Chrome extension. You are given grouped error/issue data from the last ${days} days. Write a short brief (max 120 words) for a solo founder. Lead with extension-facing problems (crashes, login failures, AI failures) because those directly break the product for kids. Name the single most urgent group, the likely root cause, and one concrete next action. Plain text, no markdown headings, no fluff.`,
-          input: JSON.stringify(compact)
+          input: JSON.stringify(compact),
+          // Admin-only, so not an abuse vector, but it asks for ~120 words and
+          // had no ceiling — a runaway reply would bill for the whole context.
+          max_output_tokens: maxOutputTokensForTool("digest", settings)
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -3991,6 +4267,43 @@ function isFamilyEntitled(family) {
   return family.subscriptionStatus === "active" || cancellationStillActive(family) || trialStillActive(family) || stripeTrialActive(family) || hasActiveOverride(family);
 }
 
+// ---- AI velocity limiting ---------------------------------------------------
+// In-memory, per family: a sliding request window plus a concurrency cap. Kept
+// out of the DB deliberately — this is hot-path bookkeeping, and a DB round-trip
+// per request would add cost to the thing that is meant to reduce it. On a
+// multi-instance deploy each instance enforces its own share; the token
+// reservation is the cross-instance bound.
+const aiRateState = new Map(); // familyId -> { hits: number[], active: number }
+
+function aiStateFor(familyId) {
+  const key = familyId || "unknown";
+  if (!aiRateState.has(key)) aiRateState.set(key, { hits: [], active: 0 });
+  return aiRateState.get(key);
+}
+
+function takeAiRateSlot(familyId, settings) {
+  const state = aiStateFor(familyId);
+  const now = Date.now();
+  state.hits = state.hits.filter((t) => now - t < AI_RATE_WINDOW_MS);
+  const perMinute = Math.max(0, Number(settings.requestsPerFamilyMinute) || 0);
+  if (perMinute > 0 && state.hits.length >= perMinute) {
+    return { ok: false, scope: "rate", retryAfterMs: AI_RATE_WINDOW_MS - (now - state.hits[0]) };
+  }
+  if (state.active >= AI_MAX_CONCURRENT) {
+    return { ok: false, scope: "concurrency", retryAfterMs: 1000 };
+  }
+  state.hits.push(now);
+  state.active += 1;
+  return { ok: true };
+}
+
+function releaseAiSlot(familyId) {
+  const state = aiStateFor(familyId);
+  state.active = Math.max(0, state.active - 1);
+  // Drop idle families so the map cannot grow without bound.
+  if (!state.active && !state.hits.length) aiRateState.delete(familyId || "unknown");
+}
+
 app.post("/api/ai/responses", requireParent, async (req, res) => {
   const body = req.body || {};
   const tool = String(body.tool || "").trim();
@@ -3999,27 +4312,75 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   const family = parentFamilyForIdentity(db, req.auth);
   if (!settings.openaiApiKey) return res.status(503).json({ error: "ai_not_configured", message: "AI is not configured. Add an OpenAI key in the admin console." });
   if (!isFamilyEntitled(family)) return res.status(402).json({ error: "subscription_inactive" });
+  if (aiPaused(family)) {
+    return res.status(403).json({ error: "ai_paused", reason: family.aiPausedReason || "" });
+  }
   const isMath = tool === "math";
   if (isMath && usageRemaining(family, settings, body.childId).mathProblems <= 0) {
     return res.status(429).json({ error: "cap_reached", scope: "math" });
   }
-  // Account-wide ceiling, checked for EVERY tool. The per-child math cap above
-  // left writing and follow-up chat unbounded.
-  const budget = familyTokenBudget(family, settings);
-  if (budget.exhausted) {
-    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap"));
-    return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: budget.cap, used: budget.used });
+  // Velocity: a per-minute ceiling and a concurrency cap. The budget check below
+  // is a threshold on recorded spend, so without these a burst of parallel
+  // requests could all pass it before any of them had recorded anything.
+  const rate = takeAiRateSlot(family?.id, settings);
+  if (!rate.ok) {
+    return res.status(429).json({ error: "rate_limited", scope: rate.scope, retryAfterMs: rate.retryAfterMs });
   }
+  try {
+    return await runAiResponse({ req, res, body, tool, isMath, settings, family });
+  } finally {
+    releaseAiSlot(family?.id);
+  }
+});
+
+// Split out so every early return above still releases the concurrency slot.
+async function runAiResponse({ req, res, body, tool, isMath, settings, family }) {
   // Bound the prompt server-side. `instructions` is client-supplied too, so it
   // counts against the same budget — capping only `input` would just move an
   // injection into the other field.
-  const promptChars = aiInputTextLength(body.input) + String(body.instructions || "").length;
+  const cost = aiInputCost(body.input);
+  const promptChars = cost.textChars + String(body.instructions || "").length;
   const inputCap = maxInputCharsForTool(tool);
   if (promptChars > inputCap) {
     mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI prompt rejected", { chars: promptChars, limit: inputCap, tool }, req.auth.email));
-    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized"));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized", settings.abusePauseThreshold));
     return res.status(413).json({ error: "input_too_large", limit: inputCap, received: promptChars });
   }
+  // Binary payloads get their own budget: they are not text, and counting them
+  // as text (or, as before, not at all) is how a 5.5 MB document measured 33
+  // characters against a 48,000-character cap.
+  const fileBytes = Math.ceil(cost.fileB64Chars * 3 / 4);
+  if (fileBytes > settings.maxFileBytes) {
+    mutateDb((store) => monitor(store, "warning", "ai", "Oversized AI upload rejected", { bytes: fileBytes, limit: settings.maxFileBytes, tool }, req.auth.email));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized", settings.abusePauseThreshold));
+    return res.status(413).json({ error: "file_too_large", limit: settings.maxFileBytes, received: fileBytes });
+  }
+  const maxOutputTokens = Math.min(
+    Math.max(1, Number(body.max_output_tokens) || maxOutputTokensForTool(tool, settings)),
+    maxOutputTokensForTool(tool, settings)
+  );
+  // Estimate the whole request before spending anything. This is the bound that
+  // does not depend on introspecting the payload: a 300-page PDF is refused on
+  // estimated size whether or not we can parse its page count.
+  const estimate = estimateRequestTokens(body.input, body.instructions, maxOutputTokens);
+  if (estimate > settings.maxTokensPerRequest) {
+    mutateDb((store) => monitor(store, "warning", "ai", "Request over per-call token ceiling", { estimate, limit: settings.maxTokensPerRequest, tool }, req.auth.email));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized", settings.abusePauseThreshold));
+    return res.status(413).json({ error: "request_too_large", limit: settings.maxTokensPerRequest, estimated: estimate });
+  }
+  // Reserve before spending, so concurrent requests cannot all pass on the same
+  // stale "used" figure. Reconciled against real usage once the call returns.
+  const reservation = await reserveFamilyTokens(req.auth, body.childId, estimate, settings);
+  if (!reservation.ok) {
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap", settings.abusePauseThreshold));
+    return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: reservation.cap, used: reservation.used });
+  }
+  let settled = false;
+  const settle = async (actual) => {
+    if (settled) return;
+    settled = true;
+    await reconcileFamilyTokens(req.auth, body.childId, estimate, actual);
+  };
   // Enforce the "require step-by-step" parental control server-side so it can't
   // be bypassed by the client.
   let instructions = body.instructions;
@@ -4039,17 +4400,18 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
         model: modelToUse,
         instructions,
         input: body.input,
-        // Clamp rather than trust: the client's value was previously not
-        // forwarded at all, so nothing bounded output length. A modified client
-        // can send any number, so take the smaller of theirs and our ceiling.
-        max_output_tokens: Math.min(
-          Math.max(1, Number(body.max_output_tokens) || AI_MAX_OUTPUT_TOKENS),
-          AI_MAX_OUTPUT_TOKENS
-        )
+        // Clamped above against the per-tool ceiling: a modified client can send
+        // any number, so we take the smaller of theirs and ours.
+        max_output_tokens: maxOutputTokens
       })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) return res.status(response.status || 502).json({ error: "openai_error", detail: data });
+    if (!response.ok) {
+      // Refund the reservation — the call cost nothing, so holding the estimate
+      // would let a run of upstream errors lock the family out of its own budget.
+      await settle(0);
+      return res.status(response.status || 502).json({ error: "openai_error", detail: data });
+    }
     // Backstop: cap Tutor Explain narration server-side so a stale/modified
     // extension can't run up TTS cost. The tutor returns { title, script } as JSON
     // output text; clamp `script` to the admin word budget on a sentence boundary.
@@ -4063,19 +4425,25 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
       }
     }
     const tokens = Number(data.usage?.total_tokens || data.usage?.input_tokens + data.usage?.output_tokens || 0) || 0;
+    // Replace the reservation with what the call actually cost.
+    await settle(tokens);
     mutateDb((store) => {
       const fam = parentFamilyForIdentity(store, req.auth);
-      if (fam) recordChildUsage(fam, { childId: body.childId, tool: tool || "ai", mathProblems: isMath ? Math.max(1, Number(body.mathProblems) || 1) : 0, tokens });
+      // `tokens: 0` on purpose — the reservation/reconciliation above owns the
+      // token ledger, so counting them here too would double-charge the family.
+      if (fam) recordChildUsage(fam, { childId: body.childId, tool: tool || "ai", mathProblems: isMath ? Math.max(1, Number(body.mathProblems) || 1) : 0, tokens: 0 });
       // Attribute cost: which configured model actually ran, and whether it was
       // the advanced tier, so usage can be split by model later.
-      audit(store, "ai.responses", { familyId: fam?.id || "", tool: tool || "ai", model: modelToUse, advanced, tokens }, req.auth.email);
+      audit(store, "ai.responses", { familyId: fam?.id || "", tool: tool || "ai", model: modelToUse, advanced, tokens, estimated: estimate }, req.auth.email);
     });
     res.json(data);
   } catch (error) {
+    // The request never completed, so refund rather than hold the estimate.
+    await settle(0);
     mutateDb((store) => monitor(store, "error", "ai", "OpenAI responses proxy failed", { detail: String(error.message || error) }, req.auth.email));
     res.status(502).json({ error: "openai_unreachable" });
   }
-});
+}
 
 app.post("/api/ai/speech", requireParent, async (req, res) => {
   const body = req.body || {};
@@ -4086,21 +4454,39 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
   if (!isFamilyEntitled(family)) return res.status(402).json({ error: "subscription_inactive" });
   // Voice may be off at the admin level or by the family's parental controls.
   if (!effectiveLimits(settings, family).tutorVoiceEnabled) return res.status(403).json({ error: "voice_disabled" });
+  if (aiPaused(family)) {
+    return res.status(403).json({ error: "ai_paused", reason: family.aiPausedReason || "" });
+  }
   if (usageRemaining(family, settings, body.childId).voiceMinutes <= 0) {
     return res.status(429).json({ error: "cap_reached", scope: "voice" });
   }
   const speechBudget = familyTokenBudget(family, settings);
   if (speechBudget.exhausted) {
-    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap"));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "cap", settings.abusePauseThreshold));
     return res.status(429).json({ error: "cap_reached", scope: "account_tokens", cap: speechBudget.cap, used: speechBudget.used });
   }
+  // Same velocity limits as the responses proxy. TTS is billed per character and
+  // was reachable at any rate, so the voice-minutes cap alone left a burst
+  // window between a call starting and its seconds being recorded.
+  const speechRate = takeAiRateSlot(family?.id, settings);
+  if (!speechRate.ok) {
+    return res.status(429).json({ error: "rate_limited", scope: speechRate.scope, retryAfterMs: speechRate.retryAfterMs });
+  }
+  try {
+    return await runAiSpeech({ req, res, body, settings, family });
+  } finally {
+    releaseAiSlot(family?.id);
+  }
+});
+
+async function runAiSpeech({ req, res, body, settings, family }) {
   const text = String(body.text || "").trim();
   if (!text) return res.status(400).json({ error: "empty_text" });
   // The tutor script is already word-clamped server-side, but a modified client
   // can post arbitrary text straight to this route.
   if (text.length > TTS_MAX_INPUT_CHARS) {
     mutateDb((store) => monitor(store, "warning", "ai", "Oversized TTS text rejected", { chars: text.length, limit: TTS_MAX_INPUT_CHARS }, req.auth.email));
-    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized"));
+    mutateDb((store) => recordAbuseSignal(store, family?.id, "oversized", settings.abusePauseThreshold));
     return res.status(413).json({ error: "input_too_large", limit: TTS_MAX_INPUT_CHARS, received: text.length });
   }
   // Resolve the voice server-side: student pick if allowed, else admin default,
@@ -4127,7 +4513,10 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     const seconds = Math.max(1, Number(body.estSeconds) || Math.ceil(text.length / 14));
     mutateDb((store) => {
       const fam = parentFamilyForIdentity(store, req.auth);
-      if (fam) recordChildUsage(fam, { childId: body.childId, tool: "voice", voiceSeconds: seconds, timeSpentSeconds: seconds });
+      // TTS is billed per character, not in tokens, so charge the character
+      // count to the same ledger. Without this, voice spend was invisible to the
+      // account ceiling and could run past it while only the minutes cap applied.
+      if (fam) recordChildUsage(fam, { childId: body.childId, tool: "voice", voiceSeconds: seconds, timeSpentSeconds: seconds, tokens: text.length });
     });
     const audio = Buffer.from(await response.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
@@ -4136,7 +4525,7 @@ app.post("/api/ai/speech", requireParent, async (req, res) => {
     mutateDb((store) => monitor(store, "error", "ai", "OpenAI speech proxy failed", { detail: String(error.message || error) }, req.auth.email));
     res.status(502).json({ error: "openai_unreachable" });
   }
-});
+}
 
 // Content safety for the extension, which screens both student input and model
 // output through here before showing anything.
@@ -4175,7 +4564,7 @@ app.post("/api/ai/moderations", requireParent, async (req, res) => {
 // the extension's existing solve pipeline. The raw image is transient — never
 // persisted; only the short transcription is stored, briefly, against a token.
 const CAPTURE_TTL_MS = 5 * 60 * 1000;                 // token lifetime (~5 min)
-const CAPTURE_MAX_IMAGE_BYTES = 5 * 1024 * 1024;      // ~5 MB decoded
+const CAPTURE_MAX_IMAGE_BYTES = AI_MAX_FILE_BYTES;    // one upload ceiling, not two
 const CAPTURE_RATE_WINDOW_MS = 60 * 1000;
 const CAPTURE_RATE_MAX = 5;                           // sessions per family per window
 const CAPTURE_TRANSCRIBE_INSTRUCTION = "You are KiddieGPT's math reader. Your only job is to read the image exactly and write down each math problem as text — do NOT solve anything. Read EVERY number, label, and angle. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON.";
@@ -4453,10 +4842,15 @@ app.post("/api/capture/:token/image", async (req, res) => {
     if (!session) return { error: "not_found" };
     if (captureExpired(session)) { session.status = "expired"; return { error: "expired" }; }
     if (session.used) return { error: "used" };
+    const fam = (db.families || []).find((f) => f.id === session.familyId);
+    // A paused account must not be able to spend through the capture path
+    // either — the token is scoped to the family, so the pause applies.
+    if (aiPaused(fam)) return { error: "paused" };
     session.used = true;
     session.status = "solving";
-    return { ok: true, gradeBand: session.gradeBand };
+    return { ok: true, gradeBand: session.gradeBand, familyId: session.familyId, childId: session.childId };
   });
+  if (claim.error === "paused") return res.status(403).json({ error: "ai_paused" });
   if (claim.error === "not_found" || claim.error === "expired") return res.status(410).json({ error: claim.error });
   if (claim.error === "used") return res.status(409).json({ error: "already_used" });
 
@@ -4478,10 +4872,24 @@ app.post("/api/capture/:token/image", async (req, res) => {
         input: [{ role: "user", content: [
           { type: "input_text", text: `Read this photo and list every math problem in reading order, up to 15. Grade band: ${claim.gradeBand}. Return JSON with a problems array. Each item: statement (full question in plain words), meta (short topic like "Geometry · right triangle"), diagram (complete text description of any figure so it can be solved without the image, or "" if none).` },
           { type: "input_image", image_url: dataUrl }
-        ] }]
+        ] }],
+        // This is a transcription, so it gets the long ceiling — but it had no
+        // ceiling at all, which left output length unbounded on a route the
+        // phone reaches without a parent session.
+        max_output_tokens: maxOutputTokensForTool("transcribe", settings)
       })
     });
     const data = await response.json().catch(() => ({}));
+    // Charge the account for what this cost. Capture spend was previously
+    // invisible to the token ledger, so a family could run the daily budget past
+    // its cap entirely through the phone-capture route.
+    const captureTokens = Number(data.usage?.total_tokens || data.usage?.input_tokens + data.usage?.output_tokens || 0) || 0;
+    if (captureTokens) {
+      mutateDb((store) => {
+        const fam = (store.families || []).find((f) => f.id === claim.familyId);
+        if (fam) recordChildUsage(fam, { childId: claim.childId, tool: "capture", tokens: captureTokens });
+      });
+    }
     if (!response.ok) {
       setSession({ status: "error", reason: "Couldn't read that photo. Try a clearer picture." });
       mutateDb((store) => monitor(store, "error", "ai", "Capture transcription failed", { detail: String(data?.error?.message || "") }));
@@ -6556,6 +6964,10 @@ app.get(["/admin", "/admin.html"], (req, res) => {
 
 app.get("/parent-portal-mockup.html", (req, res) => {
   res.sendFile(path.join(publicDir, "webapp", "parent-portal-mockup.html"));
+});
+
+app.get("/login-animation-mockup.html", (req, res) => {
+  res.sendFile(path.join(publicDir, "webapp", "login-animation-mockup.html"));
 });
 
 app.use(express.static(publicDir, {

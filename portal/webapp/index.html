@@ -4,43 +4,61 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KiddieGPT Parent Portal</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=173">
+  <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
+  <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
+  <link rel="stylesheet" href="/webapp/webapp.css?v=174">
   <link rel="stylesheet" href="/webapp/parent-portal-mockup.css?v=7">
 </head>
 <body data-page="parent" class="parent-mockup parent-locked">
   <section class="parent-auth-gate" id="parent-auth-gate">
     <div class="parent-login-shell">
-      <div class="parent-login-visual" aria-hidden="true">
-        <div class="login-flow-stage">
-          <div class="flow-label flow-label-left">Bring it in</div>
-          <div class="flow-label flow-label-right">Learn with it</div>
-          <svg class="login-flow-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path id="flow-in-web" d="M27 20 C34 20 38 40 45 50"></path>
-            <path id="flow-in-pdf" d="M27 50 C34 50 39 50 45 50"></path>
-            <path id="flow-in-shot" d="M27 80 C34 80 38 60 45 50"></path>
-            <path id="flow-out-explain" d="M55 50 C62 40 66 20 73 20"></path>
-            <path id="flow-out-mission" d="M55 50 C62 50 66 50 73 50"></path>
-            <path id="flow-out-tutor" d="M55 50 C62 60 66 80 73 80"></path>
-            <circle class="flow-anchor-dot" cx="32" cy="27" r="1.3"></circle><circle class="flow-anchor-dot" cx="35" cy="50" r="1.3"></circle><circle class="flow-anchor-dot" cx="32" cy="73" r="1.3"></circle><circle class="flow-anchor-dot" cx="68" cy="27" r="1.3"></circle><circle class="flow-anchor-dot" cx="65" cy="50" r="1.3"></circle><circle class="flow-anchor-dot" cx="68" cy="73" r="1.3"></circle>
-            <circle class="flow-pulse-dot" r="1.4"><animateMotion dur="4s" repeatCount="indefinite"><mpath href="#flow-in-web"></mpath></animateMotion></circle>
-            <circle class="flow-pulse-dot" r="1.4"><animateMotion dur="4s" begin="-3.3s" repeatCount="indefinite"><mpath href="#flow-in-pdf"></mpath></animateMotion></circle>
-            <circle class="flow-pulse-dot" r="1.4"><animateMotion dur="4s" begin="-2.6s" repeatCount="indefinite"><mpath href="#flow-in-shot"></mpath></animateMotion></circle>
-            <circle class="flow-pulse-dot flow-pulse-output" r="1.4"><animateMotion dur="4s" begin="-3.65s" repeatCount="indefinite"><mpath href="#flow-out-explain"></mpath></animateMotion></circle>
-            <circle class="flow-pulse-dot flow-pulse-output" r="1.4"><animateMotion dur="4s" begin="-2.95s" repeatCount="indefinite"><mpath href="#flow-out-mission"></mpath></animateMotion></circle>
-            <circle class="flow-pulse-dot flow-pulse-output" r="1.4"><animateMotion dur="4s" begin="-2.25s" repeatCount="indefinite"><mpath href="#flow-out-tutor"></mpath></animateMotion></circle>
+      <div class="parent-login-visual" aria-label="KiddieGPT learning tools preview">
+        <a class="login-v-brand" href="/index.html" aria-label="KiddieGPT home"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""><span>KiddieGPT</span></a>
+        <div class="login-v-board">
+          <svg class="login-flow-connections" aria-hidden="true">
+            <path class="login-flow-connection" data-flow-target=".login-v-input-web" data-flow-direction="input"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-input-pdf" data-flow-direction="input"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-input-qr" data-flow-direction="input"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-input-screenshot" data-flow-direction="input"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-explain" data-flow-direction="output"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-tutor" data-flow-direction="output"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-mission" data-flow-direction="output"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-quiz" data-flow-direction="output"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-flashcards" data-flow-direction="output"></path>
+            <path class="login-flow-connection" data-flow-target=".login-v-output-math" data-flow-direction="output"></path>
           </svg>
-          <div class="flow-column flow-inputs"><div class="flow-tile"><i data-lucide="globe-2"></i><strong>Web page</strong><span>Active tab</span></div><div class="flow-tile"><i data-lucide="file-text"></i><strong>PDF file</strong><span>Notes or handout</span></div><div class="flow-tile"><i data-lucide="scan-line"></i><strong>Screenshot</strong><span>Problem or diagram</span></div></div>
-          <div class="flow-hub"><img src="/icons/logo-mascot.png" alt=""><strong>KiddieGPT</strong><span>Grade-safe learning</span></div>
-          <div class="flow-column flow-outputs"><div class="flow-tile"><i data-lucide="message-circle-question"></i><strong>Explain</strong><span>Make it click</span></div><div class="flow-tile"><i data-lucide="target"></i><strong>Mission</strong><span>Build a plan</span></div><div class="flow-tile"><i data-lucide="play"></i><strong>Tutor</strong><span>Follow along</span></div></div>
+          <div class="login-v-inputs">
+            <div class="login-v-tile login-v-input-web"><span class="login-v-icon"><i data-lucide="globe-2"></i></span><strong>Web page</strong></div>
+            <div class="login-v-tile login-v-input-pdf"><span class="login-v-icon"><i data-lucide="file-text"></i></span><strong>PDF</strong></div>
+            <div class="login-v-tile login-v-input-qr"><span class="login-v-icon"><i data-lucide="qr-code"></i></span><strong>QR / Scan</strong></div>
+            <div class="login-v-tile login-v-input-screenshot"><span class="login-v-icon"><i data-lucide="scan-line"></i></span><strong>Screenshot</strong></div>
+          </div>
+          <div class="login-v-hub-wrap">
+            <div class="login-v-hub"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""></div>
+            <span class="login-v-caption"><i data-lucide="sparkles"></i>Make it click</span>
+          </div>
+          <div class="login-v-outputs">
+            <div class="login-v-tile login-v-explain login-v-output-explain"><span class="login-v-icon"><i data-lucide="message-circle-question"></i></span><strong>Explain</strong><span>Make it make sense</span></div>
+            <div class="login-v-tile login-v-mission login-v-output-mission"><span class="login-v-icon"><i data-lucide="target"></i></span><strong>Mission</strong><span>Plan. Practice. Progress.</span></div>
+            <div class="login-v-tile login-v-tutor login-v-output-tutor"><span class="login-v-icon"><i data-lucide="play"></i></span><strong>Tutor</strong><span>Learn it together</span></div>
+            <div class="login-v-tile login-v-quiz login-v-output-quiz"><span class="login-v-icon"><i data-lucide="list-checks"></i></span><strong>Quiz</strong><span>Check what clicked</span></div>
+            <div class="login-v-tile login-v-flashcards login-v-output-flashcards"><span class="login-v-icon"><i data-lucide="layers-2"></i></span><strong>Flashcards</strong><span>Make it stick</span></div>
+            <div class="login-v-tile login-v-math login-v-output-math"><span class="login-v-icon"><i data-lucide="pi"></i></span><strong>Math</strong><span>See how math works</span></div>
+          </div>
         </div>
+        <footer class="login-v-footer">
+          <p class="login-v-promise" aria-live="polite"><span id="login-rotating-promise">Turn every “I’m stuck” into “I’ve got this.”</span></p>
+          <nav class="login-v-legal" aria-label="Legal">
+            <a href="https://kiddiegpt.com/terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a>
+            <span aria-hidden="true">•</span>
+            <a href="https://kiddiegpt.com/privacy.html" target="_blank" rel="noopener">Privacy Statement</a>
+          </nav>
+        </footer>
       </div>
       <form class="parent-auth-card" id="parent-login-form">
-        <div class="login-card-topline"><div class="admin-auth-brand"><img src="/icons/logo-mascot.png" alt=""><span>KiddieGPT</span></div></div>
+        <div class="login-card-topline"><div class="admin-auth-brand"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""><span>KiddieGPT</span></div></div>
         <h1 id="parent-auth-title">Parent sign in</h1>
+        <p id="parent-auth-copy" class="login-form-subhead">A simple home for your child's questions, practice, and progress.</p>
         <div class="auth-mode-toggle" id="parent-auth-mode-toggle" aria-label="Authentication mode"><button class="active" type="button" data-parent-auth-mode="login">Sign in</button><button type="button" data-parent-auth-mode="signup">Create account</button></div>
         <label class="signup-only hidden">Parent full name<input type="text" name="parentName" autocomplete="name" placeholder="Your name"></label>
         <label id="parent-email-row">Email<input type="email" name="email" autocomplete="username" placeholder="you@gmail.com" required></label>
@@ -177,6 +195,6 @@
 
   <div class="modal-backdrop delete-profile-modal-backdrop" id="delete-profile-modal" hidden><div class="profile-modal delete-profile-modal" role="dialog" aria-modal="true" aria-labelledby="delete-profile-modal-title" aria-describedby="delete-profile-modal-copy"><button class="modal-close" type="button" id="delete-profile-modal-close" aria-label="Close confirmation"><i data-lucide="x"></i></button><span class="delete-profile-icon"><i data-lucide="user-round-minus"></i></span><p class="eyebrow">Remove profile</p><h2 id="delete-profile-modal-title">Remove this student profile?</h2><p class="modal-intro" id="delete-profile-modal-copy">You are about to remove <strong id="delete-profile-name">this student</strong>'s profile from your family account.</p><div class="delete-profile-warning"><i data-lucide="triangle-alert"></i><span>The profile's learning goals, rewards, and progress will also be removed. This action cannot be undone.</span></div><p class="delete-profile-modal-error" id="delete-profile-modal-error" role="alert"></p><div class="modal-actions"><button class="quiet-button" type="button" id="cancel-delete-profile">Cancel</button><button class="primary-button delete-profile-confirm" type="button" id="confirm-delete-profile"><i data-lucide="trash-2"></i>Delete profile</button></div></div></div>
 
-  <script src="/webapp/webapp.js?v=190"></script>
+  <script src="/webapp/webapp.js?v=191"></script>
 </body>
 </html>

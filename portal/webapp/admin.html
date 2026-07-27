@@ -4,10 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KiddieGPT Admin Console</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
+  <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
   <link rel="stylesheet" href="/webapp/webapp.css?v=178">
   <style>
     tr.family-row { cursor: pointer; }
@@ -441,7 +439,7 @@
           </div>
           <form class="exception-form" id="exception-form">
             <div class="exception-form-row">
-              <label class="ex-family">Parent account<select id="exception-family-select"></select><small>Search above by parent name or email, then review the account context below.</small></label>
+              <label class="ex-family">Parent account<select id="exception-family-select"></select><small>Search above by parent name or email, then review the action before applying it.</small></label>
               <label class="ex-action">Action<select id="exception-action-select">
                 <option value="partial_refund">Partial refund</option>
                 <option value="credit_next_invoice">Credit next invoice</option>
@@ -465,7 +463,6 @@
             </div>
           </form>
           <small class="ex-hint">Stripe-backed refunds, credits, coupons, and access extensions are logged with the admin action.</small>
-          <div class="customer-context-panel" id="exception-context"><div class="exception-empty"><strong>Select a parent</strong><small>Review billing history and duplicate subscription signals before applying an action.</small></div></div>
           <div class="table-wrap compact-table">
             <table>
               <thead><tr><th>Family</th><th>Type</th><th>Amount</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead>
@@ -585,7 +582,7 @@
                 </label>
               </section>
 
-              <section class="ai-control-pane ai-limits-pane">
+              <section class="ai-control-pane ai-limits-pane ai-abuse-pane">
                 <div class="ai-pane-head"><p class="eyebrow">Usage controls</p><h3>Set family guardrails</h3><small>Limits apply to the extension and are enforced by the server.</small></div>
                 <label>Math problems per user/day
                   <input type="number" name="mathProblemsPerUserDaily" min="0" step="1" required>
@@ -596,19 +593,38 @@
                   <small>Daily cap for spoken explanations.</small>
                 </label>
                 <label>Account token ceiling per day
-                  <input type="number" name="tokensPerFamilyDaily" min="0" step="1000" required>
-                  <small>Whole-account daily limit across every child and tool. 0 = unlimited.</small>
+                  <input type="number" name="tokensPerFamilyDaily" min="0" max="200000" step="1000" required>
+                  <small>Whole-account daily limit across every child and tool. Max 200,000. <b>0 turns AI off</b> for the account.</small>
                 </label>
                 <label>Standard length (% of Deep Dive)
                   <input type="number" name="tutorStandardPercent" min="30" max="90" step="5">
                   <small>Standard mode uses this percentage of each grade band’s Deep Dive maximum.</small>
                 </label>
               </section>
-            </div>
-            <div class="ai-bottom-controls">
-              <section class="tts-voice-field ai-simple-voice" id="tts-voice-section">
+
+              <section class="ai-control-pane ai-limits-pane">
+                <div class="ai-pane-head"><p class="eyebrow">Request limits</p><h3>Bound a single call</h3><small>Applied before the request reaches OpenAI, so an oversized upload costs nothing.</small></div>
+                <label>Max tokens per request
+                  <input type="number" name="maxTokensPerRequest" min="1000" max="200000" step="1000" required>
+                  <small>Rejects any single request estimated above this. Cannot be set to 0 — it is the main defense against one huge upload.</small>
+                </label>
+                <label>Max upload size (MB)
+                  <input type="number" name="maxUploadMb" min="0.5" max="4" step="0.5" required>
+                  <small>Largest file one request may carry. Base64 adds ~33%, so this stays under the request body limit.</small>
+                </label>
+                <label>Max output tokens (standard)
+                  <input type="number" name="maxOutputTokens" min="1" max="2000" step="100" required>
+                  <small>Reply-length ceiling for every tool.</small>
+                </label>
+                <label>Max output tokens (document read)
+                  <input type="number" name="maxOutputTokensLong" min="1" max="8000" step="500" required>
+                  <small>Transcription only — one call per worksheet, so it can afford a longer reply than the ~30 solve/check calls.</small>
+                </label>
+              </section>
+
+              <section class="tts-voice-field ai-voice-length-card" id="tts-voice-section">
                 <div class="tts-voice-head">
-                  <div class="tts-voice-copy"><b>Tutor voice</b><small>Enter the voices students may use.</small></div>
+                  <div class="tts-voice-copy"><b>Tutor voice</b><small>Choose the voices students may use.</small></div>
                   <label class="promo-enable-toggle"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></label>
                 </div>
                 <div class="tts-voice-form">
@@ -616,21 +632,28 @@
                   <div class="tts-voice-input-row">
                     <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
                   </div>
-                  <small class="tts-voice-help">Use comma-separated voice names. The first voice is used as the default.</small>
                 </div>
-                <div class="tts-voice-examples" id="tts-voice-examples" aria-label="Configured voices">
-                  <span>Alloy</span><span>Marin</span><span>Cedar</span>
+                <div class="tts-length-section" id="tutor-length-section">
+                  <div class="tts-voice-copy"><b>Lesson length</b><small>Maximum spoken words by grade band.</small></div>
+                  <div id="tutor-word-targets">
+                    <div class="word-target-row"><span>K-2</span><input type="number" min="40" max="4000" step="10" data-band="K-2" value="160"></div>
+                    <div class="word-target-row"><span>3-5</span><input type="number" min="40" max="4000" step="10" data-band="3-5" value="400"></div>
+                    <div class="word-target-row"><span>6-8</span><input type="number" min="40" max="4000" step="10" data-band="6-8" value="700"></div>
+                    <div class="word-target-row"><span>9-12</span><input type="number" min="40" max="4000" step="10" data-band="9-12" value="1000"></div>
+                  </div>
                 </div>
               </section>
-              <section class="tts-voice-field tts-length-section" id="tutor-length-section">
-                <div class="tts-voice-head"><div class="tts-voice-copy"><b>Lesson length</b><small>Maximum spoken words by grade band.</small></div></div>
-                <div id="tutor-word-targets">
-                  <div class="word-target-row"><span>K-2</span><input type="number" min="40" max="4000" step="10" data-band="K-2" value="160"><span>Standard only</span></div>
-                  <div class="word-target-row"><span>3-5</span><input type="number" min="40" max="4000" step="10" data-band="3-5" value="400"><span>Standard + Deep Dive</span></div>
-                  <div class="word-target-row"><span>6-8</span><input type="number" min="40" max="4000" step="10" data-band="6-8" value="700"><span>Standard + Deep Dive</span></div>
-                  <div class="word-target-row"><span>9-12</span><input type="number" min="40" max="4000" step="10" data-band="9-12" value="1000"><span>Standard + Deep Dive</span></div>
-                </div>
-                <small class="tts-voice-help">These limits cap spoken explanations by grade band.</small>
+
+              <section class="ai-control-pane ai-limits-pane">
+                <div class="ai-pane-head"><p class="eyebrow">Abuse response</p><h3>Velocity &amp; containment</h3><small>Bounds how fast an account can spend, and what happens when it keeps trying.</small></div>
+                <label>Requests per family/minute
+                  <input type="number" name="requestsPerFamilyMinute" min="0" step="1" required>
+                  <small>Sliding one-minute limit on AI calls. 0 = no rate limit.</small>
+                </label>
+                <label>Auto-pause after N abuse signals
+                  <input type="number" name="abusePauseThreshold" min="0" step="5" required>
+                  <small>Pauses AI for the account after this many oversized/cap-hit signals. Clear it from the family row. 0 = never auto-pause.</small>
+                </label>
               </section>
             </div>
           </div>

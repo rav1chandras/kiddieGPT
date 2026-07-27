@@ -411,6 +411,198 @@
     }
   }
 
+  function setupLoginPromiseRotation() {
+    var promise = document.getElementById("login-rotating-promise");
+    if (!promise || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var lines = [
+      "Turn every “I’m stuck” into “I’ve got this.”",
+      "Turn “I don’t get it” into “That makes sense.”",
+      "Turn “Where do I start?” into “I know the next step.”",
+      "Turn “This feels like too much” into “I have a plan.”",
+      "Turn “Am I ready?” into “I know what to practice.”",
+      "Turn “I forgot” into “I remember.”"
+    ];
+    var index = 0;
+    window.setInterval(function () {
+      promise.classList.add("is-changing");
+      window.setTimeout(function () {
+        index = (index + 1) % lines.length;
+        promise.textContent = lines[index];
+        promise.classList.remove("is-changing");
+      }, 300);
+    }, 4000);
+  }
+
+  function setupLoginFlowAnimation() {
+    var board = document.querySelector(".login-v-board");
+    var hub = document.querySelector(".login-v-hub");
+    var svg = document.querySelector(".login-flow-connections");
+    if (!board || !hub || !svg || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    var paths = Array.prototype.slice.call(svg.querySelectorAll(".login-flow-connection"));
+    var inputPaths = paths.filter(function (path) { return path.dataset.flowDirection === "input"; });
+    var outputPaths = paths.filter(function (path) { return path.dataset.flowDirection === "output"; });
+    var inputTiles = Array.prototype.slice.call(document.querySelectorAll(".login-v-inputs .login-v-tile"));
+    var outputTiles = Array.prototype.slice.call(document.querySelectorAll(".login-v-outputs .login-v-tile"));
+    var cycleMs = 18000;
+    var pulses = [];
+    var pulseCount = inputPaths.length + outputPaths.length * 2;
+    for (var pulseIndex = 0; pulseIndex < pulseCount; pulseIndex += 1) {
+      var pulse = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      pulse.setAttribute("class", "login-flow-pulse");
+      pulse.setAttribute("r", "2.4");
+      pulse.style.opacity = "0";
+      svg.appendChild(pulse);
+      pulses.push(pulse);
+    }
+
+    function localRect(element, boardRect) {
+      var rect = element.getBoundingClientRect();
+      return { left: rect.left - boardRect.left, top: rect.top - boardRect.top, width: rect.width, height: rect.height };
+    }
+
+    function centerOf(rect) {
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
+    function rectangleEdge(rect, target) {
+      var center = centerOf(rect);
+      var dx = target.x - center.x;
+      var dy = target.y - center.y;
+      var scale = 1 / Math.max(Math.abs(dx) / (rect.width / 2), Math.abs(dy) / (rect.height / 2), .001);
+      return { x: center.x + dx * scale, y: center.y + dy * scale };
+    }
+
+    function circleEdge(rect, target) {
+      var center = centerOf(rect);
+      var dx = target.x - center.x;
+      var dy = target.y - center.y;
+      var length = Math.hypot(dx, dy) || 1;
+      var radius = Math.min(rect.width, rect.height) / 2;
+      return { x: center.x + dx / length * radius, y: center.y + dy / length * radius };
+    }
+
+    function connectorPath(start, end) {
+      var direction = end.x >= start.x ? 1 : -1;
+      var bend = Math.max(22, Math.min(70, Math.abs(end.x - start.x) * .42));
+      var c1 = { x: start.x + bend * direction, y: start.y };
+      var c2 = { x: end.x - bend * direction, y: end.y };
+      return "M " + start.x.toFixed(1) + " " + start.y.toFixed(1) +
+        " C " + c1.x.toFixed(1) + " " + c1.y.toFixed(1) + ", " +
+        c2.x.toFixed(1) + " " + c2.y.toFixed(1) + ", " + end.x.toFixed(1) + " " + end.y.toFixed(1);
+    }
+
+    function updateConnections() {
+      var boardRect = board.getBoundingClientRect();
+      var hubRect = localRect(hub, boardRect);
+      var hubCenter = centerOf(hubRect);
+      svg.setAttribute("viewBox", "0 0 " + boardRect.width + " " + boardRect.height);
+      paths.forEach(function (path) {
+        var tile = board.querySelector(path.dataset.flowTarget);
+        if (!tile) return;
+        var tileRect = localRect(tile, boardRect);
+        var tileCenter = centerOf(tileRect);
+        var isInput = path.dataset.flowDirection === "input";
+        var start = isInput ? rectangleEdge(tileRect, hubCenter) : circleEdge(hubRect, tileCenter);
+        var end = isInput ? circleEdge(hubRect, tileCenter) : rectangleEdge(tileRect, hubCenter);
+        path.setAttribute("d", connectorPath(start, end));
+      });
+    }
+
+    function shuffled(items) {
+      return items.slice().sort(function () { return Math.random() - .5; });
+    }
+
+    function makeSequence() {
+      var events = [];
+      var outputPool = shuffled(outputPaths);
+      inputPaths.forEach(function (inputPath, inputIndex) {
+        var inputStart = inputIndex * 3800;
+        events.push({ id: "input-" + inputIndex, kind: "input", path: inputPath, start: inputStart, end: inputStart + 950 });
+        var outputCount = 2 + Math.floor(Math.random() * 2);
+        shuffled(outputPool).slice(0, outputCount).forEach(function (outputPath, outputIndex) {
+          events.push({
+            id: "input-" + inputIndex + "-output-" + outputIndex,
+            kind: "output",
+            path: outputPath,
+            start: inputStart + 1250 + outputIndex * 500 + Math.random() * 140,
+            end: inputStart + 2200 + outputIndex * 500 + Math.random() * 140
+          });
+        });
+      });
+      return events;
+    }
+
+    function flashTile(tile) {
+      if (!tile) return;
+      tile.classList.remove("is-receiving");
+      void tile.offsetWidth;
+      tile.classList.add("is-receiving");
+      window.setTimeout(function () { tile.classList.remove("is-receiving"); }, 760);
+    }
+
+    var startedAt = 0;
+    var sequenceCycle = -1;
+    var sequence = [];
+    var hubArrivals = new Set();
+    var tileArrivals = new Set();
+
+    function animate(now) {
+      if (!startedAt) startedAt = now;
+      var elapsed = now - startedAt;
+      var cycleIndex = Math.floor(elapsed / cycleMs);
+      if (cycleIndex !== sequenceCycle) {
+        sequenceCycle = cycleIndex;
+        sequence = makeSequence();
+        hubArrivals = new Set();
+        tileArrivals = new Set();
+      }
+      var cycleTime = elapsed % cycleMs;
+      var activeTiles = new Set();
+      pulses.forEach(function (pulse, index) {
+        var event = sequence[index];
+        var path = event && event.path;
+        if (!event || !path || !path.getAttribute("d") || cycleTime < event.start || cycleTime > event.end) {
+          pulse.style.opacity = "0";
+          return;
+        }
+        var progress = (cycleTime - event.start) / (event.end - event.start);
+        var length = path.getTotalLength();
+        if (!Number.isFinite(length) || length <= 0) {
+          pulse.style.opacity = "0";
+          return;
+        }
+        var point = path.getPointAtLength(length * progress);
+        var fade = Math.min(1, progress / .12, (1 - progress) / .12);
+        pulse.setAttribute("transform", "translate(" + point.x.toFixed(2) + " " + point.y.toFixed(2) + ")");
+        pulse.style.opacity = String(Math.max(0, fade));
+        if (event.kind === "input" && progress >= .78 && !hubArrivals.has(event.id)) {
+          hubArrivals.add(event.id);
+          hub.classList.remove("is-receiving");
+          void hub.offsetWidth;
+          hub.classList.add("is-receiving");
+          window.setTimeout(function () { hub.classList.remove("is-receiving"); }, 720);
+        }
+        var tile = board.querySelector(path.dataset.flowTarget);
+        if (!tile) return;
+        if (event.kind === "input") activeTiles.add(tile);
+        if (event.kind === "output" && progress >= .92 && !tileArrivals.has(event.id)) {
+          tileArrivals.add(event.id);
+          window.setTimeout(function () { flashTile(tile); }, 100);
+        }
+      });
+      inputTiles.concat(outputTiles).forEach(function (tile) {
+        tile.classList.toggle("is-flowing", activeTiles.has(tile));
+      });
+      window.requestAnimationFrame(animate);
+    }
+
+    updateConnections();
+    window.addEventListener("resize", updateConnections);
+    if (window.ResizeObserver) new ResizeObserver(updateConnections).observe(board);
+    window.requestAnimationFrame(animate);
+  }
+
   function setupParentPortal() {
     var form = document.getElementById("onboarding-form");
     if (!form) return;
@@ -3777,8 +3969,6 @@
     var exceptionSendEmail = document.getElementById("exception-send-email");
     var exceptionApply = document.getElementById("exception-apply");
     var exceptionActionState = document.getElementById("exception-action-state");
-    var exceptionContext = document.getElementById("exception-context");
-    var exceptionContextState = document.getElementById("exception-context-state");
     var seedButton = document.getElementById("seed-data");
     var pricingForm = document.getElementById("pricing-form");
     // False until syncPricingForm() has loaded live values into the inputs.
@@ -4532,59 +4722,6 @@
       });
     }
 
-    function renderExceptionContext() {
-      if (!exceptionContext) return;
-      var family = selectedExceptionFamily();
-      if (!family) {
-        if (exceptionContextState) {
-          exceptionContextState.textContent = "Select parent";
-          exceptionContextState.className = "state-chip warning";
-        }
-        exceptionContext.innerHTML =
-          "<div class='exception-empty'><strong>Select a parent</strong><small>Duplicate subscriptions, exceptions, payments, emails, and audit logs will appear here before you apply an action.</small></div>";
-        return;
-      }
-      var duplicateIds = familyDuplicateSubscriptionIds(family);
-      var timeline = selectedFamilyTimeline(family);
-      var duplicateText = duplicateIds.length
-        ? duplicateIds.map(escapeHtml).join("<br>")
-        : "No duplicate Stripe subscription IDs recorded.";
-      var duplicateClass = duplicateIds.length ? "needs-review" : "clear";
-      if (exceptionContextState) {
-        exceptionContextState.textContent = duplicateIds.length ? "Review duplicates" : "Ready";
-        exceptionContextState.className = "state-chip " + (duplicateIds.length ? "warning" : "ready");
-      }
-      var timelineMarkup = timeline.length ? timeline.map(function (item) {
-        return "<div class='exception-log-row'>" +
-          "<span>" + rowDateTime(item.date) + "</span>" +
-          "<strong>" + escapeHtml(item.title) + "</strong>" +
-          "<small>" + escapeHtml(item.kind) + " · " + escapeHtml(item.actor) + "</small>" +
-          "<p>" + escapeHtml(item.detail) + "</p>" +
-        "</div>";
-      }).join("") : "<div class='exception-empty compact'><strong>No matched logs yet</strong><small>This parent has no matching audit, payment, email, or exception records in the current admin cache.</small></div>";
-      exceptionContext.innerHTML =
-        "<div class='exception-context-grid'>" +
-          "<div class='exception-context-cardlet'>" +
-            "<span>Parent</span><strong>" + escapeHtml(text(family.parentName)) + "</strong><small>" + escapeHtml(text(family.email)) + "</small>" +
-          "</div>" +
-          "<div class='exception-context-cardlet'>" +
-            "<span>Plan</span><strong>" + escapeHtml(text(family.plan || moneyPlan())) + "</strong><small>" + escapeHtml(text(family.subscriptionStatus)) + " · " + escapeHtml(text(paymentStatus(family))) + "</small>" +
-          "</div>" +
-          "<div class='exception-context-cardlet'>" +
-            "<span>Student</span><strong>" + escapeHtml(text(family.studentName)) + "</strong><small>" + escapeHtml(text(family.grade)) + " · " + escapeHtml(text(family.readingLevel)) + "</small>" +
-          "</div>" +
-        "</div>" +
-        "<div class='exception-duplicate " + duplicateClass + "'>" +
-          "<i data-lucide='" + (duplicateIds.length ? "triangle-alert" : "badge-check") + "'></i>" +
-          "<div><strong>" + (duplicateIds.length ? "Duplicate subscription check" : "Duplicate check clear") + "</strong>" +
-          "<small>" + duplicateText + "</small>" +
-          "<p>" + (duplicateIds.length ? "Verify the active Stripe subscription, cancel the duplicate at period end, then choose a refund, credit, or save email." : "No duplicate billing signal is attached to this parent right now.") + "</p></div>" +
-        "</div>" +
-        "<div class='exception-log-head'><strong>All user logs</strong><span>" + timeline.length + " matched</span></div>" +
-        "<div class='exception-log-list'>" + timelineMarkup + "</div>";
-      renderIcons();
-    }
-
     function refreshExceptionComposer() {
       if (!exceptionActionSelect || !exceptionEmailMessage) return;
       var family = selectedExceptionFamily();
@@ -4596,7 +4733,6 @@
         exceptionActionState.textContent = family ? "Ready" : "Select parent";
         exceptionActionState.className = "state-chip " + (family ? "ready" : "warning");
       }
-      renderExceptionContext();
     }
 
     function exceptionPayloadFromForm() {
@@ -5235,7 +5371,13 @@
         maskedOpenAIKey: "",
         mathProblemsPerUserDaily: 20,
         tutorVoiceMinutesPerUserDaily: 10,
-        tokensPerFamilyDaily: 60000,
+        tokensPerFamilyDaily: 200000,
+        maxTokensPerRequest: 40000,
+        maxFileBytes: 4 * 1024 * 1024,
+        maxOutputTokens: 2000,
+        maxOutputTokensLong: 8000,
+        requestsPerFamilyMinute: 40,
+        abusePauseThreshold: 25,
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
         supportedTtsModels: ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
@@ -5272,21 +5414,12 @@
       var el = document.getElementById("tutor-word-targets");
       if (!el) return;
       var maxWords = settings.tutorExplainMaxWords || {};
-      var fraction = Number(settings.tutorStandardFraction) || 0.5;
-      var wpm = Number(settings.wordsPerMinute) || 150;
-      var deepBands = settings.deepDiveBands || ["3-5", "6-8", "9-12"];
       el.innerHTML = GRADE_BANDS.map(function (b) {
         var mx = Number(maxWords[b] || 0);
         var std = Math.round(mx * fraction);
-        var deepOk = deepBands.indexOf(b) >= 0;
-        var mins = (mx / wpm).toFixed(1);
-        var note = deepOk
-          ? ("Standard " + std + " · Deep " + mx + " words · up to ~" + mins + " min")
-          : ("Standard only · plays " + std + " words");
-        return '<div class="word-target-row" style="display:flex;gap:8px;align-items:center;margin:4px 0">' +
+        return '<div class="word-target-row">' +
           '<span style="width:44px;font-weight:600">' + text(b) + '</span>' +
-          '<input type="number" min="40" max="4000" step="10" data-band="' + text(b) + '" value="' + mx + '" style="width:90px">' +
-          '<span style="font-size:12px;opacity:.8">' + text(note) + '</span></div>';
+          '<input type="number" min="40" max="4000" step="10" data-band="' + text(b) + '" value="' + mx + '"></div>';
       }).join("");
     }
 
@@ -5300,13 +5433,9 @@
 
     function renderVoiceNames(settings) {
       var input = document.getElementById("tts-allowed-voices");
-      var examples = document.getElementById("tts-voice-examples");
       var allowed = parseVoiceNames((settings.ttsAllowedVoices || DEFAULT_TTS_VOICES).join(","));
       if (!allowed.length) allowed = DEFAULT_TTS_VOICES.slice();
       if (input) input.value = allowed.map(voiceLabel).join(", ");
-      if (examples) examples.innerHTML = allowed.map(function (voice) {
-        return "<span>" + text(voiceLabel(voice)) + "</span>";
-      }).join("");
     }
 
     function collectVoiceNames() {
@@ -5335,6 +5464,13 @@
         aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
         aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         if (aiSettingsForm.elements.tokensPerFamilyDaily) aiSettingsForm.elements.tokensPerFamilyDaily.value = Number(settings.tokensPerFamilyDaily || 0);
+        if (aiSettingsForm.elements.maxTokensPerRequest) aiSettingsForm.elements.maxTokensPerRequest.value = Number(settings.maxTokensPerRequest || 40000);
+        // Stored as bytes, shown as MB — operators think in MB, the server bounds bytes.
+        if (aiSettingsForm.elements.maxUploadMb) aiSettingsForm.elements.maxUploadMb.value = (Number(settings.maxFileBytes || 4194304) / (1024 * 1024)).toFixed(1);
+        if (aiSettingsForm.elements.maxOutputTokens) aiSettingsForm.elements.maxOutputTokens.value = Number(settings.maxOutputTokens || 2000);
+        if (aiSettingsForm.elements.maxOutputTokensLong) aiSettingsForm.elements.maxOutputTokensLong.value = Number(settings.maxOutputTokensLong || 8000);
+        if (aiSettingsForm.elements.requestsPerFamilyMinute) aiSettingsForm.elements.requestsPerFamilyMinute.value = Number(settings.requestsPerFamilyMinute || 0);
+        if (aiSettingsForm.elements.abusePauseThreshold) aiSettingsForm.elements.abusePauseThreshold.value = Number(settings.abusePauseThreshold || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
         if (aiSettingsForm.elements.tutorStandardPercent) aiSettingsForm.elements.tutorStandardPercent.value = Math.round((Number(settings.tutorStandardFraction) || 0.5) * 100);
         renderTtsModelOptions(settings);
@@ -5376,6 +5512,12 @@
             mathProblemsPerUserDaily: Number(aiSettingsForm.elements.mathProblemsPerUserDaily.value || 0),
             tutorVoiceMinutesPerUserDaily: Number(aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value || 0),
             tokensPerFamilyDaily: aiSettingsForm.elements.tokensPerFamilyDaily ? Number(aiSettingsForm.elements.tokensPerFamilyDaily.value || 0) : undefined,
+            maxTokensPerRequest: aiSettingsForm.elements.maxTokensPerRequest ? Number(aiSettingsForm.elements.maxTokensPerRequest.value || 0) : undefined,
+            maxFileBytes: aiSettingsForm.elements.maxUploadMb ? Math.round(Number(aiSettingsForm.elements.maxUploadMb.value || 0) * 1024 * 1024) : undefined,
+            maxOutputTokens: aiSettingsForm.elements.maxOutputTokens ? Number(aiSettingsForm.elements.maxOutputTokens.value || 0) : undefined,
+            maxOutputTokensLong: aiSettingsForm.elements.maxOutputTokensLong ? Number(aiSettingsForm.elements.maxOutputTokensLong.value || 0) : undefined,
+            requestsPerFamilyMinute: aiSettingsForm.elements.requestsPerFamilyMinute ? Number(aiSettingsForm.elements.requestsPerFamilyMinute.value || 0) : undefined,
+            abusePauseThreshold: aiSettingsForm.elements.abusePauseThreshold ? Number(aiSettingsForm.elements.abusePauseThreshold.value || 0) : undefined,
             tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
             ttsModel: (document.getElementById("tts-model") || {}).value || undefined,
             ttsAllowedVoices: voiceNames,
@@ -7510,6 +7652,8 @@
     });
   }
 
+  setupLoginPromiseRotation();
+  setupLoginFlowAnimation();
   setupParentPortal();
   setupAdminConsole();
   renderIcons();
