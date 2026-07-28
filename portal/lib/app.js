@@ -110,7 +110,7 @@ const TOOL_LIMIT_CEILINGS = {
   math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, problems: 20, reconsiderAttempts: 5 },
   write:   { inputChars: 10000 },
   explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
-  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 1000 }
+  tutor:   { readChars: 30000, sourceChars: 24000 }
 };
 // Shipped defaults: today's behaviour, except where it was plainly wrong.
 // `write.inputChars` moves 900 -> 4000 because 900 characters is roughly 150
@@ -120,7 +120,7 @@ const TOOL_LIMIT_DEFAULTS = {
   math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
   write:   { inputChars: 4000 },
   explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+  tutor:   { readChars: 30000, sourceChars: 24000 }
 };
 // Below these a tool stops working rather than merely being strict, so they are
 // floors rather than advisory minimums.
@@ -129,7 +129,7 @@ const TOOL_LIMIT_FLOORS = {
   math:    { pasteChars: 80, fileBytes: 64 * 1024, problems: 1, reconsiderAttempts: 0 },
   write:   { inputChars: 100 },
   explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
-  tutor:   { readChars: 500, sourceChars: 500, narrationWords: 60 }
+  tutor:   { readChars: 500, sourceChars: 500 }
 };
 
 function normaliseToolLimits(input = {}) {

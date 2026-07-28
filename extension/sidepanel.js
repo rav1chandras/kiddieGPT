@@ -445,7 +445,10 @@ const maxStudyFileBytes = 4 * 1024 * 1024;
 const maxRequestTokens = 40000;
 const maxStudyPdfPages = 20;
 const maxScannedPdfPages = 5;
-const maxTabChars = 30000;        // active-tab text extraction cap
+// Page capture is bounded in WORDS, matching the admin control and the ceiling
+// the extension advertises. The old character cap meant the console said
+// "Page text (words)" while the code counted something else entirely.
+const maxTabWords = 15000;        // active-tab text extraction ceiling
 const maxTutorReadChars = 30000;  // read-aloud verbatim, ~30 min of audio
 const maxTutorExplainChars = 13500; // generated lesson script, ~15 min of audio
 const maxTutorExplainSourceChars = 24000; // source text fed in to teach from
@@ -1613,11 +1616,11 @@ let portalRequireSteps = false; // set from the family's parental controls
 // a tool stricter. They are also the fallback when the portal is unreachable,
 // which is why they stay in the code rather than moving server-side entirely.
 const TOOL_LIMIT_CEILINGS = {
-  mission: { fileBytes: maxStudyFileBytes, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
+  mission: { fileBytes: maxStudyFileBytes, pdfPages: maxStudyPdfPages, pageWords: maxTabWords, quizCount: 15, cardCount: 12 },
   math:    { pasteChars: 2000, fileBytes: maxStudyFileBytes, problems: 20, reconsiderAttempts: 5 },
   write:   { inputChars: 10000 },
-  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
-  tutor:   { readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars, narrationWords: 1000 }
+  explain: { pageWords: maxTabWords, followupChars: 500, followupsPerSession: 25 },
+  tutor:   { readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars }
 };
 // Used until the portal answers, and whenever it cannot be reached.
 const TOOL_LIMIT_FALLBACKS = {
@@ -1625,7 +1628,7 @@ const TOOL_LIMIT_FALLBACKS = {
   math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
   write:   { inputChars: 4000 },
   explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+  tutor:   { readChars: 30000, sourceChars: 24000 }
 };
 let portalToolLimits = null;
 
@@ -1969,6 +1972,16 @@ function setTutorDepth(depth) {
   if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
 }
 
+// Cuts to at most `limit` words on a whitespace boundary. Returns the input
+// untouched when it is already short enough, so the common case copies nothing.
+function trimToWords(text, limit) {
+  const str = String(text || "");
+  if (!limit || limit <= 0) return str;
+  const words = str.trim().split(/\s+/);
+  if (words.length <= limit) return str;
+  return words.slice(0, limit).join(" ");
+}
+
 function studyFileKey(file) {
   return file ? `file:${file.name}:${file.size}` : "";
 }
@@ -2012,14 +2025,14 @@ async function getTutorReadAloudText() {
     const settings = await getOpenAISettings();
     if (!settings) return { label: "Local file", text: "" };
     const source = await getSharedFileText(selectedPdfFile, settings);
-    return { label: source.label, text: (source.text || "").slice(0, maxTutorReadChars) };
+    return { label: source.label, text: (source.text || "").slice(0, toolLimit("tutor", "readChars")) };
   }
   const context = await getActiveTabContext();
   if (!context.usable) return { label: context.title || "Active tab", text: "", issue: context.reason };
   currentSourceKey = `tab:${context.url}`;
   currentSourceLabel = context.title || "Active tab";
   currentSourceText = context.text || "";
-  return { label: currentSourceLabel, text: (context.text || "").slice(0, maxTutorReadChars) };
+  return { label: currentSourceLabel, text: (context.text || "").slice(0, toolLimit("tutor", "readChars")) };
 }
 
 async function getTutorExplainSource() {
@@ -2029,11 +2042,11 @@ async function getTutorExplainSource() {
     const settings = await getOpenAISettings();
     if (!settings) return { label: "Local file", text: "" };
     const source = await getSharedFileText(selectedPdfFile, settings);
-    return { label: source.label, text: (source.text || "").slice(0, maxTutorExplainSourceChars) };
+    return { label: source.label, text: (source.text || "").slice(0, toolLimit("tutor", "sourceChars")) };
   }
   const context = await getActiveTabContext();
   if (!context.usable) return { label: context.title || "Active tab", text: "", issue: context.reason };
-  return { label: context.title || "Active tab", text: `Title: ${context.title}\nText: ${(context.text || "").slice(0, maxTutorExplainSourceChars)}` };
+  return { label: context.title || "Active tab", text: `Title: ${context.title}\nText: ${(context.text || "").slice(0, toolLimit("tutor", "sourceChars"))}` };
 }
 
 function showTutorPlayer(show) {
@@ -2175,7 +2188,7 @@ async function generateTutorVoiceLegacy() {
     let title = "";
     if (tutorMode === "read") {
       const source = await getTutorReadAloudText();
-      transcript = (source.text || "").slice(0, maxTutorReadChars);
+      transcript = (source.text || "").slice(0, toolLimit("tutor", "readChars"));
       title = source.label;
       if (!transcript || transcript.trim().length < 4) {
         setTutorStatus(tutorSourceMode() === "file"
@@ -2392,7 +2405,7 @@ async function buildExplainTranscript({ settings, gradeBand, depth, normalizedSo
       explainDepth: config.depth, // portal clamps to the same effective cap
       model: lessonModel,
       instructions: TutorVoice.LESSON_SYSTEM_INSTRUCTION + UNTRUSTED_CONTENT_GUARD + (attempt ? " The previous draft was rejected: be concise, no tables, include one recall question." : ""),
-      text: TutorVoice.buildLessonUserPayload(label, normalizedSource.slice(0, maxTutorExplainSourceChars), config)
+      text: TutorVoice.buildLessonUserPayload(label, normalizedSource.slice(0, toolLimit("tutor", "sourceChars")), config)
     });
     transcript = String(result.script || "").trim();
     title = result.title || label;
@@ -2605,7 +2618,7 @@ async function generateTutorVoiceV2() {
       telemetry.lessonModel = built.lessonModel;
     } else {
       // (14) Read Aloud = lowest-cost path: no lesson model, source verbatim.
-      transcript = normalizedSource.slice(0, maxTutorReadChars);
+      transcript = normalizedSource.slice(0, toolLimit("tutor", "readChars"));
     }
     telemetry.transcriptWordCount = TutorVoice.countWords(transcript);
 
@@ -2735,7 +2748,10 @@ function getActiveTabContext(opts = {}) {
         const raw = opts.mode === "selection" ? (result.selection || "")
           : opts.mode === "page" ? (result.text || "")
           : (result.selection || result.text || "");
-        const best = raw.slice(0, maxTabChars);
+        // Trimmed by words, because that is the unit the operator sets and the
+        // one a person can reason about. Cut on a word boundary so the last
+        // sentence is not sliced mid-token.
+        const best = trimToWords(raw, toolLimit("mission", "pageWords"));
         const minLen = opts.mode === "selection" ? 1 : 40;
         const usable = !result.isPdf && best.trim().length >= minLen;
         resolve({

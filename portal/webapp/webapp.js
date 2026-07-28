@@ -5386,21 +5386,21 @@
           math: { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
           write: { inputChars: 4000 },
           explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-          tutor: { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+          tutor: { readChars: 30000, sourceChars: 24000 }
         },
         toolLimitCeilings: {
           mission: { fileBytes: 5 * 1024 * 1024, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
           math: { pasteChars: 2000, fileBytes: 5 * 1024 * 1024, problems: 20, reconsiderAttempts: 5 },
           write: { inputChars: 10000 },
           explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
-          tutor: { readChars: 30000, sourceChars: 24000, narrationWords: 1000 }
+          tutor: { readChars: 30000, sourceChars: 24000 }
         },
         toolLimitFloors: {
           mission: { fileBytes: 65536, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
           math: { pasteChars: 80, fileBytes: 65536, problems: 1, reconsiderAttempts: 0 },
           write: { inputChars: 100 },
           explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
-          tutor: { readChars: 500, sourceChars: 500, narrationWords: 60 }
+          tutor: { readChars: 500, sourceChars: 500 }
         },
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
@@ -5473,7 +5473,6 @@
       followupsPerSession: { label: "Follow-ups per session" },
       readChars:           { label: "Read-aloud source (chars)" },
       sourceChars:         { label: "Lesson source text (chars)" },
-      narrationWords:      { label: "Narration length (words)" }
     };
 
     function toMb(bytes) { return Math.round((Number(bytes) || 0) / (1024 * 1024) * 10) / 10; }
