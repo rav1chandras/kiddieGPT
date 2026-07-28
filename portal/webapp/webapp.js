@@ -5536,6 +5536,14 @@
             '<small>' + text(x.hint) + '</small></label>';
         }).join("");
         if (extras) extras = '<div class="ai-tool-extras">' + extras + '</div>';
+        // Grade-band lesson lengths live with the Standard % that multiplies
+        // them. renderWordTargets fills this container immediately after.
+        if (tool === "tutor") {
+          extras += '<div class="ai-tool-bands">' +
+            '<p class="ai-group-label">Lesson length</p>' +
+            '<small class="ai-bands-note">Deep Dive maximum spoken words, by grade band. Standard mode uses the percentage above.</small>' +
+            '<div id="tutor-word-targets"></div></div>';
+        }
         return '<section class="ai-control-pane ai-tool-card">' +
           '<div class="ai-tool-card-head"><span class="ai-tool-mark">' + text(meta.key) + '</span>' +
           '<span class="ai-tool-name"><b>' + text(meta.name) + '</b><small>' + text(meta.note) + '</small></span></div>' +
@@ -5612,8 +5620,10 @@
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
         renderTtsModelOptions(settings);
         renderVoiceNames(settings);
-        renderWordTargets(settings);
+        // renderToolLimits first: it creates #tutor-word-targets inside the
+        // Tutor Mode card, which renderWordTargets then populates.
         renderToolLimits(settings);
+        renderWordTargets(settings);
       }
       renderMarkup("ai-runtime-rules", [
         ruleMarkup("Math Step Tutor problem cap", "Extension should call the usage limits endpoint before solving another screenshot or typed math problem.", "active", "calculator"),

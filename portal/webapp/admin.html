@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=184">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=185">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -580,6 +580,11 @@
                   <input type="text" name="ttsModel" id="tts-model" placeholder="gpt-4o-mini-tts" autocomplete="off">
                   <small>Speech model used for spoken explanations.</small>
                 </label>
+                <label>Tutor voices
+                  <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
+                  <small>Voices students may choose from. The first is the default.</small>
+                </label>
+                <label class="ai-voice-enable"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></label>
               </section>
 
               
@@ -622,27 +627,7 @@
                 </div>
               </section>
 
-              <section class="tts-voice-field ai-voice-length-card" id="tts-voice-section">
-                <div class="tts-voice-head">
-                  <div class="tts-voice-copy"><b>Tutor voice</b><small>Choose the voices students may use.</small></div>
-                  <label class="promo-enable-toggle"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></label>
-                </div>
-                <div class="tts-voice-form">
-                  <label class="tts-input-label" for="tts-allowed-voices">Voice names</label>
-                  <div class="tts-voice-input-row">
-                    <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
-                  </div>
-                </div>
-                <div class="tts-length-section" id="tutor-length-section">
-                  <div class="tts-voice-copy"><b>Lesson length</b><small>Maximum spoken words by grade band.</small></div>
-                  <div id="tutor-word-targets">
-                    <div class="word-target-row"><span>K-2</span><input type="number" min="40" max="4000" step="any" data-band="K-2" value="160"></div>
-                    <div class="word-target-row"><span>3-5</span><input type="number" min="40" max="4000" step="any" data-band="3-5" value="400"></div>
-                    <div class="word-target-row"><span>6-8</span><input type="number" min="40" max="4000" step="any" data-band="6-8" value="700"></div>
-                    <div class="word-target-row"><span>9-12</span><input type="number" min="40" max="4000" step="any" data-band="9-12" value="1000"></div>
-                  </div>
-                </div>
-              </section>
+              
 
               
             </div>
@@ -922,6 +907,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=205"></script>
+  <script src="/webapp/webapp.js?v=206"></script>
 </body>
 </html>

@@ -10596,6 +10596,20 @@ body[data-page="admin"] .ai-group-label {
 }
 /* Tool-specific settings that live on the server as top-level fields, kept
    visually distinct from the input thresholds above them. */
+body[data-page="admin"] .ai-tool-bands {
+  display: grid; gap: 7px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
+}
+body[data-page="admin"] .ai-bands-note { color: #8a98a4; font-size: .66rem; line-height: 1.35; margin: -3px 0 2px; }
+body[data-page="admin"] .ai-tool-bands .word-target-row {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center;
+}
+body[data-page="admin"] .ai-tool-bands .word-target-row span { font-size: .7rem; font-weight: 700; color: #60747d; }
+body[data-page="admin"] .ai-tool-bands input { font-variant-numeric: tabular-nums; }
+/* Voice enable sits inline with the model fields it belongs to. */
+body[data-page="admin"] .ai-voice-enable {
+  display: flex !important; align-items: center; gap: 8px; margin-top: 2px;
+}
+body[data-page="admin"] .ai-voice-enable input { width: 16px; height: 16px; accent-color: #004f48; }
 body[data-page="admin"] .ai-tool-extras {
   display: grid; gap: 10px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
 }
