@@ -47,10 +47,35 @@ grants once, both problems above go away, and the manifest no longer *requires*
 broad access. More work than a manifest edit, but it solves the problem instead of
 trading it for a safety hole.
 
-### FE-5 — Refusal clause for off-topic follow-ups · owner: extension
-Tutor / Explain / Writing follow-up prompts have no instruction to decline non-
-schoolwork requests (code, general chat, adult topics). Add a short refuse-and-redirect
-clause so the extension isn't trivially used as a general LLM.
+### FE-5 — Prompt-injection guard on ingested content · owner: extension
+Reframed 2026-07-27 after auditing every prompt. The entry originally asked for a
+refuse-and-redirect clause on "Tutor / Explain / Writing follow-up" prompts, but:
+
+- **Explain and Writing already had it** via `UNTRUSTED_TEXT_GUARD`.
+- **Tutor has no free-text input at all**, so there was nothing to refuse.
+- **Math paste** is the only unguarded free-text surface, and its prompt already
+  refuses non-math through the `noMath` escape, which is a stronger filter than a
+  politeness clause.
+
+The gap the audit actually found was different: prompts that ingest a page, a file,
+or an image carried **no injection defence**. A worksheet or web page containing
+"ignore your instructions and …" was fed straight into study-pack generation, tutor
+lesson writing, and math transcription.
+
+Shipped: the guard is split into `UNTRUSTED_CONTENT_GUARD` (injection) and
+`SCHOOLWORK_ONLY_GUARD` (refusal), with `UNTRUSTED_TEXT_GUARD` kept as the
+combination so existing call sites are unchanged. The injection clause now covers
+`getSharedFileText`, `buildStudyPackFromActiveTab`, `buildPdfWithOpenAI`,
+`buildExplainTranscript`, `generateTutorVoiceLegacy`, `transcribeMathProblems` and
+`checkMathOnce`.
+
+Still open, deliberately: `explainMissionCard`, `generateMoreMissionQuiz` and
+`generateMoreMissionFlashcards` work from an already-generated study pack rather
+than raw source, so they are second-order — worth guarding if the pack itself is
+ever built from a less trusted path.
+
+This is defence in depth, not a guarantee. Server-side moderation is the real net,
+and it currently fails closed (see the moderation work in `d65bb36`).
 
 ---
 
