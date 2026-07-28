@@ -5442,7 +5442,7 @@
         var mx = Number(maxWords[b] || 0);
         return '<div class="word-target-row">' +
           '<span style="width:44px;font-weight:600">' + text(b) + '</span>' +
-          '<input type="number" min="40" max="4000" step="10" data-band="' + text(b) + '" value="' + mx + '"></div>';
+          '<input type="number" min="40" max="4000" step="any" data-band="' + text(b) + '" value="' + mx + '"></div>';
       }).join("");
     }
 
@@ -5502,7 +5502,7 @@
           var range = mn > 0 ? text(String(mn)) + "&ndash;" + text(String(mx)) : "up to " + text(String(mx));
           return '<label>' + text(fm.label) +
             '<input type="number" data-tool="' + text(tool) + '" data-field="' + text(field) + '"' +
-            (fm.bytes ? ' data-bytes="1" step="0.1"' : ' step="1"') +
+            (fm.bytes ? ' data-bytes="1" step="any"' : ' step="any"') +
             ' min="' + mn + '" max="' + mx + '" value="' + val + '" required>' +
             '<small>Allowed ' + range + '</small></label>';
         }).join("");

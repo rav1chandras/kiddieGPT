@@ -10538,13 +10538,36 @@ body[data-page="admin"] .raw-log-detail small {
 /* One card per tool: the tools do not share input types, so a single grid would
    be mostly empty cells. Inside a card the fields reuse .ai-control-pane's
    label/input/helper rules, so this screen has one field style, not two. */
-body[data-page="admin"] .ai-tool-limits { margin-top: 16px; }
+/* The parent .ai-settings-grid is two columns, so without this the section
+   inherits a single 662px column and the five cards are squeezed to ~124px.
+   Span both columns so it is genuinely a full-width section at the bottom. */
+body[data-page="admin"] .ai-tool-limits { grid-column: 1 / -1; margin-top: 16px; }
 body[data-page="admin"] .ai-tool-limits-head { padding: 0 2px 12px; }
+/* One column per tool, all five on a single row. minmax(0,1fr) rather than
+   auto-fit so they stay on one line and share the width evenly instead of
+   reflowing to a ragged second row. */
 body[data-page="admin"] .ai-tool-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   align-items: start;
+}
+body[data-page="admin"] .ai-tool-card { padding: 13px 12px; gap: 10px; }
+/* Narrow columns: keep the label on one line where it can, and let the helper
+   wrap rather than forcing the card wider. */
+body[data-page="admin"] .ai-tool-card > label { font-size: .72rem; }
+body[data-page="admin"] .ai-tool-card > label > small { font-size: .66rem; }
+body[data-page="admin"] .ai-tool-card input[type="number"] { padding-left: 9px; padding-right: 9px; }
+/* Below roughly a laptop width five columns stop being readable, so step down
+   rather than squeezing further. */
+@media (max-width: 1180px) {
+  body[data-page="admin"] .ai-tool-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 780px) {
+  body[data-page="admin"] .ai-tool-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  body[data-page="admin"] .ai-tool-cards { grid-template-columns: minmax(0, 1fr); }
 }
 body[data-page="admin"] .ai-tool-card { gap: 11px; }
 body[data-page="admin"] .ai-tool-card-head {
