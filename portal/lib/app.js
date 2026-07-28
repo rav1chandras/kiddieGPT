@@ -107,7 +107,7 @@ const AI_ABUSE_PAUSE_THRESHOLD = Number(process.env.AI_ABUSE_PAUSE_THRESHOLD || 
 // min(extension ceiling, admin value) no matter which side is consulted.
 const TOOL_LIMIT_CEILINGS = {
   mission: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
-  math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, problems: 20, reconsiderAttempts: 5 },
+  math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, pdfPages: 10, problems: 20, reconsiderAttempts: 5 },
   write:   { inputChars: 10000 },
   explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
   tutor:   { readChars: 30000, sourceChars: 24000 }
@@ -117,7 +117,7 @@ const TOOL_LIMIT_CEILINGS = {
 // words, which is not an essay.
 const TOOL_LIMIT_DEFAULTS = {
   mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
-  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
+  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3 },
   write:   { inputChars: 4000 },
   explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
   tutor:   { readChars: 30000, sourceChars: 24000 }
@@ -126,7 +126,7 @@ const TOOL_LIMIT_DEFAULTS = {
 // floors rather than advisory minimums.
 const TOOL_LIMIT_FLOORS = {
   mission: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
-  math:    { pasteChars: 80, fileBytes: 64 * 1024, problems: 1, reconsiderAttempts: 0 },
+  math:    { pasteChars: 80, fileBytes: 64 * 1024, pdfPages: 1, problems: 1, reconsiderAttempts: 0 },
   write:   { inputChars: 100 },
   explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
   tutor:   { readChars: 500, sourceChars: 500 }

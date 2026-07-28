@@ -1617,7 +1617,7 @@ let portalRequireSteps = false; // set from the family's parental controls
 // which is why they stay in the code rather than moving server-side entirely.
 const TOOL_LIMIT_CEILINGS = {
   mission: { fileBytes: maxStudyFileBytes, pdfPages: maxStudyPdfPages, pageWords: maxTabWords, quizCount: 15, cardCount: 12 },
-  math:    { pasteChars: 2000, fileBytes: maxStudyFileBytes, problems: 20, reconsiderAttempts: 5 },
+  math:    { pasteChars: 2000, fileBytes: maxStudyFileBytes, pdfPages: 10, problems: 20, reconsiderAttempts: 5 },
   write:   { inputChars: 10000 },
   explain: { pageWords: maxTabWords, followupChars: 500, followupsPerSession: 25 },
   tutor:   { readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars }
@@ -1625,7 +1625,7 @@ const TOOL_LIMIT_CEILINGS = {
 // Used until the portal answers, and whenever it cannot be reached.
 const TOOL_LIMIT_FALLBACKS = {
   mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
-  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
+  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3 },
   write:   { inputChars: 4000 },
   explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
   tutor:   { readChars: 30000, sourceChars: 24000 }
@@ -1668,6 +1668,8 @@ function applyToolLimitsToUi() {
   bind("mathPasteInput", toolLimit("math", "pasteChars"));
   bind("writingInput", toolLimit("write", "inputChars"));
   bind("explainFollowupInput", toolLimit("explain", "followupChars"));
+  const mathHint = document.getElementById("mathFileHint");
+  if (mathHint) mathHint.textContent = `${mathPageHint()} · PDF, JPG, or PNG · up to ${formatBytes(toolLimit("math", "fileBytes"))}`;
   const meta = document.getElementById("pdfFileMeta");
   if (meta && !meta.dataset.userState) {
     meta.textContent = `PDF up to ${toolLimit("mission", "pdfPages")} pages (5 if scanned), TXT, JPG, or PNG · up to ${formatBytes(toolLimit("mission", "fileBytes"))}`;
@@ -3961,7 +3963,7 @@ function setMathUploadState(file, error = "") {
       : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg>`;
   }
   if (title) title.textContent = uploaded ? `${file.name}` : "Choose a math file";
-  if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : `One page · PDF, JPG, or PNG · up to ${formatBytes(maxStudyFileBytes)}`);
+  if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : `${mathPageHint()} · PDF, JPG, or PNG · up to ${formatBytes(toolLimit("math", "fileBytes"))}`);
   if (browseLabel) browseLabel.textContent = uploaded ? "Change" : "Browse file";
 }
 
@@ -4067,6 +4069,12 @@ async function countPdfPages(file) {
   return (await inspectPdf(file)).pages;
 }
 
+// Upload hint text, derived so it cannot drift from the enforced cap.
+function mathPageHint() {
+  const pages = toolLimit("math", "pdfPages");
+  return pages === 1 ? "One page" : `Up to ${pages} pages`;
+}
+
 async function handleMathFileChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -4081,10 +4089,20 @@ async function handleMathFileChange(event) {
   }
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
   if (isPdf) {
+    const pageCap = toolLimit("math", "pdfPages");
     const { pages, reliable } = await inspectPdf(file);
-    if (reliable && pages > 1) {
+    if (reliable && pages > pageCap) {
       selectedMathFile = null;
-      setMathUploadState(null, `This PDF has ${pages} pages. Please upload just one page at a time.`);
+      setMathUploadState(null, pageCap === 1
+        ? `This PDF has ${pages} pages. Please upload just one page at a time.`
+        : `This PDF has ${pages} pages. Please upload up to ${pageCap} pages at a time.`);
+      return;
+    }
+    // A compressed page tree can't be counted, so fall back to the size estimate
+    // the server will judge it on rather than letting it through unchecked.
+    if (!reliable && estimateFileTokens(file.size) > maxRequestTokens) {
+      selectedMathFile = null;
+      setMathUploadState(null, `That PDF is too big to read in one go (${formatBytes(file.size)}). Please upload fewer pages at a time.`);
       return;
     }
   } else if (isImageFile(file)) {
