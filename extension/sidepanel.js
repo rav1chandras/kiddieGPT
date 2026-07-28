@@ -2891,6 +2891,7 @@ async function handleStudyFile(file, tool = "pdf") {
   if (fileName) fileName.textContent = file.name;
   if (fileMeta) fileMeta.textContent = `${formatBytes(file.size)} selected · ${fileKindLabel(file)} · ready`;
   setToolUploadStatus(tool, `${fileKindLabel(file)} selected. Ready to generate.`, "blue");
+  updateStudyClearButton(tool);
   if (tool === "pdf") {
     hideMissionFollowup();
     setPdfStatus(`${fileKindLabel(file)} selected. Press Generate Study Aids when ready.`, "blue");
@@ -3156,6 +3157,7 @@ function initPdfTool() {
   });
   document.getElementById("pdfFileInput")?.addEventListener("change", handlePdfFileChange);
   initUploadDropZone("pdf");
+  document.getElementById("pdfClearButton")?.addEventListener("click", () => clearStudyFile("pdf"));
   updateMissionChallengeLabel();
   updatePdfSourceMode();
   updateMissionReadUi();
@@ -3947,6 +3949,52 @@ function normalizeMathProblems(result) {
   });
 }
 
+// ---- Clearing a chosen file -------------------------------------------------
+// "Change" only ever swaps one file for another, so until now there was no way
+// back to having no file at all -- a student who picked the wrong thing was
+// stuck with something selected. Each tool clears its own state: Math holds just
+// the file, Mission also caches extracted text and the built pack, and leaving
+// those behind would let a stale pack outlive the file it came from.
+function clearMathFile() {
+  selectedMathFile = null;
+  const input = document.getElementById("mathFileInput");
+  if (input) input.value = "";           // so re-picking the same file still fires change
+  setMathUploadState(null);
+  updateMathClearButton();
+}
+
+function clearStudyFile(tool = "pdf") {
+  selectedPdfFile = null;
+  currentSourceText = "";
+  currentSourceLabel = "";
+  currentSourceKey = "";
+  currentStudyPack = null;
+  const input = document.getElementById(`${tool}FileInput`);
+  if (input) input.value = "";
+  const fileName = document.getElementById(`${tool}FileName`);
+  const fileMeta = document.getElementById(`${tool}FileMeta`);
+  if (fileName) fileName.textContent = "Choose a file or drag & drop it here";
+  if (fileMeta) {
+    fileMeta.textContent = `PDF up to ${toolLimit("mission", "pdfPages")} pages (5 if scanned), TXT, JPG, or PNG \u00b7 up to ${formatBytes(toolLimit("mission", "fileBytes"))}`;
+    delete fileMeta.dataset.userState;
+  }
+  document.getElementById(`${tool}UploadZone`)?.classList.remove("uploaded", "upload-error");
+  setToolUploadStatus(tool, "");
+  if (tool === "pdf") setPdfStatus("");
+  updateStudyClearButton(tool);
+  updateTutorSourceSummary();
+}
+
+function updateMathClearButton() {
+  const btn = document.getElementById("mathClearButton");
+  if (btn) btn.hidden = !selectedMathFile;
+}
+
+function updateStudyClearButton(tool = "pdf") {
+  const btn = document.getElementById(`${tool}ClearButton`);
+  if (btn) btn.hidden = !selectedPdfFile;
+}
+
 function setMathUploadState(file, error = "") {
   const zone = document.querySelector("#mathPanel .math-upload-zone");
   if (!zone) return;
@@ -3965,6 +4013,7 @@ function setMathUploadState(file, error = "") {
   if (title) title.textContent = uploaded ? `${file.name}` : "Choose a math file";
   if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : `${mathPageHint()} · PDF, JPG, or PNG · up to ${formatBytes(toolLimit("math", "fileBytes"))}`);
   if (browseLabel) browseLabel.textContent = uploaded ? "Change" : "Browse file";
+  updateMathClearButton();
 }
 
 // Page counting here is a UX affordance, not a security control — the portal's
@@ -4939,6 +4988,7 @@ function initMathTool() {
     document.getElementById("mathFileInput")?.click();
   });
   document.getElementById("mathFileInput")?.addEventListener("change", handleMathFileChange);
+  document.getElementById("mathClearButton")?.addEventListener("click", clearMathFile);
   document.querySelector(".math-capture-box")?.addEventListener("keydown", event => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();

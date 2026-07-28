@@ -1291,3 +1291,14 @@ body{background:#f6f8f5}
 }
 .math-feedback-btn:hover:not(:disabled) { background: rgba(0,79,72,.06); color: #004f48; }
 .math-feedback-btn:disabled { opacity: .7; cursor: default; }
+
+/* Remove-file control. Appears only once a file is chosen: the Browse button
+   becomes "Change" in that state, which covers picking a different file but
+   leaves no way to end up with no file at all. */
+.upload-zone{position:relative}
+.upload-clear{position:absolute;top:8px;right:8px;width:26px;height:26px;display:grid;place-items:center;
+  padding:0;border:1px solid #d7e3dc;border-radius:8px;background:#fff;color:#5d7169;cursor:pointer;z-index:2}
+.upload-clear[hidden]{display:none}
+.upload-clear:hover{border-color:#c24141;color:#c24141;background:#fff5f5}
+.upload-clear:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.upload-clear svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
