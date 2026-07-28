@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=178">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=179">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -613,11 +613,11 @@
                   <small>Largest file one request may carry. Base64 adds ~33%, so this stays under the request body limit.</small>
                 </label>
                 <label>Max output tokens (standard)
-                  <input type="number" name="maxOutputTokens" min="1" max="2000" step="100" required>
+                  <input type="number" name="maxOutputTokens" min="100" max="2000" step="100" required>
                   <small>Reply-length ceiling for every tool.</small>
                 </label>
                 <label>Max output tokens (document read)
-                  <input type="number" name="maxOutputTokensLong" min="1" max="8000" step="500" required>
+                  <input type="number" name="maxOutputTokensLong" min="500" max="8000" step="500" required>
                   <small>Transcription only — one call per worksheet, so it can afford a longer reply than the ~30 solve/check calls.</small>
                 </label>
               </section>
@@ -652,10 +652,19 @@
                 </label>
                 <label>Auto-pause after N abuse signals
                   <input type="number" name="abusePauseThreshold" min="0" step="5" required>
-                  <small>Pauses AI for the account after this many oversized/cap-hit signals. Clear it from the family row. 0 = never auto-pause.</small>
+                  <small>Pauses AI for the account after this many oversized or moderation signals <b>in a day</b>. Hitting the token cap doesn’t count. Clear it from the family row. 0 = never auto-pause.</small>
                 </label>
               </section>
             </div>
+
+            <section class="ai-tool-limits" id="ai-tool-limits">
+              <div class="ai-pane-head ai-tool-limits-head">
+                <p class="eyebrow">Per-tool input thresholds</p>
+                <h3>What each tool accepts from a student</h3>
+                <small>Applied in the extension for fast feedback. They sit beneath the ceilings above — the effective limit is always the lower of the two, so a tool can be tightened here but never raised past its ceiling.</small>
+              </div>
+              <div class="ai-tool-cards" id="ai-tool-cards"></div>
+            </section>
           </div>
         </form>
 
@@ -923,6 +932,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=196"></script>
+  <script src="/webapp/webapp.js?v=200"></script>
 </body>
 </html>

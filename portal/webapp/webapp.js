@@ -5378,6 +5378,30 @@
         maxOutputTokensLong: 8000,
         requestsPerFamilyMinute: 40,
         abusePauseThreshold: 25,
+        // Mirrors the server so the section still renders before the settings
+        // fetch resolves. The server's values overwrite these on arrival, and
+        // the server clamps whatever is saved regardless of what is shown here.
+        toolLimits: {
+          mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
+          math: { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
+          write: { inputChars: 4000 },
+          explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
+          tutor: { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+        },
+        toolLimitCeilings: {
+          mission: { fileBytes: 5 * 1024 * 1024, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
+          math: { pasteChars: 2000, fileBytes: 5 * 1024 * 1024, problems: 20, reconsiderAttempts: 5 },
+          write: { inputChars: 10000 },
+          explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
+          tutor: { readChars: 30000, sourceChars: 24000, narrationWords: 1000 }
+        },
+        toolLimitFloors: {
+          mission: { fileBytes: 65536, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
+          math: { pasteChars: 80, fileBytes: 65536, problems: 1, reconsiderAttempts: 0 },
+          write: { inputChars: 100 },
+          explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
+          tutor: { readChars: 500, sourceChars: 500, narrationWords: 60 }
+        },
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
         supportedTtsModels: ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
@@ -5416,11 +5440,87 @@
       var maxWords = settings.tutorExplainMaxWords || {};
       el.innerHTML = GRADE_BANDS.map(function (b) {
         var mx = Number(maxWords[b] || 0);
-        var std = Math.round(mx * fraction);
         return '<div class="word-target-row">' +
           '<span style="width:44px;font-weight:600">' + text(b) + '</span>' +
           '<input type="number" min="40" max="4000" step="10" data-band="' + text(b) + '" value="' + mx + '"></div>';
       }).join("");
+    }
+
+    // Per-tool input thresholds. Rendered from the schema the server sends
+    // (ceilings, floors, defaults) rather than a hardcoded copy, so the form
+    // cannot drift from what the server will actually accept.
+    var TOOL_META = {
+      mission: { key: "SM", name: "Study Mission", note: "Local file or active tab into a study pack" },
+      math:    { key: "MT", name: "Math Tutor",    note: "Paste, upload, or phone capture" },
+      write:   { key: "WS", name: "Writing Studio", note: "Assignment or draft feedback" },
+      explain: { key: "EX", name: "Explain This",  note: "Page or screenshot, plus follow-ups" },
+      tutor:   { key: "TM", name: "Tutor Mode",    note: "Read aloud and spoken lessons" }
+    };
+    var FIELD_META = {
+      fileBytes:           { label: "Max upload size", unit: "MB", bytes: true },
+      pdfPages:            { label: "PDF pages", unit: "pages" },
+      pageWords:           { label: "Page text", unit: "words" },
+      quizCount:           { label: "Quiz questions", unit: "questions" },
+      cardCount:           { label: "Flashcards", unit: "cards" },
+      pasteChars:          { label: "Pasted problem", unit: "chars" },
+      problems:            { label: "Problems per attempt", unit: "problems" },
+      reconsiderAttempts:  { label: "Re-solve attempts", unit: "per problem" },
+      inputChars:          { label: "Draft length", unit: "chars" },
+      followupChars:       { label: "Follow-up question", unit: "chars" },
+      followupsPerSession: { label: "Follow-ups per session", unit: "questions" },
+      readChars:           { label: "Read-aloud source", unit: "chars" },
+      sourceChars:         { label: "Lesson source text", unit: "chars" },
+      narrationWords:      { label: "Narration length", unit: "words" }
+    };
+
+    function toMb(bytes) { return Math.round((Number(bytes) || 0) / (1024 * 1024) * 10) / 10; }
+
+    function renderToolLimits(settings) {
+      var host = document.getElementById("ai-tool-cards");
+      if (!host) return;
+      var values = settings.toolLimits || {};
+      var ceilings = settings.toolLimitCeilings || {};
+      var floors = settings.toolLimitFloors || {};
+      host.innerHTML = Object.keys(TOOL_META).filter(function (tool) {
+        return values[tool];
+      }).map(function (tool) {
+        var meta = TOOL_META[tool];
+        var fields = Object.keys(values[tool]).map(function (field) {
+          var fm = FIELD_META[field] || { label: field, unit: "" };
+          var raw = Number(values[tool][field]) || 0;
+          var ceil = Number((ceilings[tool] || {})[field]) || 0;
+          var floor = Number((floors[tool] || {})[field]) || 0;
+          var val = fm.bytes ? toMb(raw) : raw;
+          var mx = fm.bytes ? toMb(ceil) : ceil;
+          var mn = fm.bytes ? toMb(floor) : floor;
+          return '<label class="ai-tool-field">' +
+            '<span class="ai-tool-field-top"><span>' + text(fm.label) + '</span>' +
+            '<span class="ai-tool-ceiling">max ' + text(String(mx)) + '</span></span>' +
+            '<span class="ai-tool-input-row">' +
+              '<input type="number" data-tool="' + text(tool) + '" data-field="' + text(field) + '"' +
+              (fm.bytes ? ' data-bytes="1" step="0.1"' : ' step="1"') +
+              ' min="' + mn + '" max="' + mx + '" value="' + val + '">' +
+              '<span class="ai-tool-unit">' + text(fm.unit) + '</span>' +
+            '</span></label>';
+        }).join("");
+        return '<section class="ai-tool-card">' +
+          '<div class="ai-tool-card-head"><span class="ai-tool-mark">' + text(meta.key) + '</span>' +
+          '<span class="ai-tool-name"><b>' + text(meta.name) + '</b><small>' + text(meta.note) + '</small></span></div>' +
+          '<div class="ai-tool-fields">' + fields + '</div></section>';
+      }).join("");
+    }
+
+    function collectToolLimits() {
+      var out = {};
+      Array.prototype.forEach.call(document.querySelectorAll('#ai-tool-cards input[data-tool]'), function (input) {
+        var tool = input.getAttribute("data-tool");
+        var field = input.getAttribute("data-field");
+        var value = Number(input.value || 0);
+        if (input.getAttribute("data-bytes")) value = Math.round(value * 1024 * 1024);
+        out[tool] = out[tool] || {};
+        out[tool][field] = value;
+      });
+      return out;
     }
 
     function collectMaxWords() {
@@ -5476,6 +5576,7 @@
         renderTtsModelOptions(settings);
         renderVoiceNames(settings);
         renderWordTargets(settings);
+        renderToolLimits(settings);
       }
       renderMarkup("ai-runtime-rules", [
         ruleMarkup("Math Step Tutor problem cap", "Extension should call the usage limits endpoint before solving another screenshot or typed math problem.", "active", "calculator"),
@@ -5518,6 +5619,7 @@
             maxOutputTokensLong: aiSettingsForm.elements.maxOutputTokensLong ? Number(aiSettingsForm.elements.maxOutputTokensLong.value || 0) : undefined,
             requestsPerFamilyMinute: aiSettingsForm.elements.requestsPerFamilyMinute ? Number(aiSettingsForm.elements.requestsPerFamilyMinute.value || 0) : undefined,
             abusePauseThreshold: aiSettingsForm.elements.abusePauseThreshold ? Number(aiSettingsForm.elements.abusePauseThreshold.value || 0) : undefined,
+            toolLimits: collectToolLimits(),
             tutorVoiceEnabled: aiSettingsForm.elements.tutorVoiceEnabled.checked,
             ttsModel: (document.getElementById("tts-model") || {}).value || undefined,
             ttsAllowedVoices: voiceNames,
