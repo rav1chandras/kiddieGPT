@@ -5456,21 +5456,24 @@
       explain: { key: "EX", name: "Explain This",  note: "Page or screenshot, plus follow-ups" },
       tutor:   { key: "TM", name: "Tutor Mode",    note: "Read aloud and spoken lessons" }
     };
+    // Units live in the label, exactly as the panes above do ("Max upload size
+    // (MB)"), and the ceiling goes in the helper line. Putting the ceiling beside
+    // the label meant it collided whenever the label wrapped.
     var FIELD_META = {
-      fileBytes:           { label: "Max upload size", unit: "MB", bytes: true },
-      pdfPages:            { label: "PDF pages", unit: "pages" },
-      pageWords:           { label: "Page text", unit: "words" },
-      quizCount:           { label: "Quiz questions", unit: "questions" },
-      cardCount:           { label: "Flashcards", unit: "cards" },
-      pasteChars:          { label: "Pasted problem", unit: "chars" },
-      problems:            { label: "Problems per attempt", unit: "problems" },
-      reconsiderAttempts:  { label: "Re-solve attempts", unit: "per problem" },
-      inputChars:          { label: "Draft length", unit: "chars" },
-      followupChars:       { label: "Follow-up question", unit: "chars" },
-      followupsPerSession: { label: "Follow-ups per session", unit: "questions" },
-      readChars:           { label: "Read-aloud source", unit: "chars" },
-      sourceChars:         { label: "Lesson source text", unit: "chars" },
-      narrationWords:      { label: "Narration length", unit: "words" }
+      fileBytes:           { label: "Max upload size (MB)", bytes: true },
+      pdfPages:            { label: "PDF pages" },
+      pageWords:           { label: "Page text (words)" },
+      quizCount:           { label: "Quiz questions" },
+      cardCount:           { label: "Flashcards" },
+      pasteChars:          { label: "Pasted problem (chars)" },
+      problems:            { label: "Problems per attempt" },
+      reconsiderAttempts:  { label: "Re-solve attempts per problem" },
+      inputChars:          { label: "Draft length (chars)" },
+      followupChars:       { label: "Follow-up question (chars)" },
+      followupsPerSession: { label: "Follow-ups per session" },
+      readChars:           { label: "Read-aloud source (chars)" },
+      sourceChars:         { label: "Lesson source text (chars)" },
+      narrationWords:      { label: "Narration length (words)" }
     };
 
     function toMb(bytes) { return Math.round((Number(bytes) || 0) / (1024 * 1024) * 10) / 10; }
@@ -5493,20 +5496,22 @@
           var val = fm.bytes ? toMb(raw) : raw;
           var mx = fm.bytes ? toMb(ceil) : ceil;
           var mn = fm.bytes ? toMb(floor) : floor;
-          return '<label class="ai-tool-field">' +
-            '<span class="ai-tool-field-top"><span>' + text(fm.label) + '</span>' +
-            '<span class="ai-tool-ceiling">max ' + text(String(mx)) + '</span></span>' +
-            '<span class="ai-tool-input-row">' +
-              '<input type="number" data-tool="' + text(tool) + '" data-field="' + text(field) + '"' +
-              (fm.bytes ? ' data-bytes="1" step="0.1"' : ' step="1"') +
-              ' min="' + mn + '" max="' + mx + '" value="' + val + '">' +
-              '<span class="ai-tool-unit">' + text(fm.unit) + '</span>' +
-            '</span></label>';
+          // Same shape as every other field on this screen: label, full-width
+          // input, helper beneath. The helper carries the range so nothing has
+          // to compete with the label for horizontal space.
+          var range = mn > 0 ? text(String(mn)) + "&ndash;" + text(String(mx)) : "up to " + text(String(mx));
+          return '<label>' + text(fm.label) +
+            '<input type="number" data-tool="' + text(tool) + '" data-field="' + text(field) + '"' +
+            (fm.bytes ? ' data-bytes="1" step="0.1"' : ' step="1"') +
+            ' min="' + mn + '" max="' + mx + '" value="' + val + '" required>' +
+            '<small>Allowed ' + range + '</small></label>';
         }).join("");
-        return '<section class="ai-tool-card">' +
+        // Reuses ai-control-pane so the label/input/helper styling comes from the
+        // same rules as the panes above rather than a second, drifting copy.
+        return '<section class="ai-control-pane ai-tool-card">' +
           '<div class="ai-tool-card-head"><span class="ai-tool-mark">' + text(meta.key) + '</span>' +
           '<span class="ai-tool-name"><b>' + text(meta.name) + '</b><small>' + text(meta.note) + '</small></span></div>' +
-          '<div class="ai-tool-fields">' + fields + '</div></section>';
+          fields + '</section>';
       }).join("");
     }
 
@@ -5566,7 +5571,14 @@
         if (aiSettingsForm.elements.tokensPerFamilyDaily) aiSettingsForm.elements.tokensPerFamilyDaily.value = Number(settings.tokensPerFamilyDaily || 0);
         if (aiSettingsForm.elements.maxTokensPerRequest) aiSettingsForm.elements.maxTokensPerRequest.value = Number(settings.maxTokensPerRequest || 40000);
         // Stored as bytes, shown as MB — operators think in MB, the server bounds bytes.
-        if (aiSettingsForm.elements.maxUploadMb) aiSettingsForm.elements.maxUploadMb.value = (Number(settings.maxFileBytes || 4194304) / (1024 * 1024)).toFixed(1);
+        if (aiSettingsForm.elements.maxUploadMb) {
+          // Drive the ceiling from the server rather than the markup. A stale
+          // max= here silently blocks every save on the whole form, which is
+          // exactly what happened when the file budget was raised to 5 MB.
+          var uploadCeil = Number(((settings.toolLimitCeilings || {}).mission || {}).fileBytes) || 0;
+          if (uploadCeil) aiSettingsForm.elements.maxUploadMb.max = String(Math.round(uploadCeil / (1024 * 1024) * 10) / 10);
+          aiSettingsForm.elements.maxUploadMb.value = (Number(settings.maxFileBytes || 4194304) / (1024 * 1024)).toFixed(1);
+        }
         if (aiSettingsForm.elements.maxOutputTokens) aiSettingsForm.elements.maxOutputTokens.value = Number(settings.maxOutputTokens || 2000);
         if (aiSettingsForm.elements.maxOutputTokensLong) aiSettingsForm.elements.maxOutputTokensLong.value = Number(settings.maxOutputTokensLong || 8000);
         if (aiSettingsForm.elements.requestsPerFamilyMinute) aiSettingsForm.elements.requestsPerFamilyMinute.value = Number(settings.requestsPerFamilyMinute || 0);

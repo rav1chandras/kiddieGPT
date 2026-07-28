@@ -10535,55 +10535,30 @@ body[data-page="admin"] .raw-log-detail small {
 }
 
 /* ---- Per-tool input thresholds (Admin > AI & Usage) ---------------------- */
-/* One card per tool rather than a single long column: the tools do not share
-   input types, so a grid would be mostly empty cells, and 17 more fields
-   stacked under the existing ones would not be scannable. */
+/* One card per tool: the tools do not share input types, so a single grid would
+   be mostly empty cells. Inside a card the fields reuse .ai-control-pane's
+   label/input/helper rules, so this screen has one field style, not two. */
 body[data-page="admin"] .ai-tool-limits { margin-top: 16px; }
-body[data-page="admin"] .ai-tool-limits-head { padding: 0 2px 10px; }
+body[data-page="admin"] .ai-tool-limits-head { padding: 0 2px 12px; }
 body[data-page="admin"] .ai-tool-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
   gap: 12px;
+  align-items: start;
 }
-body[data-page="admin"] .ai-tool-card {
-  border: 1px solid #e2ebe6;
-  border-radius: 15px;
-  background: #fbfdfb;
-  padding: 14px;
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
+body[data-page="admin"] .ai-tool-card { gap: 11px; }
+body[data-page="admin"] .ai-tool-card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 9px; border-bottom: 1px solid #e9f0ec;
 }
-body[data-page="admin"] .ai-tool-card-head { display: flex; align-items: center; gap: 10px; }
 body[data-page="admin"] .ai-tool-mark {
   width: 30px; height: 30px; flex: 0 0 auto;
   border-radius: 9px; background: #eaf8f1; color: #004f48;
   display: grid; place-items: center; font-size: .72rem; font-weight: 800;
 }
-body[data-page="admin"] .ai-tool-name { display: grid; min-width: 0; }
+body[data-page="admin"] .ai-tool-name { display: grid; gap: 1px; min-width: 0; }
 body[data-page="admin"] .ai-tool-name b { color: #173c34; font-size: .88rem; font-weight: 650; }
 body[data-page="admin"] .ai-tool-name small { color: #7b8d87; font-size: .7rem; line-height: 1.35; }
-body[data-page="admin"] .ai-tool-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
-}
-body[data-page="admin"] .ai-tool-field {
-  display: grid; gap: 5px; margin: 0;
-  color: #60747d; font-size: .72rem; font-weight: 720; min-width: 0;
-}
-body[data-page="admin"] .ai-tool-field-top {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
-}
-/* The ceiling is shown inline so an operator can see why a value clamped,
-   rather than saving and wondering whether it took. */
-body[data-page="admin"] .ai-tool-ceiling {
-  color: #a2aeb8; font-size: .64rem; font-weight: 650;
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-body[data-page="admin"] .ai-tool-input-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center;
-}
-body[data-page="admin"] .ai-tool-input-row input { width: 100%; font-variant-numeric: tabular-nums; }
-body[data-page="admin"] .ai-tool-unit { color: #a2aeb8; font-size: .66rem; font-weight: 650; white-space: nowrap; }
+/* Digits line up down the column, and the allowed range reads as a hint rather
+   than competing with the label for the same line. */
+body[data-page="admin"] .ai-tool-card input[type="number"] { font-variant-numeric: tabular-nums; }

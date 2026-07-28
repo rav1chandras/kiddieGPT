@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=179">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=180">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -609,7 +609,7 @@
                   <small>Rejects any single request estimated above this. Cannot be set to 0 — it is the main defense against one huge upload.</small>
                 </label>
                 <label>Max upload size (MB)
-                  <input type="number" name="maxUploadMb" min="0.5" max="4" step="0.5" required>
+                  <input type="number" name="maxUploadMb" min="0.5" max="5" step="0.5" required>
                   <small>Largest file one request may carry. Base64 adds ~33%, so this stays under the request body limit.</small>
                 </label>
                 <label>Max output tokens (standard)
@@ -932,6 +932,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=200"></script>
+  <script src="/webapp/webapp.js?v=202"></script>
 </body>
 </html>
