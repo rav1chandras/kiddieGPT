@@ -1123,7 +1123,24 @@ function usageRemaining(family, settings, childId) {
 function recordAbuseSignal(db, familyId, kind, threshold = AI_ABUSE_PAUSE_THRESHOLD) {
   const fam = (db.families || []).find((item) => item.id === familyId);
   if (!fam) return;
-  fam.abuse = { capHits: 0, oversized: 0, moderation: 0, lastAt: "", dismissedAt: "", ...(fam.abuse || {}) };
+  // The tally is a DAILY window, matching every other bound in the system. It
+  // used to accumulate for the life of the account and only reset when an
+  // operator dismissed it, so a family tripping a handful of oversized uploads
+  // a day would eventually cross the threshold and pause itself without ever
+  // having done anything abusive in one sitting. `lifetime` keeps the running
+  // total the operator cares about.
+  const day = usageDayKey();
+  const prior = fam.abuse || {};
+  const sameDay = prior.day === day;
+  fam.abuse = {
+    day,
+    capHits: sameDay ? Number(prior.capHits) || 0 : 0,
+    oversized: sameDay ? Number(prior.oversized) || 0 : 0,
+    moderation: sameDay ? Number(prior.moderation) || 0 : 0,
+    lifetime: (Number(prior.lifetime) || 0) + 1,
+    lastAt: prior.lastAt || "",
+    dismissedAt: prior.dismissedAt || ""
+  };
   if (kind === "cap") fam.abuse.capHits += 1;
   else if (kind === "oversized") fam.abuse.oversized += 1;
   else if (kind === "moderation") fam.abuse.moderation += 1;
@@ -1135,7 +1152,8 @@ function recordAbuseSignal(db, familyId, kind, threshold = AI_ABUSE_PAUSE_THRESH
   // capHits is deliberately excluded from the tally. Exhausting your own daily
   // ceiling is ordinary behaviour — the client retries, and a busy family would
   // accumulate 25 of these in a normal evening and pause itself. Only oversized
-  // payloads and moderation hits imply a client that is not ours.
+  // payloads and moderation hits imply a client that is not ours, and only
+  // today's count is weighed.
   const total = fam.abuse.oversized + fam.abuse.moderation;
   if (threshold > 0 && total >= threshold && !fam.aiPausedAt) {
     fam.aiPausedAt = nowIso();
