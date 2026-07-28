@@ -8,9 +8,16 @@ ships, delete it (git history keeps the record). Newest first.
 ## Open
 
 ### FE-2 — Recover complete items from a truncated transcription · owner: extension
-`parseOpenAIJson` currently fails (or drops to 1 problem) if the JSON is cut off.
-Make it salvage every complete element of the `problems` array so truncation degrades
-to "most problems" instead of one. Defensive backstop for FE-1.
+**Shipped 2026-07-27.** `parseOpenAIJson` now falls back to `closeTruncatedJson`,
+which discards the incomplete tail and shuts whatever brackets are still open.
+
+Truncation used to be a total loss: a worksheet where 8 of 9 problems transcribed
+fine threw and gave the student nothing. It now degrades to "most of them".
+- Only runs after the clean parses fail, so a well-formed response is untouched.
+- String-aware, because model output is full of braces inside string values.
+- Sets `truncated: true` on the result so callers can tell.
+- Still throws when nothing complete arrived, or when the response was never JSON
+  — recovering garbage would be worse than an honest error.
 
 
 ### FE-4 — `<all_urls>`: do NOT swap for `activeTab` · owner: extension

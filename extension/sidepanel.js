@@ -5851,6 +5851,50 @@ function escapeLatexBackslashes(text) {
   });
 }
 
+// Close a truncated JSON document by discarding the incomplete tail and shutting
+// whatever brackets are still open.
+//
+// A response that hits the output cap mid-array used to be a total loss: the
+// parse threw and a worksheet where 8 of 9 problems transcribed fine gave the
+// student nothing. Truncation should degrade to "most of them", not "none".
+//
+// Walks once, tracking string state, so a brace inside a string value is never
+// mistaken for structure — model output is full of them.
+function closeTruncatedJson(text) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  let safeEnd = -1;      // end of the last value that closed cleanly
+  let safeDepth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') {
+        inString = false;
+        // A finished string sitting directly in an array is itself complete.
+        if (stack[stack.length - 1] === "[") { safeEnd = i + 1; safeDepth = stack.length; }
+      }
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{" || ch === "[") { stack.push(ch); continue; }
+    if (ch === "}" || ch === "]") {
+      stack.pop();
+      safeEnd = i + 1;
+      safeDepth = stack.length;
+      continue;
+    }
+    if (ch === ",") { safeEnd = i; safeDepth = stack.length; }
+  }
+  if (!stack.length) return null;   // nothing was left open: not truncated
+  if (safeEnd < 0) return null;     // truncated before anything completed
+  let out = text.slice(0, safeEnd).replace(/,\s*$/, "");
+  for (let depth = safeDepth - 1; depth >= 0; depth -= 1) out += stack[depth] === "{" ? "}" : "]";
+  return out;
+}
+
 function parseOpenAIJson(text) {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   const start = cleaned.indexOf("{");
@@ -5862,6 +5906,20 @@ function parseOpenAIJson(text) {
   for (const candidate of candidates) {
     try { return JSON.parse(candidate); } catch { /* try next */ }
     try { return JSON.parse(escapeLatexBackslashes(candidate)); } catch { /* try next */ }
+  }
+  // Last resort: salvage the complete items from a response that was cut off.
+  // Only reached once the clean parses have failed, so it can never change the
+  // result for a well-formed response.
+  const closed = closeTruncatedJson(cleaned.slice(start >= 0 ? start : 0));
+  if (closed) {
+    for (const candidate of [closed, escapeLatexBackslashes(closed)]) {
+      try {
+        const parsed = JSON.parse(candidate);
+        console.warn("Recovered a truncated AI response; some items may be missing.");
+        parsed.truncated = true;
+        return parsed;
+      } catch { /* fall through to the throw below */ }
+    }
   }
   throw new Error("OpenAI returned text, but not a study-pack JSON object.");
 }
