@@ -1512,7 +1512,11 @@ async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8", mode
 // while capping the cost of a prompt-injection that talks the model into
 // generating something long (an essay, a program). The portal should enforce its
 // own ceiling too — a client-side cap is advisory.
-const MAX_OUTPUT_TOKENS = 2000;
+// Left unset on purpose: the server falls back to the admin's per-tool cap when
+// the client sends no budget, so "Max output tokens" in the console is the
+// authority. Hardcoding a number here silently won the min() and made raising
+// the admin value do nothing.
+const MAX_OUTPUT_TOKENS = null;
 // Math needs more room than short chat: transcribing a full worksheet (up to 15
 // problems, each with a complete diagram description) and solving one problem
 // (help + textbook solution + check) both blow past 2000. Per-call budgets keep
@@ -1520,7 +1524,7 @@ const MAX_OUTPUT_TOKENS = 2000;
 // NOTE: the portal clamps to AI_MAX_OUTPUT_TOKENS (currently 2000), so these only
 // take full effect once that ceiling is raised (tracked in docs/future-enhancements.md).
 const MATH_TRANSCRIBE_MAX_TOKENS = 8000;
-const MATH_SOLVE_MAX_TOKENS = 4000;
+const MATH_SOLVE_MAX_TOKENS = null;  // admin's standard cap governs a solve
 
 // Appended to every prompt that consumes untrusted text — what the student types
 // AND text scraped from a web page. Both land inside the prompt, so either can try
@@ -1583,7 +1587,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
       gradeBand: gradeBand || undefined,
       explainDepth: explainDepth || undefined,
       instructions,
-      max_output_tokens: maxOutputTokens,
+      ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       input: [{ role: "user", content }]
     })
   }).finally(() => clearTimeout(timeoutId));

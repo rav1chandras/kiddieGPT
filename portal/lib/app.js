@@ -48,7 +48,16 @@ const LONG_INPUT_TOOLS = new Set(["mission", "explain", "read", "pdf", "write", 
 function maxInputCharsForTool(tool) {
   return LONG_INPUT_TOOLS.has(String(tool || "").trim().toLowerCase()) ? AI_MAX_INPUT_CHARS_LONG : AI_MAX_INPUT_CHARS;
 }
-const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 2000);
+// Shipped default for a normal reply. 5000 rather than 2000 because a full
+// math solution -- concept, formula, help lines, a textbook derivation, a check
+// and the answer, all as JSON -- was being truncated mid-object at 2000, which
+// surfaced as "returned text, but not a study-pack JSON object" and then cost
+// MORE than it saved by triggering a retry.
+const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 5000);
+// Hard ceiling an admin cannot exceed. Separate from the default above: those
+// were the same constant, which is why the console refused to accept anything
+// over the default.
+const HARD_MAX_OUTPUT_TOKENS = 10000;
 // Transcribing a multi-problem worksheet needs a bigger reply than a chat turn.
 // This is per-TOOL on purpose: raising the global ceiling would multiply across
 // the ~30 solve/check calls one worksheet makes and blow the account cap in a
@@ -60,8 +69,10 @@ function maxOutputTokensForTool(tool, settings) {
   const configured = long
     ? settings?.maxOutputTokensLong ?? AI_MAX_OUTPUT_TOKENS_LONG
     : settings?.maxOutputTokens ?? AI_MAX_OUTPUT_TOKENS;
-  const ceiling = long ? AI_MAX_OUTPUT_TOKENS_LONG : AI_MAX_OUTPUT_TOKENS;
-  return Math.min(Math.max(1, Number(configured) || ceiling), ceiling);
+  // Clamp to the hard ceiling, not to the configured default -- otherwise an
+  // admin could never raise the value above whatever ships as the default.
+  const ceiling = HARD_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.max(1, Number(configured) || (long ? AI_MAX_OUTPUT_TOKENS_LONG : AI_MAX_OUTPUT_TOKENS)), ceiling);
 }
 // OpenAI's TTS endpoint rejects >4096 characters, so stay just under it.
 const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
@@ -571,11 +582,11 @@ function normaliseAiSettings(settings = {}) {
       Math.max(0, Number(settings.maxFileBytes ?? defaults.maxFileBytes) || defaults.maxFileBytes)
     ),
     maxOutputTokens: Math.min(
-      AI_MAX_OUTPUT_TOKENS,
+      HARD_MAX_OUTPUT_TOKENS,
       Math.max(1, Number(settings.maxOutputTokens ?? defaults.maxOutputTokens) || defaults.maxOutputTokens)
     ),
     maxOutputTokensLong: Math.min(
-      AI_MAX_OUTPUT_TOKENS_LONG,
+      HARD_MAX_OUTPUT_TOKENS,
       Math.max(1, Number(settings.maxOutputTokensLong ?? defaults.maxOutputTokensLong) || defaults.maxOutputTokensLong)
     ),
     requestsPerFamilyMinute: Math.max(0, Number(settings.requestsPerFamilyMinute ?? defaults.requestsPerFamilyMinute) || 0),
@@ -630,6 +641,7 @@ function safeAiSettings(settings = {}) {
     // Ceilings the admin form cannot exceed, so the UI can show them rather than
     // hard-coding a duplicate copy of the limits.
     hardFamilyTokensDaily: HARD_FAMILY_TOKENS_DAILY,
+    hardMaxOutputTokens: HARD_MAX_OUTPUT_TOKENS,
     // Sent so each field can render "max N" beside its input, and so the floors
     // that would break a tool are visible rather than discovered by saving.
     toolLimitCeilings: TOOL_LIMIT_CEILINGS,
@@ -3666,10 +3678,10 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
       next.maxFileBytes = Math.min(AI_MAX_FILE_BYTES, Math.max(0, Number(body.maxFileBytes) || AI_MAX_FILE_BYTES));
     }
     if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokens")) {
-      next.maxOutputTokens = Math.min(AI_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokens) || AI_MAX_OUTPUT_TOKENS));
+      next.maxOutputTokens = Math.min(HARD_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokens) || AI_MAX_OUTPUT_TOKENS));
     }
     if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokensLong")) {
-      next.maxOutputTokensLong = Math.min(AI_MAX_OUTPUT_TOKENS_LONG, Math.max(1, Number(body.maxOutputTokensLong) || AI_MAX_OUTPUT_TOKENS_LONG));
+      next.maxOutputTokensLong = Math.min(HARD_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokensLong) || AI_MAX_OUTPUT_TOKENS_LONG));
     }
     if (Object.prototype.hasOwnProperty.call(body, "requestsPerFamilyMinute")) {
       next.requestsPerFamilyMinute = Math.max(0, Number(body.requestsPerFamilyMinute) || 0);

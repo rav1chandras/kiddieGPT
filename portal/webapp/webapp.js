@@ -5374,7 +5374,7 @@
         tokensPerFamilyDaily: 200000,
         maxTokensPerRequest: 40000,
         maxFileBytes: 4 * 1024 * 1024,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 5000,
         maxOutputTokensLong: 8000,
         requestsPerFamilyMinute: 40,
         abusePauseThreshold: 25,
@@ -5613,7 +5613,14 @@
           if (uploadCeil) aiSettingsForm.elements.maxUploadMb.max = String(Math.round(uploadCeil / (1024 * 1024) * 10) / 10);
           aiSettingsForm.elements.maxUploadMb.value = (Number(settings.maxFileBytes || 4194304) / (1024 * 1024)).toFixed(1);
         }
-        if (aiSettingsForm.elements.maxOutputTokens) aiSettingsForm.elements.maxOutputTokens.value = Number(settings.maxOutputTokens || 2000);
+        // Drive both maxima from the server's hard ceiling. Hardcoding them in
+        // markup is what made the field refuse values above the old default.
+        var outCeil = Number(settings.hardMaxOutputTokens) || 10000;
+        ["maxOutputTokens", "maxOutputTokensLong"].forEach(function (name) {
+          var el = aiSettingsForm.elements[name];
+          if (el) el.max = String(outCeil);
+        });
+        if (aiSettingsForm.elements.maxOutputTokens) aiSettingsForm.elements.maxOutputTokens.value = Number(settings.maxOutputTokens || 5000);
         if (aiSettingsForm.elements.maxOutputTokensLong) aiSettingsForm.elements.maxOutputTokensLong.value = Number(settings.maxOutputTokensLong || 8000);
         if (aiSettingsForm.elements.requestsPerFamilyMinute) aiSettingsForm.elements.requestsPerFamilyMinute.value = Number(settings.requestsPerFamilyMinute || 0);
         if (aiSettingsForm.elements.abusePauseThreshold) aiSettingsForm.elements.abusePauseThreshold.value = Number(settings.abusePauseThreshold || 0);
