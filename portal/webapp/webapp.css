@@ -10196,20 +10196,22 @@ body[data-page="admin"] .tts-length-section {
 body[data-page="admin"] .tts-length-section .tts-voice-head { align-items: center; }
 body[data-page="admin"] .tts-length-section .tts-voice-copy b { font-size: .86rem; }
 body[data-page="admin"] .tts-length-section .tts-voice-copy small { font-size: .7rem; }
+/* Lives inside the Tutor Mode card now, not a full-width pane, so 2x2 rather
+   than 4 across. */
 body[data-page="admin"] #tutor-word-targets {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   align-content: start;
 }
+/* Band label above its input: in a ~120px column there is no room for both
+   side by side, which is what squeezed the input to 64px. */
 body[data-page="admin"] #tutor-word-targets .word-target-row {
-  display: grid !important;
-  grid-template-columns: auto minmax(64px, 86px);
-  gap: 5px 8px !important;
-  align-items: center;
+  display: grid;
+  gap: 4px;
   min-width: 0;
-  margin: 0 !important;
-  padding: 9px 10px;
+  margin: 0;
+  padding: 8px 9px;
   border: 1px solid #e0ebe5;
   border-radius: 10px;
   background: #fff;
@@ -10226,7 +10228,7 @@ body[data-page="admin"] #tutor-word-targets .word-target-row > span:last-child {
   line-height: 1.25;
 }
 body[data-page="admin"] #tutor-word-targets .word-target-row input {
-  width: 100% !important;
+  width: 100%;
   min-height: 32px;
   padding: 0 7px;
   border: 1px solid #cfe0d7;
@@ -10600,16 +10602,24 @@ body[data-page="admin"] .ai-tool-bands {
   display: grid; gap: 7px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
 }
 body[data-page="admin"] .ai-bands-note { color: #8a98a4; font-size: .66rem; line-height: 1.35; margin: -3px 0 2px; }
-body[data-page="admin"] .ai-tool-bands .word-target-row {
-  display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center;
+/* Label above input, not beside it. The 44px label column left ~37px for the
+   number once the card narrowed to a fifth of the row. */
+body[data-page="admin"] .ai-tool-bands .word-target-row span {
+  font-size: .66rem; font-weight: 750; color: #8a98a4; letter-spacing: .04em;
 }
-body[data-page="admin"] .ai-tool-bands .word-target-row span { font-size: .7rem; font-weight: 700; color: #60747d; }
 body[data-page="admin"] .ai-tool-bands input { font-variant-numeric: tabular-nums; }
-/* Voice enable sits inline with the model fields it belongs to. */
-body[data-page="admin"] .ai-voice-enable {
-  display: flex !important; align-items: center; gap: 8px; margin-top: 2px;
+/* Voices input and its Enable toggle share one row: the toggle governs the
+   voices beside it, so stacking them read as unrelated controls. */
+body[data-page="admin"] .ai-voice-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
 }
-body[data-page="admin"] .ai-voice-enable input { width: 16px; height: 16px; accent-color: #004f48; }
+body[data-page="admin"] .ai-voice-enable {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: .7rem; font-weight: 700; color: #60747d;
+}
+body[data-page="admin"] .ai-voice-enable input {
+  width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: #004f48;
+}
 body[data-page="admin"] .ai-tool-extras {
   display: grid; gap: 10px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
 }

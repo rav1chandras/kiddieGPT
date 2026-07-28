@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=185">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=190">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -581,10 +581,12 @@
                   <small>Speech model used for spoken explanations.</small>
                 </label>
                 <label>Tutor voices
-                  <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
-                  <small>Voices students may choose from. The first is the default.</small>
+                  <span class="ai-voice-row">
+                    <input type="text" name="ttsAllowedVoices" id="tts-allowed-voices" value="Alloy, Marin, Cedar" placeholder="Alloy, Marin, Cedar" autocomplete="off">
+                    <span class="ai-voice-enable"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></span>
+                  </span>
+                  <small>Voices students may choose from. The first is the default. Unchecking Enable turns spoken explanations off for every family.</small>
                 </label>
-                <label class="ai-voice-enable"><input type="checkbox" name="tutorVoiceEnabled" checked><span>Enable</span></label>
               </section>
 
               
@@ -907,6 +909,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=206"></script>
+  <script src="/webapp/webapp.js?v=208"></script>
 </body>
 </html>

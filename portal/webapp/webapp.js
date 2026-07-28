@@ -5441,7 +5441,7 @@
       el.innerHTML = GRADE_BANDS.map(function (b) {
         var mx = Number(maxWords[b] || 0);
         return '<div class="word-target-row">' +
-          '<span style="width:44px;font-weight:600">' + text(b) + '</span>' +
+          '<span>' + text(b) + '</span>' +
           '<input type="number" min="40" max="4000" step="any" data-band="' + text(b) + '" value="' + mx + '"></div>';
       }).join("");
     }
@@ -5492,7 +5492,7 @@
         get: function (s) { return Number(s.tutorVoiceMinutesPerUserDaily || 0); }
       }, {
         name: "tutorStandardPercent", label: "Standard length (% of Deep Dive)",
-        min: 30, max: 90, hint: "Standard mode uses this share of each grade band's maximum. The bands themselves are in Tutor voice.",
+        min: 30, max: 90, hint: "Standard mode uses this share of each grade band's maximum. Applies to the grade bands below.",
         get: function (s) { return Math.round((Number(s.tutorStandardFraction) || 0.5) * 100); }
       }]
     };
