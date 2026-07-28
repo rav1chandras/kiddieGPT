@@ -4714,6 +4714,25 @@ async function solveMathWithAI() {
     if (token !== mathSolveToken) return;
     await solveMathProblemInPlace({ settings, gradeBand, index, token });
   }
+  // Nothing should be left showing the spinner once the run is over. A problem
+  // still marked "solving" here was orphaned rather than slow, and without this
+  // it spins for the rest of the session with no way to retry.
+  sweepUnsolvedMathProblems(token);
+}
+
+// Turns any still-"solving" placeholder into a retryable error. Guarded by the
+// run token so it can never touch a newer run's problems.
+function sweepUnsolvedMathProblems(token) {
+  if (token !== mathSolveToken) return;
+  let changed = false;
+  (mathSolveState.problems || []).forEach(problem => {
+    if (problem && problem.status === "solving") {
+      problem.status = "error";
+      problem.error = "That one didn't come back. Press Give Me Nudge again to retry it.";
+      changed = true;
+    }
+  });
+  if (changed) renderMathSolution();
 }
 
 function setMathCorrectStatus(message, tone = "") {
@@ -4752,7 +4771,12 @@ async function correctMathProblem() {
     send.classList.add("busy");
   }
   mathCorrectionAttempts.set(attemptKey, (mathCorrectionAttempts.get(attemptKey) || 0) + 1);
-  mathSolveToken += 1;
+  // Capture the run token; do NOT bump it. Bumping cancels the background loop
+  // still solving the problems after this one, which left them stuck on
+  // "Solving this problem..." for good. A correction touches one problem and has
+  // no business cancelling its siblings. Checking the token before writing back
+  // still lets a genuinely new solve discard a correction that is mid-flight.
+  const token = mathSolveToken;
   const gradeBand = lastMathSolve.gradeBand;
   const index = mathSolveState.index;
   const current = mathSolveState.problems[index];
@@ -4770,6 +4794,7 @@ async function correctMathProblem() {
       setMathCorrectStatus(rawResult.reason || "KiddieGPT still couldn't read a math problem. Try a clearer picture.", "warn");
       return;
     }
+    if (token !== mathSolveToken) return;
     const resolved = normalizeMathProblems(rawResult);
     const corrected = resolved[0];
     if (!corrected) {
@@ -4791,6 +4816,8 @@ async function correctMathProblem() {
       console.warn("Correction re-check failed", error);
     }
     corrected.checked = checked;
+    // A new worksheet was started while this was in flight — drop the result.
+    if (token !== mathSolveToken) return;
     mathSolveState.problems[index] = corrected;
     if (lastMathSolve.transcript?.[index]) {
       lastMathSolve.transcript[index] = { ...lastMathSolve.transcript[index], statement: corrected.equation, figure: corrected.figure };
