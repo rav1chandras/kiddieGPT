@@ -13,10 +13,39 @@ Make it salvage every complete element of the `problems` array so truncation deg
 to "most problems" instead of one. Defensive backstop for FE-1.
 
 
-### FE-4 — Narrow `<all_urls>` → `activeTab` · owner: extension
-All tools are user-initiated, so `activeTab` likely suffices. Broad host access draws
-extra scrutiny on a child-focused extension in Chrome Web Store review. Try it and
-verify Explain / Tutor / Math capture flows still work.
+### FE-4 — `<all_urls>`: do NOT swap for `activeTab` · owner: extension
+Broad host access draws extra scrutiny on a child-focused extension, so the original
+plan was to drop `<all_urls>` and rely on `activeTab`. **Investigated 2026-07-27 and
+rejected** — it breaks the product in two ways, the second worse than the permission
+it was meant to avoid.
+
+1. **`activeTab` does not fit a side panel.** It is granted by a gesture on the
+   *extension* (toolbar icon, context menu, shortcut) and only for the tab active at
+   that moment. The panel stays open across tab switches, so: open the panel on tab
+   A, switch to tab B, click Explain -> `scripting.executeScript` runs against a tab
+   that was never granted and fails. Clicking a button inside the panel is not a
+   gesture on the action, so it grants nothing. Affects all 3 executeScript sites and
+   all 4 captureVisibleTab calls.
+
+2. **It silently disables the adult-site blocklist.** `tab.url` is only readable with
+   host permission or the `tabs` permission. Without `<all_urls>` it is `undefined`
+   for un-granted tabs, and the guard fails open: `isBlockedSiteUrl("")` and
+   `isBlockedSiteUrl(undefined)` both return false, so the capture proceeds. That is
+   the exact check the store listing invites the reviewer to test ("open such a site
+   and click Explain — it declines without sending anything"), on a children's
+   product.
+
+Note `tabs` is redundant while `<all_urls>` is present — host permission already
+makes `tab.url` readable, which is why the blocklist works today. Adding it now
+changes nothing.
+
+**Recommendation:** keep `<all_urls>` and answer the concern in the listing, which
+already makes the right argument (nothing is read until the student clicks a tool;
+no background access). If review pushes back, the real alternative is
+`optional_host_permissions` with `<all_urls>` requested on first use: the student
+grants once, both problems above go away, and the manifest no longer *requires*
+broad access. More work than a manifest edit, but it solves the problem instead of
+trading it for a safety hole.
 
 ### FE-5 — Refusal clause for off-topic follow-ups · owner: extension
 Tutor / Explain / Writing follow-up prompts have no instruction to decline non-

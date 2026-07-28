@@ -65,9 +65,16 @@ code; if the code changes, re-check before resubmitting.
 | Host permission — `https://api.openai.com/*` | Used only in the optional "bring your own API key" mode, where a parent supplies their own OpenAI key and requests go directly from the extension. |
 | Broad host access (`<all_urls>`) | The student can ask for help on any page they are reading for school, so the tools must be able to read the active tab's text or capture a selected region on any site. Nothing is read or captured until the student clicks a tool. |
 
-> NOTE: `<all_urls>` invites extra scrutiny on a child-focused extension. If review
-> pushes back, the tools are all user-initiated, so `activeTab` alone is likely
-> sufficient — drop `<all_urls>` and resubmit.
+> NOTE: `<all_urls>` invites extra scrutiny on a child-focused extension, but do
+> **not** swap it for `activeTab` — that was investigated and rejected (see FE-4).
+> `activeTab` is granted per tab by a gesture on the extension itself, so it breaks
+> as soon as the student switches tabs with the panel open, and it makes `tab.url`
+> unreadable, which silently disables the adult-site blocklist that section 1 invites
+> the reviewer to test.
+>
+> If review pushes back, the answer is `optional_host_permissions` — request
+> `<all_urls>` on first use so the student grants it once — not a narrower manifest
+> that quietly drops a safety check.
 
 ---
 
