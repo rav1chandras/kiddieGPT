@@ -1380,7 +1380,8 @@ const PORTAL_ERROR_MESSAGES = {
   content_blocked: "That can't be shown here. Try asking about your schoolwork in a different way.",
   // Distinct from content_blocked on purpose: the content was never judged, so
   // telling a student to "ask differently" would be wrong and unactionable.
-  safety_unavailable: "The safety check isn't available right now. Please try again in a moment."
+  safety_unavailable: "The safety check isn't available right now. Please try again in a moment.",
+  response_truncated: "That answer was too long to finish. Try one problem at a time, or ask a grown-up to raise the reply limit."
 };
 
 // Kid-safety net: screen AI output (and student free-text) for unsafe content.
@@ -1599,6 +1600,10 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
     else if (!["cap_reached", "subscription_inactive", "voice_disabled", "auth_required"].includes(code)) reportIssue("extension_error", "AI request failed: " + code);
     throw new PortalError(code, response.status, data);
   }
+  // The portal marks a reply the model was cut off mid-way through. Saying so is
+  // both truer and more actionable than "returned text, but not a study-pack
+  // JSON object", which is what a truncated response used to look like.
+  if (data.kg_truncated) throw new PortalError("response_truncated", 200, data);
   const outputText = extractOutputText(data);
   // Screen the model's response before the student ever sees it.
   if (moderate && await moderateFlagged(settings, outputText)) {

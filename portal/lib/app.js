@@ -4540,6 +4540,25 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
       }
     }
     const tokens = Number(data.usage?.total_tokens || data.usage?.input_tokens + data.usage?.output_tokens || 0) || 0;
+      // Why the response ended, not just what it cost. Without this, a truncated
+      // reply, a model that answered in prose, and one whose whole budget went on
+      // reasoning all reach the extension as the same "not a study-pack JSON
+      // object" parse failure -- which is guesswork to diagnose.
+      const finish = {
+        status: data.status || "",                     // "completed" | "incomplete"
+        reason: data.incomplete_details?.reason || "", // e.g. "max_output_tokens"
+        outputTokens: Number(data.usage?.output_tokens || 0) || 0,
+        // Reasoning shares the output budget on reasoning models, so a large
+        // value here with a small visible output explains an empty reply.
+        reasoningTokens: Number(data.usage?.output_tokens_details?.reasoning_tokens || 0) || 0,
+        cap: maxOutputTokens
+      };
+      const truncated = finish.status === "incomplete" && finish.reason === "max_output_tokens";
+      if (finish.status === "incomplete") {
+        mutateDb((store) => monitor(store, "warning", "ai", "Model response ended early", {
+          tool: tool || "ai", model: modelToUse, ...finish
+        }, req.auth.email));
+      }
     // Replace the reservation with what the call actually cost.
     await settle(tokens);
     mutateDb((store) => {
@@ -4549,8 +4568,11 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
       if (fam) recordChildUsage(fam, { childId: body.childId, tool: tool || "ai", mathProblems: isMath ? Math.max(1, Number(body.mathProblems) || 1) : 0, tokens: 0 });
       // Attribute cost: which configured model actually ran, and whether it was
       // the advanced tier, so usage can be split by model later.
-      audit(store, "ai.responses", { familyId: fam?.id || "", tool: tool || "ai", model: modelToUse, advanced, tokens, estimated: estimate }, req.auth.email);
+      audit(store, "ai.responses", { familyId: fam?.id || "", tool: tool || "ai", model: modelToUse, advanced, tokens, estimated: estimate, status: finish.status, reason: finish.reason, outputTokens: finish.outputTokens, reasoningTokens: finish.reasoningTokens, cap: finish.cap }, req.auth.email);
     });
+      // Lets the extension say "the model was cut off" instead of a generic
+      // parse failure, and tells us which of the two actually happened.
+      if (truncated) data.kg_truncated = true;
     res.json(data);
   } catch (error) {
     // The request never completed, so refund rather than hold the estimate.
