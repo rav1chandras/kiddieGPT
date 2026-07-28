@@ -4427,42 +4427,6 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model }) {
   });
 }
 
-async function verifyMathProblemInPlace({ settings, gradeBand, index, token }) {
-  const problem = mathSolveState.problems[index];
-  const transcribed = lastMathSolve?.transcript?.[index];
-  if (!problem || problem.status !== "ready") return;
-  const sourceText = mathTranscriptSource(transcribed || problem);
-  const visualParts = getMathVisionParts(transcribed || problem);
-  try {
-    let verdicts = await checkMathOnce({ settings, parts: visualParts, sourceText, problems: [problem] });
-    if (token !== mathSolveToken) return;
-    let disagree = verdicts.find(verdict => verdict.index === 0 && !verdict.agree);
-    if (disagree) {
-      mathVisionEscalation = true;
-      const retryVisualParts = getMathVisionParts(transcribed || problem);
-      mathVisionEscalation = false;
-      const note = `${mathSingleSolveNote(problem.equation)} A checker disagreed with the answer "${problem.answer}". The checker got "${disagree.correctAnswer}". Reason: ${disagree.reason}. Solve THIS problem again from scratch.`;
-      const resolved = normalizeMathProblems(await solveMathOnce({ settings, parts: retryVisualParts, sourceText, gradeBand, disputeNote: note }));
-      if (token !== mathSolveToken) return;
-      if (resolved[0]) {
-        resolved[0].status = "ready";
-        if (!resolved[0].figure && transcribed?.figure) resolved[0].figure = normalizeFigure(transcribed.figure);
-        mathSolveState.problems[index] = resolved[0];
-      }
-      verdicts = await checkMathOnce({ settings, parts: retryVisualParts, sourceText, problems: [mathSolveState.problems[index]] });
-      if (token !== mathSolveToken) return;
-      disagree = verdicts.find(verdict => verdict.index === 0 && !verdict.agree);
-    }
-    const solved = mathSolveState.problems[index];
-    solved.checked = true;
-    solved.disputed = Boolean(disagree);
-  } catch (error) {
-    console.warn("Verify problem failed", error);
-    if (mathSolveState.problems[index]) mathSolveState.problems[index].checked = true;
-  }
-  if (token === mathSolveToken) renderMathSolution();
-}
-
 async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
   const placeholder = mathSolveState.problems[index];
   const transcribed = lastMathSolve?.transcript?.[index];
@@ -4521,9 +4485,13 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
   }
   if (token !== mathSolveToken) return;
   renderMathSolution();
-  // Normal math stays lightweight: transcription + one text solve. The
-  // independent checker remains available after a correction or visual
-  // escalation, but should not run automatically for every student attempt.
+  // Normal math stays lightweight: transcription + one text solve, so a
+  // worksheet costs one call per problem rather than two.
+  //
+  // There is deliberately NO automatic verification pass. checkMathOnce still
+  // exists and runs when the student asks for a correction — that is its only
+  // caller. Re-enabling it for every problem roughly doubles worksheet cost, so
+  // it is a product decision rather than a flag to flip; see FE-6.
 }
 
 async function solveMathWithAI() {
