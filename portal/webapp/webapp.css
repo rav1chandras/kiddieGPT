@@ -10585,3 +10585,17 @@ body[data-page="admin"] .ai-tool-name small { color: #7b8d87; font-size: .7rem; 
 /* Digits line up down the column, and the allowed range reads as a hint rather
    than competing with the label for the same line. */
 body[data-page="admin"] .ai-tool-card input[type="number"] { font-variant-numeric: tabular-nums; }
+/* Divider between the two halves of the merged global pane. */
+body[data-page="admin"] .ai-global-group + .ai-global-group {
+  margin-top: 4px; padding-top: 13px; border-top: 1px solid #e2ebe6;
+}
+body[data-page="admin"] .ai-global-group { display: grid; gap: 12px; }
+body[data-page="admin"] .ai-group-label {
+  margin: 0; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
+  color: #8a98a4; font-weight: 800;
+}
+/* Tool-specific settings that live on the server as top-level fields, kept
+   visually distinct from the input thresholds above them. */
+body[data-page="admin"] .ai-tool-extras {
+  display: grid; gap: 10px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
+}

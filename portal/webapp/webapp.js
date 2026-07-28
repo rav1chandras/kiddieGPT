@@ -5475,6 +5475,28 @@
       sourceChars:         { label: "Lesson source text (chars)" },
     };
 
+
+    // Settings that are top-level on the server but belong to one tool in the
+    // UI. Rendered inside that tool's card with their real name= so the existing
+    // load/save paths keep working; values are baked in at render time because
+    // renderToolLimits runs after the other fields are populated.
+    var TOOL_EXTRAS = {
+      math: [{
+        name: "mathProblemsPerUserDaily", label: "Problems per user/day",
+        min: 0, max: 1000, hint: "Daily cap per child, separate from the per-attempt limit above. 0 blocks Math Tutor.",
+        get: function (s) { return Number(s.mathProblemsPerUserDaily || 0); }
+      }],
+      tutor: [{
+        name: "tutorVoiceMinutesPerUserDaily", label: "Voice minutes per user/day",
+        min: 0, max: 600, hint: "Daily cap on spoken explanations, per child.",
+        get: function (s) { return Number(s.tutorVoiceMinutesPerUserDaily || 0); }
+      }, {
+        name: "tutorStandardPercent", label: "Standard length (% of Deep Dive)",
+        min: 30, max: 90, hint: "Standard mode uses this share of each grade band's maximum. The bands themselves are in Tutor voice.",
+        get: function (s) { return Math.round((Number(s.tutorStandardFraction) || 0.5) * 100); }
+      }]
+    };
+
     function toMb(bytes) { return Math.round((Number(bytes) || 0) / (1024 * 1024) * 10) / 10; }
 
     function renderToolLimits(settings) {
@@ -5507,10 +5529,17 @@
         }).join("");
         // Reuses ai-control-pane so the label/input/helper styling comes from the
         // same rules as the panes above rather than a second, drifting copy.
+        var extras = (TOOL_EXTRAS[tool] || []).map(function (x) {
+          return '<label>' + text(x.label) +
+            '<input type="number" name="' + text(x.name) + '" min="' + x.min + '" max="' + x.max +
+            '" step="any" value="' + x.get(settings) + '" required>' +
+            '<small>' + text(x.hint) + '</small></label>';
+        }).join("");
+        if (extras) extras = '<div class="ai-tool-extras">' + extras + '</div>';
         return '<section class="ai-control-pane ai-tool-card">' +
           '<div class="ai-tool-card-head"><span class="ai-tool-mark">' + text(meta.key) + '</span>' +
           '<span class="ai-tool-name"><b>' + text(meta.name) + '</b><small>' + text(meta.note) + '</small></span></div>' +
-          fields + '</section>';
+          fields + extras + '</section>';
       }).join("");
     }
 
@@ -5565,8 +5594,6 @@
           : "sk-...";
         if (aiSettingsForm.elements.openaiModel) aiSettingsForm.elements.openaiModel.value = settings.openaiModel || "gpt-5.6-luna";
         if (aiSettingsForm.elements.openaiModelAdv) aiSettingsForm.elements.openaiModelAdv.value = settings.openaiModelAdv || "";
-        aiSettingsForm.elements.mathProblemsPerUserDaily.value = Number(settings.mathProblemsPerUserDaily || 0);
-        aiSettingsForm.elements.tutorVoiceMinutesPerUserDaily.value = Number(settings.tutorVoiceMinutesPerUserDaily || 0);
         if (aiSettingsForm.elements.tokensPerFamilyDaily) aiSettingsForm.elements.tokensPerFamilyDaily.value = Number(settings.tokensPerFamilyDaily || 0);
         if (aiSettingsForm.elements.maxTokensPerRequest) aiSettingsForm.elements.maxTokensPerRequest.value = Number(settings.maxTokensPerRequest || 40000);
         // Stored as bytes, shown as MB — operators think in MB, the server bounds bytes.
@@ -5583,7 +5610,6 @@
         if (aiSettingsForm.elements.requestsPerFamilyMinute) aiSettingsForm.elements.requestsPerFamilyMinute.value = Number(settings.requestsPerFamilyMinute || 0);
         if (aiSettingsForm.elements.abusePauseThreshold) aiSettingsForm.elements.abusePauseThreshold.value = Number(settings.abusePauseThreshold || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
-        if (aiSettingsForm.elements.tutorStandardPercent) aiSettingsForm.elements.tutorStandardPercent.value = Math.round((Number(settings.tutorStandardFraction) || 0.5) * 100);
         renderTtsModelOptions(settings);
         renderVoiceNames(settings);
         renderWordTargets(settings);

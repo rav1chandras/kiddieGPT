@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=183">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=184">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -582,29 +582,13 @@
                 </label>
               </section>
 
-              <section class="ai-control-pane ai-limits-pane ai-abuse-pane">
-                <div class="ai-pane-head"><p class="eyebrow">Usage controls</p><h3>Set family guardrails</h3><small>Limits apply to the extension and are enforced by the server.</small></div>
-                <label>Math problems per user/day
-                  <input type="number" name="mathProblemsPerUserDaily" min="0" step="any" required>
-                  <small>Use 0 only if you want to block Math Step Tutor.</small>
-                </label>
-                <label>Tutor voice minutes per user/day
-                  <input type="number" name="tutorVoiceMinutesPerUserDaily" min="0" step="any" required>
-                  <small>Daily cap for spoken explanations.</small>
-                </label>
-                <label>Account token ceiling per day
-                  <input type="number" name="tokensPerFamilyDaily" min="0" max="200000" step="any" required>
-                  <small>Whole-account daily limit across every child and tool. Max 200,000. <b>0 turns AI off</b> for the account.</small>
-                </label>
-                <label>Standard length (% of Deep Dive)
-                  <input type="number" name="tutorStandardPercent" min="30" max="90" step="any">
-                  <small>Standard mode uses this percentage of each grade band’s Deep Dive maximum.</small>
-                </label>
-              </section>
+              
 
-              <section class="ai-control-pane ai-limits-pane">
-                <div class="ai-pane-head"><p class="eyebrow">Request limits</p><h3>Bound a single call</h3><small>Applied before the request reaches OpenAI, so an oversized upload costs nothing.</small></div>
-                <label>Max tokens per request
+              <section class="ai-control-pane ai-limits-pane ai-global-pane">
+                <div class="ai-pane-head"><p class="eyebrow">Global limits</p><h3>Applied to every tool</h3><small>Ceilings and account-wide budgets. Per-tool settings sit beneath these and can only tighten them.</small></div>
+                <div class="ai-global-group">
+                  <p class="ai-group-label">Per request</p>
+                  <label>Max tokens per request
                   <input type="number" name="maxTokensPerRequest" min="1000" max="200000" step="any" required>
                   <small>Rejects any single request estimated above this. Cannot be set to 0 — it is the main defense against one huge upload.</small>
                 </label>
@@ -620,6 +604,22 @@
                   <input type="number" name="maxOutputTokensLong" min="500" max="8000" step="any" required>
                   <small>Transcription only — one call per worksheet, so it can afford a longer reply than the ~30 solve/check calls.</small>
                 </label>
+                </div>
+                <div class="ai-global-group">
+                  <p class="ai-group-label">Per account</p>
+                  <label>Account token ceiling per day
+                  <input type="number" name="tokensPerFamilyDaily" min="0" max="200000" step="any" required>
+                  <small>Whole-account daily limit across every child and tool. Max 200,000. <b>0 turns AI off</b> for the account.</small>
+                </label>
+                  <label>Requests per family/minute
+                  <input type="number" name="requestsPerFamilyMinute" min="0" step="any" required>
+                  <small>Sliding one-minute limit on AI calls. 0 = no rate limit.</small>
+                </label>
+                <label>Auto-pause after N abuse signals
+                  <input type="number" name="abusePauseThreshold" min="0" step="any" required>
+                  <small>Pauses AI for the account after this many oversized or moderation signals <b>in a day</b>. Hitting the token cap doesn’t count. Clear it from the family row. 0 = never auto-pause.</small>
+                </label>
+                </div>
               </section>
 
               <section class="tts-voice-field ai-voice-length-card" id="tts-voice-section">
@@ -644,17 +644,7 @@
                 </div>
               </section>
 
-              <section class="ai-control-pane ai-limits-pane">
-                <div class="ai-pane-head"><p class="eyebrow">Abuse response</p><h3>Velocity &amp; containment</h3><small>Bounds how fast an account can spend, and what happens when it keeps trying.</small></div>
-                <label>Requests per family/minute
-                  <input type="number" name="requestsPerFamilyMinute" min="0" step="any" required>
-                  <small>Sliding one-minute limit on AI calls. 0 = no rate limit.</small>
-                </label>
-                <label>Auto-pause after N abuse signals
-                  <input type="number" name="abusePauseThreshold" min="0" step="any" required>
-                  <small>Pauses AI for the account after this many oversized or moderation signals <b>in a day</b>. Hitting the token cap doesn’t count. Clear it from the family row. 0 = never auto-pause.</small>
-                </label>
-              </section>
+              
             </div>
 
             <section class="ai-tool-limits" id="ai-tool-limits">
@@ -932,6 +922,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=204"></script>
+  <script src="/webapp/webapp.js?v=205"></script>
 </body>
 </html>
