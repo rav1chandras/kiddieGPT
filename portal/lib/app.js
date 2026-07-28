@@ -38,7 +38,12 @@ const AI_MAX_INPUT_CHARS = Number(process.env.AI_MAX_INPUT_CHARS || 8000);
 // ingest a whole web page or document, which routinely exceeds the tight
 // problem-sized default. They get a larger bound; math and other problem tools
 // stay small. Output tokens are still capped separately, so cost stays bounded.
-const AI_MAX_INPUT_CHARS_LONG = Number(process.env.AI_MAX_INPUT_CHARS_LONG || 48000);
+// ~90,000 chars is the 15,000-word page ceiling the extension advertises. It
+// must be raised in step with that ceiling: at the old 48,000 a full-length
+// page would 413 rather than truncate. Cost stays bounded because the
+// per-request token estimate (~22,500 for a page this size) is still weighed
+// against maxTokensPerRequest.
+const AI_MAX_INPUT_CHARS_LONG = Number(process.env.AI_MAX_INPUT_CHARS_LONG || 90000);
 const LONG_INPUT_TOOLS = new Set(["mission", "explain", "read", "pdf", "write", "tutor", "deep-dive", "deepdive"]);
 function maxInputCharsForTool(tool) {
   return LONG_INPUT_TOOLS.has(String(tool || "").trim().toLowerCase()) ? AI_MAX_INPUT_CHARS_LONG : AI_MAX_INPUT_CHARS;
@@ -72,8 +77,10 @@ const HARD_FAMILY_TOKENS_DAILY = 200000;
 // 300-page anything-else are both rejected on estimated size alone.
 const AI_MAX_TOKENS_PER_REQUEST = Number(process.env.AI_MAX_TOKENS_PER_REQUEST || 40000);
 // Binary budget for file/image parts. base64 inflates ~4/3, so this must stay
-// under the express.json body limit or uploads fail with an opaque 413.
-const AI_MAX_FILE_BYTES = Number(process.env.AI_MAX_FILE_BYTES || 4 * 1024 * 1024);
+// under the express.json body limit or uploads fail with an opaque 413 — the
+// body limit below is derived from this rather than hand-picked for exactly
+// that reason.
+const AI_MAX_FILE_BYTES = Number(process.env.AI_MAX_FILE_BYTES || 5 * 1024 * 1024);
 const AI_BODY_LIMIT_BYTES = Math.ceil(AI_MAX_FILE_BYTES * 4 / 3) + 512 * 1024;
 // Velocity limits, per family.
 const AI_RATE_WINDOW_MS = 60 * 1000;
@@ -85,6 +92,62 @@ const AI_RATE_MAX = Number(process.env.AI_RATE_MAX || 40);
 const AI_MAX_CONCURRENT = Number(process.env.AI_MAX_CONCURRENT || 2);
 // Auto-pause an account after this many abuse signals in a day. 0 = never.
 const AI_ABUSE_PAUSE_THRESHOLD = Number(process.env.AI_ABUSE_PAUSE_THRESHOLD || 25);
+
+// ---- Per-tool input limits --------------------------------------------------
+// What each tool accepts from a student, served to the extension so an operator
+// can tune it without shipping a new build through Chrome Web Store review.
+//
+// These are NOT an enforcement layer. The extension applies them for fast, clear
+// feedback, and a forged client ignores them entirely — the request still meets
+// the same ceilings in the AI proxy. Their job is to stop a limit change from
+// requiring a store resubmission.
+//
+// CEILINGS are compiled here and cannot be raised by an admin. They mirror the
+// extension's own hardcoded ceilings, so the effective limit is always
+// min(extension ceiling, admin value) no matter which side is consulted.
+const TOOL_LIMIT_CEILINGS = {
+  mission: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
+  math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, problems: 20, reconsiderAttempts: 5 },
+  write:   { inputChars: 10000 },
+  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
+  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 1000 }
+};
+// Shipped defaults: today's behaviour, except where it was plainly wrong.
+// `write.inputChars` moves 900 -> 4000 because 900 characters is roughly 150
+// words, which is not an essay.
+const TOOL_LIMIT_DEFAULTS = {
+  mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
+  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
+  write:   { inputChars: 4000 },
+  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
+  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+};
+// Below these a tool stops working rather than merely being strict, so they are
+// floors rather than advisory minimums.
+const TOOL_LIMIT_FLOORS = {
+  mission: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
+  math:    { pasteChars: 80, fileBytes: 64 * 1024, problems: 1, reconsiderAttempts: 0 },
+  write:   { inputChars: 100 },
+  explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
+  tutor:   { readChars: 500, sourceChars: 500, narrationWords: 60 }
+};
+
+function normaliseToolLimits(input = {}) {
+  const out = {};
+  Object.keys(TOOL_LIMIT_DEFAULTS).forEach((tool) => {
+    const defaults = TOOL_LIMIT_DEFAULTS[tool];
+    const ceilings = TOOL_LIMIT_CEILINGS[tool];
+    const floors = TOOL_LIMIT_FLOORS[tool];
+    const supplied = (input && typeof input[tool] === "object" && input[tool]) || {};
+    out[tool] = {};
+    Object.keys(defaults).forEach((field) => {
+      const raw = Number(supplied[field]);
+      const value = Number.isFinite(raw) && raw > 0 ? raw : defaults[field];
+      out[tool][field] = Math.min(ceilings[field], Math.max(floors[field], value));
+    });
+  });
+  return out;
+}
 
 // Token estimation, by part type — bytes mean very different things depending
 // on what they encode, so a single bytes->tokens ratio would be wrong for both.
@@ -462,6 +525,8 @@ function defaultAiSettings() {
     // Velocity + containment.
     requestsPerFamilyMinute: AI_RATE_MAX,
     abusePauseThreshold: AI_ABUSE_PAUSE_THRESHOLD,
+    // Per-tool input limits, served to the extension (see normaliseToolLimits).
+    toolLimits: normaliseToolLimits(),
     tutorVoiceEnabled: true,
     ttsModel: TTS_MODEL,
     ttsDefaultVoice: "alloy",
@@ -515,6 +580,7 @@ function normaliseAiSettings(settings = {}) {
     ),
     requestsPerFamilyMinute: Math.max(0, Number(settings.requestsPerFamilyMinute ?? defaults.requestsPerFamilyMinute) || 0),
     abusePauseThreshold: Math.max(0, Number(settings.abusePauseThreshold ?? defaults.abusePauseThreshold) || 0),
+    toolLimits: normaliseToolLimits(settings.toolLimits),
     tutorVoiceEnabled: settings.tutorVoiceEnabled !== false,
     // Speech model is admin-configurable and accepts a provider model ID.
     ttsModel: normaliseTtsModel(settings.ttsModel),
@@ -560,9 +626,15 @@ function safeAiSettings(settings = {}) {
     maxOutputTokensLong: normalised.maxOutputTokensLong,
     requestsPerFamilyMinute: normalised.requestsPerFamilyMinute,
     abusePauseThreshold: normalised.abusePauseThreshold,
+    toolLimits: normalised.toolLimits,
     // Ceilings the admin form cannot exceed, so the UI can show them rather than
     // hard-coding a duplicate copy of the limits.
     hardFamilyTokensDaily: HARD_FAMILY_TOKENS_DAILY,
+    // Sent so each field can render "max N" beside its input, and so the floors
+    // that would break a tool are visible rather than discovered by saving.
+    toolLimitCeilings: TOOL_LIMIT_CEILINGS,
+    toolLimitFloors: TOOL_LIMIT_FLOORS,
+    toolLimitDefaults: TOOL_LIMIT_DEFAULTS,
     tutorVoiceEnabled: normalised.tutorVoiceEnabled,
     ttsModel: normalised.ttsModel,
     supportedTtsModels: SUPPORTED_TTS_MODELS,
@@ -3605,6 +3677,16 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "abusePauseThreshold")) {
       next.abusePauseThreshold = Math.max(0, Number(body.abusePauseThreshold) || 0);
     }
+    // Merged per tool so a form that posts only one tool's fields doesn't wipe
+    // the rest. normaliseToolLimits clamps every field to its floor/ceiling.
+    if (body.toolLimits && typeof body.toolLimits === "object") {
+      const merged = { ...(next.toolLimits || {}) };
+      Object.keys(body.toolLimits).forEach((tool) => {
+        if (!TOOL_LIMIT_DEFAULTS[tool]) return;
+        merged[tool] = { ...(merged[tool] || {}), ...(body.toolLimits[tool] || {}) };
+      });
+      next.toolLimits = normaliseToolLimits(merged);
+    }
     if (Object.prototype.hasOwnProperty.call(body, "tutorVoiceEnabled")) {
       next.tutorVoiceEnabled = body.tutorVoiceEnabled !== false;
     }
@@ -3668,6 +3750,9 @@ app.get("/api/ai/usage-limits", requireParent, (req, res) => {
       };
     })(),
     requireSteps: limits.requireSteps,
+    // Per-tool input limits. The extension clamps these against its own
+    // compiled ceilings, so a bad value here can only ever tighten a tool.
+    toolLimits: settings.toolLimits,
     controls: limits.controls,
     aiConfigured: Boolean(settings.openaiApiKey),
     // Admin-controlled tutor voice policy — the student picks from `allowed`.

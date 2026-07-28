@@ -400,6 +400,8 @@ let mathParentPinHash = "";
 let mathPinPromptOpen = false;
 let mathAnswersRevealed = false;
 let lastMathSolve = null;
+// Re-solve attempts per problem index, reset when a new solve starts.
+const mathCorrectionAttempts = new Map();
 // Image input is used for the initial read. Normal solving stays text-only;
 // this flips on only when a visual re-check is genuinely needed.
 let mathVisionEscalation = false;
@@ -1594,9 +1596,79 @@ let portalRequireSteps = false; // set from the family's parental controls
 
 // Reflect the parent's controls (from /api/ai/usage-limits) into the extension.
 // Voice-off and daily caps are also enforced server-side; this mirrors them in UI.
+// ---- Per-tool input limits --------------------------------------------------
+// Ceilings compiled into the build. The portal can tune BELOW these without a
+// Chrome Web Store resubmission, but never above: a served value is clamped
+// here, so a bug, a corrupted setting, or a spoofed response can only ever make
+// a tool stricter. They are also the fallback when the portal is unreachable,
+// which is why they stay in the code rather than moving server-side entirely.
+const TOOL_LIMIT_CEILINGS = {
+  mission: { fileBytes: maxStudyFileBytes, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
+  math:    { pasteChars: 2000, fileBytes: maxStudyFileBytes, problems: 20, reconsiderAttempts: 5 },
+  write:   { inputChars: 10000 },
+  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
+  tutor:   { readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars, narrationWords: 1000 }
+};
+// Used until the portal answers, and whenever it cannot be reached.
+const TOOL_LIMIT_FALLBACKS = {
+  mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
+  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
+  write:   { inputChars: 4000 },
+  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
+  tutor:   { readChars: 30000, sourceChars: 24000, narrationWords: 700 }
+};
+let portalToolLimits = null;
+
+// The effective limit for a tool's input: whichever of the served value and the
+// compiled ceiling is smaller.
+// 0 is a real value meaning "off", not "unset" — matching the account token cap,
+// where treating 0 as unlimited was the footgun we removed. Only a missing or
+// non-numeric field falls back. Fields that would break a tool at 0 have a
+// non-zero floor on the portal side, so 0 can never reach them.
+function toolLimit(tool, field) {
+  const ceiling = TOOL_LIMIT_CEILINGS[tool]?.[field];
+  const fallback = TOOL_LIMIT_FALLBACKS[tool]?.[field];
+  if (ceiling === undefined) return fallback;
+  const served = Number(portalToolLimits?.[tool]?.[field]);
+  const value = Number.isFinite(served) && served >= 0 ? served : fallback;
+  return Math.min(ceiling, value);
+}
+
 function applyPortalControls(limits) {
   portalLimits = limits || null;
   portalRequireSteps = Boolean(limits && limits.requireSteps);
+  if (limits && limits.toolLimits && typeof limits.toolLimits === "object") {
+    portalToolLimits = limits.toolLimits;
+    // Cached so a later session still has the operator's values if the portal
+    // is unreachable at start-up. Stale-but-real beats falling back to defaults.
+    try { chrome.storage?.local?.set({ kgToolLimits: limits.toolLimits }); } catch {}
+  }
+  applyToolLimitsToUi();
+}
+
+// Reflect the numeric limits into the DOM attributes that enforce them locally.
+function applyToolLimitsToUi() {
+  const bind = (id, value) => {
+    const el = document.getElementById(id);
+    if (el && value) el.setAttribute("maxlength", String(value));
+  };
+  bind("mathPasteInput", toolLimit("math", "pasteChars"));
+  bind("writingInput", toolLimit("write", "inputChars"));
+  bind("explainFollowupInput", toolLimit("explain", "followupChars"));
+  const meta = document.getElementById("pdfFileMeta");
+  if (meta && !meta.dataset.userState) {
+    meta.textContent = `PDF up to ${toolLimit("mission", "pdfPages")} pages (5 if scanned), TXT, JPG, or PNG · up to ${formatBytes(toolLimit("mission", "fileBytes"))}`;
+  }
+}
+
+// Restore the cached limits before the portal answers, so the very first
+// interaction of a session already uses the operator's values.
+async function restoreCachedToolLimits() {
+  try {
+    const stored = await chrome.storage.local.get("kgToolLimits");
+    if (stored?.kgToolLimits) portalToolLimits = stored.kgToolLimits;
+  } catch {}
+  applyToolLimitsToUi();
 }
 
 function ensureGateStyles() {
@@ -2755,7 +2827,7 @@ async function handleStudyFile(file, tool = "pdf") {
     setToolUploadStatus(tool, "Use a PDF, TXT, JPG, or PNG file.", "warn");
     return;
   }
-  if (file.size > maxStudyFileBytes) {
+  if (file.size > toolLimit("mission", "fileBytes")) {
     selectedPdfFile = null;
     setToolUploadStatus(tool, `File is too large. Please use a file under ${formatBytes(maxStudyFileBytes)}.`, "warn");
     return;
@@ -3794,7 +3866,7 @@ function normalizeMathProblems(result) {
       why: cleanMathText(line?.why || line?.reason || line?.simple || line?.explain || line?.text || "")
     };
   };
-  return problems.filter(Boolean).slice(0, 15).map((item, index) => {
+  return problems.filter(Boolean).slice(0, toolLimit("math", "problems")).map((item, index) => {
     const solution = item.solution && typeof item.solution === "object" ? item.solution : {};
     const help = item.help && typeof item.help === "object" ? item.help : {};
     const rawSolutionLines = Array.isArray(solution.lines) && solution.lines.length
@@ -4035,7 +4107,7 @@ async function solveMathOnce({ settings, parts = [], sourceText, gradeBand, disp
     text: `${sourceText}
 ${disputeNote ? `IMPORTANT: ${disputeNote}
 ` : ""}Grade band: ${gradeBand}. ${mathGradeGuidance(gradeBand)}
-Return JSON {problems:[{title (like "Problem 1 of 2"), friendlyProblem (the original question only — no derivations, filenames, or metadata), meta (one short topic STRING, not an object), tags (up to 4 short strings), choices ([{label,expression}] with label like A,B,C copied exactly when the source is multiple choice, else []), help ({concept, formula (key formula as LaTeX), lines (up to 5 {math,why})}), solution ({lines ([{math,why}] as a textbook derivation, one short relation per line, continuation lines start with "="), check ({math,why} that substitutes the answer back and confirms it fits every given), answer})}]}. Solve at most 15 problems (if more than 15 are shown, include only the first 15). help must NOT reveal the final answer, value, or choice letter. why is one short plain sentence for this grade band. answer: the final value only as inline LaTeX; for multiple choice give the exact matching choice expression followed by its option letter at the END, like "\\binom{n}{4}(3x)^{n-4}(2y)^4 \\text{(A)}".`
+Return JSON {problems:[{title (like "Problem 1 of 2"), friendlyProblem (the original question only — no derivations, filenames, or metadata), meta (one short topic STRING, not an object), tags (up to 4 short strings), choices ([{label,expression}] with label like A,B,C copied exactly when the source is multiple choice, else []), help ({concept, formula (key formula as LaTeX), lines (up to 5 {math,why})}), solution ({lines ([{math,why}] as a textbook derivation, one short relation per line, continuation lines start with "="), check ({math,why} that substitutes the answer back and confirms it fits every given), answer})}]}. Solve at most ${toolLimit("math", "problems")} problems (if more are shown, include only the first ${toolLimit("math", "problems")}). help must NOT reveal the final answer, value, or choice letter. why is one short plain sentence for this grade band. answer: the final value only as inline LaTeX; for multiple choice give the exact matching choice expression followed by its option letter at the END, like "\\binom{n}{4}(3x)^{n-4}(2y)^4 \\text{(A)}".`
   };
   return callOpenAIJson(request);
 }
@@ -4487,7 +4559,7 @@ async function solveMathWithAI() {
   // pass entirely (no image tokens, nothing to misread), then solve + verify
   // through the same pipeline as the image path.
   if (sourceState.math === "paste") {
-    const pasted = (document.getElementById("mathPasteInput")?.value || "").trim().slice(0, 900);
+    const pasted = (document.getElementById("mathPasteInput")?.value || "").trim().slice(0, toolLimit("math", "pasteChars"));
     if (!pasted) {
       resetButton();
       showMathNotice("Type a problem first", "Type or paste your math problem above, then press Give Me Nudge.");
@@ -4495,6 +4567,7 @@ async function solveMathWithAI() {
     }
     const transcript = [{ statement: pasted, meta: "Math · typed" }];
     lastMathSolve = { transcript, gradeBand, visionParts: [] };
+    mathCorrectionAttempts.clear();
     mathSolveState.index = 0;
     mathSolveState.problems = [mathPlaceholderFromTranscript(transcript[0], 0, 1)];
     startMathThinking("Solving your problem, step by step…", { gradeBand, hint: mathTopicHint(mathSolveState.problems) });
@@ -4560,6 +4633,7 @@ async function solveMathWithAI() {
   lastMathSolve = { transcript, gradeBand, visionParts: parts };
   const total = transcript.length;
   const problems = transcript.map((item, index) => mathPlaceholderFromTranscript(item, index, total));
+  mathCorrectionAttempts.clear();
   mathSolveState.index = 0;
   mathSolveState.problems = problems;
   renderMathSolution();
@@ -4603,10 +4677,20 @@ async function correctMathProblem() {
     setMathCorrectStatus("Corrections need your Settings OpenAI key and a solved problem.", "warn");
     return;
   }
+  // Re-solving was unlimited, and "Reconsider" routes to the advanced model, so
+  // a student holding down the button ran up the most expensive call in the
+  // product. Counted per problem, since a fresh problem deserves a fresh budget.
+  const attemptCap = toolLimit("math", "reconsiderAttempts");
+  const attemptKey = mathSolveState.index;
+  if (attemptCap && (mathCorrectionAttempts.get(attemptKey) || 0) >= attemptCap) {
+    setMathCorrectStatus("That's all the re-tries for this problem. Try the next one, or ask a grown-up.", "warn");
+    return;
+  }
   if (send) {
     send.disabled = true;
     send.classList.add("busy");
   }
+  mathCorrectionAttempts.set(attemptKey, (mathCorrectionAttempts.get(attemptKey) || 0) + 1);
   mathSolveToken += 1;
   const gradeBand = lastMathSolve.gradeBand;
   const index = mathSolveState.index;
@@ -5068,11 +5152,30 @@ async function explainCurrentSource() {
   }
 }
 
+// Follow-ups were the one AI surface with no bound at all: free text, no cap on
+// how many, and the closest thing in the product to a general chat box. Counted
+// per source so moving to a new page or pack starts fresh.
+const followupCounts = { explain: 0, mission: 0 };
+// A cap of 0 turns follow-ups off for the account rather than making them
+// unlimited — same convention as the account token ceiling.
+function followupBudgetSpent(kind) {
+  const cap = toolLimit("explain", "followupsPerSession");
+  return followupCounts[kind] >= cap;
+}
+function resetFollowupCount(kind) {
+  followupCounts[kind] = 0;
+}
+
 async function answerExplainFollowup() {
   const input = document.getElementById("explainFollowupInput");
   const answer = document.getElementById("explainFollowupAnswer");
   if (!input || !answer) return;
-  const question = (input.value.trim() || "Explain this another way").slice(0, 200);
+  if (followupBudgetSpent("explain")) {
+    answer.hidden = false;
+    answer.innerHTML = `<span>That's all the follow-ups for this page. Try a new page, or ask a grown-up.</span>`;
+    return;
+  }
+  const question = (input.value.trim() || "Explain this another way").slice(0, toolLimit("explain", "followupChars"));
   answer.hidden = false;
   answer.innerHTML = `<span>Thinking...</span>`;
   try {
@@ -5090,6 +5193,9 @@ async function answerExplainFollowup() {
       text: `Explanation already given to the student:\n${explanation}\n\nFollow-up question: ${question}\nReturn JSON with answer string and tryNext string.`,
       parts
     });
+    // Counted only on a call that actually happened, so a failed request doesn't
+    // silently eat the student's allowance.
+    followupCounts.explain += 1;
     answer.innerHTML = `<span class="followup-question">You asked: ${escapeHtml(question)}</span><p>${escapeHtml(result.answer || "Here is a simpler way to think about it.")}</p><small>${escapeHtml(result.tryNext || "Try saying the idea back in your own words.")}</small>`;
   } catch {
     answer.innerHTML = `<b>You asked:</b> ${escapeHtml(question)}<br><span>KiddieGPT would answer using the same page or screenshot, then keep it short and grade-safe.</span>`;
@@ -5725,7 +5831,7 @@ async function buildStudyPackFromActiveTab(settings, challenge = "Balanced", gra
   const result = await callOpenAIJson({
     settings,
     instructions: "You are KiddieGPT, a parent-safe study helper for grades K-8. Build study aids from active page text. Do not provide answer dumps. Return only valid JSON.",
-    text: `Create a kid-facing study pack from this active tab for a grade ${gradeBand} student. Match the wording and difficulty to grade ${gradeBand}. Challenge level: ${challenge} (Less = simpler recall, Balanced = mix recall and understanding, More = a few harder why/how questions without going above grade level). Every quiz question and flashcard MUST come from this page's actual content, not general knowledge. Return JSON with keys: mainIdea string, keyTerms array of 6 short strings, rememberThis string, quiz array of 12 objects with question, choices array of 4 strings, answer string, flashcards array of 10 objects with term and meaning, readAloud string. Title: ${context.title}. URL: ${context.url}. Text: ${context.text}`
+    text: `Create a kid-facing study pack from this active tab for a grade ${gradeBand} student. Match the wording and difficulty to grade ${gradeBand}. Challenge level: ${challenge} (Less = simpler recall, Balanced = mix recall and understanding, More = a few harder why/how questions without going above grade level). Every quiz question and flashcard MUST come from this page's actual content, not general knowledge. Return JSON with keys: mainIdea string, keyTerms array of 6 short strings, rememberThis string, quiz array of ${toolLimit("mission", "quizCount")} objects with question, choices array of 4 strings, answer string, flashcards array of ${toolLimit("mission", "cardCount")} objects with term and meaning, readAloud string. Title: ${context.title}. URL: ${context.url}. Text: ${context.text}`
   });
   return normalizeStudyPack(result);
 }
@@ -5740,7 +5846,7 @@ async function buildPdfWithOpenAI(file, settings, challenge = "Balanced", gradeB
     settings,
     tool: "pdf",
     instructions: "You are KiddieGPT, a parent-safe study helper for grades K-8. Help the student learn from the uploaded study source. Do not provide answer dumps. Return only valid JSON.",
-    text: `Create a kid-facing study pack from this uploaded study source for a grade ${gradeBand} student. Match the wording and difficulty to grade ${gradeBand}. Challenge level: ${challenge}. If challenge is Less, keep wording simpler and focus on recall. If Balanced, mix recall and understanding. If More, include a few harder why/how questions without going above grade level. It may be a PDF, text file, or image. If it is an image, read the visible text, diagrams, tables, and labels. Every quiz question and flashcard MUST come from this source's actual content, not general knowledge. Return JSON with keys: mainIdea string, keyTerms array of 6 short strings, rememberThis string, quiz array of 12 objects with question, choices array of 4 strings, answer string, flashcards array of 10 objects with term and meaning, readAloud string. Do not include parent summaries or parent notes. Filename: ${file.name}`,
+    text: `Create a kid-facing study pack from this uploaded study source for a grade ${gradeBand} student. Match the wording and difficulty to grade ${gradeBand}. Challenge level: ${challenge}. If challenge is Less, keep wording simpler and focus on recall. If Balanced, mix recall and understanding. If More, include a few harder why/how questions without going above grade level. It may be a PDF, text file, or image. If it is an image, read the visible text, diagrams, tables, and labels. Every quiz question and flashcard MUST come from this source's actual content, not general knowledge. Return JSON with keys: mainIdea string, keyTerms array of 6 short strings, rememberThis string, quiz array of ${toolLimit("mission", "quizCount")} objects with question, choices array of 4 strings, answer string, flashcards array of ${toolLimit("mission", "cardCount")} objects with term and meaning, readAloud string. Do not include parent summaries or parent notes. Filename: ${file.name}`,
     parts: [studySourcePart]
   });
   setPdfStatus("Turning the response into a study pack...", "blue");
@@ -5787,8 +5893,8 @@ function normalizeStudyPack(pack) {
     mainIdea: pack.mainIdea || "This source explains the main lesson and key vocabulary.",
     keyTerms: Array.isArray(pack.keyTerms) ? pack.keyTerms.slice(0, 8) : [],
     rememberThis: pack.rememberThis || "Review the big idea, then practice with a few questions.",
-    quiz: Array.isArray(pack.quiz) ? pack.quiz.slice(0, 15) : [],
-    flashcards: Array.isArray(pack.flashcards) ? pack.flashcards.slice(0, 12) : [],
+    quiz: Array.isArray(pack.quiz) ? pack.quiz.slice(0, toolLimit("mission", "quizCount")) : [],
+    flashcards: Array.isArray(pack.flashcards) ? pack.flashcards.slice(0, toolLimit("mission", "cardCount")) : [],
     readAloud: pack.readAloud || "Read the mission slowly, then pause and say the main idea back."
   };
 }
@@ -6271,6 +6377,10 @@ initTutorMode();
 initMissionFollowup();
 initWritingStudio();
 initSettingsTool();
+
+// Apply the operator's cached per-tool limits before the portal answers, so the
+// first interaction of a session already uses them rather than the fallbacks.
+restoreCachedToolLimits();
 
 // Check parent sign-in + entitlement, and show the gate if needed.
 bootstrapPortal();
