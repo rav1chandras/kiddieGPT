@@ -6020,6 +6020,17 @@ function initSettingsTool() {
     selectedPdfFile = null;
     currentSourceText = "";
     currentSourceKey = "";
+    // The solved worksheet survives a panel close for 24 hours, so clearing
+    // "all data" has to remove it too -- otherwise yesterday's answers come back
+    // after the student was told everything was wiped.
+    await clearMathSession();
+    lastMathSolve = null;
+    mathSolveState.problems = [];
+    mathSolveState.index = 0;
+    mathCorrectionAttempts.clear();
+    mathAnswersRevealed = false;
+    selectedMathFile = null;
+    selectedMathCapture = null;
     // Tear down the tutor player and wipe the on-device Tutor voice caches.
     cancelTutorRequest();
     resetTutorPlayer();
@@ -6028,6 +6039,7 @@ function initSettingsTool() {
     renderMissionCards();
     renderMissionQuiz();
     updateMissionReadUi();
+    renderMathSolution();
     renderStars();
     updateSettingsStatus("All on-device learning data cleared.", "blue");
   });
