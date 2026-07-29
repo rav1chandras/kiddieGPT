@@ -4162,21 +4162,60 @@
         if (!byStage[t.stage]) { byStage[t.stage] = []; order.push(t.stage); }
         byStage[t.stage].push(t);
       });
-      gallery.innerHTML = order.map(function (stage) {
-        var cards = byStage[stage].map(function (t) {
-          return "<div class='email-tpl'>" +
-            "<div class='email-tpl-head'>" +
-              "<div class='email-tpl-meta'><strong>" + text(t.name) + "</strong><small>" + text(t.subject) + "</small></div>" +
-              "<div class='email-tpl-actions'>" +
-                "<button type='button' class='table-action' data-email-preview='" + t.key + "'>Preview</button>" +
-                "<button type='button' class='table-action' data-email-test='" + t.key + "'>Send test</button>" +
-              "</div>" +
-            "</div>" +
-            "<div class='email-tpl-preview' id='email-preview-" + t.key + "' hidden></div>" +
-          "</div>";
-        }).join("");
-        return "<div class='email-stage'><p class='eyebrow'>" + text(stage) + "</p>" + cards + "</div>";
+      // Split the stages into two balanced columns (by card count) so the page
+      // reads as two columns rather than a wrapping grid of quadrants.
+      var columns = [[], []];
+      var counts = [0, 0];
+      order.forEach(function (stage) {
+        var target = counts[0] <= counts[1] ? 0 : 1;
+        columns[target].push(stage);
+        counts[target] += byStage[stage].length;
+      });
+      function cardMarkup(t) {
+        // Automated (sweep-sent) emails get an on/off switch. Transactional ones
+        // are always on, so they show a locked badge instead of a control.
+        var toggle = t.automated
+          ? "<label class='email-tpl-toggle' title='The lifecycle sweep only sends this when it is on'>" +
+              "<input type='checkbox' data-email-enabled='" + t.key + "'" + (t.enabled === false ? "" : " checked") + ">" +
+              "<span>" + (t.enabled === false ? "Off" : "On") + "</span>" +
+            "</label>"
+          : "<span class='email-tpl-always' title='Transactional email — always sent'>Always on</span>";
+        return "<div class='email-tpl" + (t.automated && t.enabled === false ? " is-disabled" : "") + "' data-email-card='" + t.key + "'>" +
+          "<div class='email-tpl-head'>" +
+            "<div class='email-tpl-meta'><strong>" + text(t.name) + "</strong><small>" + text(t.subject) + "</small></div>" +
+            toggle +
+          "</div>" +
+          "<div class='email-tpl-actions'>" +
+            "<button type='button' class='table-action' data-email-preview='" + t.key + "'>Preview</button>" +
+            "<button type='button' class='table-action' data-email-test='" + t.key + "'>Send test</button>" +
+          "</div>" +
+          "<div class='email-tpl-preview' id='email-preview-" + t.key + "' hidden></div>" +
+        "</div>";
+      }
+      gallery.innerHTML = columns.map(function (stages) {
+        return "<div class='email-column'>" + stages.map(function (stage) {
+          return "<div class='email-stage'><p class='eyebrow'>" + text(stage) + "</p>" +
+            byStage[stage].map(cardMarkup).join("") + "</div>";
+        }).join("") + "</div>";
       }).join("");
+    }
+
+    async function setEmailTemplateEnabled(key, enabled, checkbox) {
+      try {
+        await fetchJson("/api/admin/email-templates/" + encodeURIComponent(key) + "/enabled", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: enabled })
+        });
+        var cached = emailTemplatesCache.find(function (t) { return t.key === key; });
+        if (cached) cached.enabled = enabled;
+        var label = checkbox && checkbox.closest(".email-tpl-toggle");
+        if (label) { var span = label.querySelector("span"); if (span) span.textContent = enabled ? "On" : "Off"; }
+        var card = document.querySelector("[data-email-card='" + key + "']");
+        if (card) card.classList.toggle("is-disabled", !enabled);
+      } catch (error) {
+        if (checkbox) checkbox.checked = !enabled; // revert on failure
+      }
     }
 
     async function saveEmailSettings(clearToken) {
@@ -7014,6 +7053,10 @@
       }
       var test = event.target.closest("[data-email-test]");
       if (test) sendTemplateTest(test.dataset.emailTest, test);
+    });
+    if (emailGalleryEl) emailGalleryEl.addEventListener("change", function (event) {
+      var box = event.target.closest("[data-email-enabled]");
+      if (box) setEmailTemplateEnabled(box.dataset.emailEnabled, box.checked, box);
     });
     var applyExceptionBtn = document.getElementById("apply-exception");
     if (applyExceptionBtn) applyExceptionBtn.addEventListener("click", applyException);

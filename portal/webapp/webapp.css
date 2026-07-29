@@ -8000,13 +8000,21 @@ body[data-page="admin"] .tts-default-field select { min-height: 38px; border: 1p
 body[data-page="admin"] .tts-default-field small { font-weight: 600; color: #6a827d; }
 
 /* ---- Admin: Emails studio (template gallery + preview) -------------------- */
-body[data-page="admin"] .email-template-gallery { display: grid; gap: 20px; margin-top: 4px; }
+/* Two balanced columns of stages rather than a wrapping quadrant grid. */
+body[data-page="admin"] .email-template-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 4px; align-items: start; }
+body[data-page="admin"] .email-column { display: grid; gap: 20px; }
 body[data-page="admin"] .email-stage { display: grid; gap: 10px; }
-body[data-page="admin"] .email-tpl { border: 1px solid #e4ece9; border-radius: 14px; background: #fff; overflow: hidden; }
+body[data-page="admin"] .email-tpl { border: 1px solid #e4ece9; border-radius: 14px; background: #fff; overflow: hidden; transition: opacity .15s ease; }
+body[data-page="admin"] .email-tpl.is-disabled { opacity: .55; }
 body[data-page="admin"] .email-tpl-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; }
 body[data-page="admin"] .email-tpl-meta strong { display: block; color: #16342d; font-size: 14px; font-weight: 700; }
 body[data-page="admin"] .email-tpl-meta small { color: #6a827d; font-size: 12px; }
-body[data-page="admin"] .email-tpl-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+body[data-page="admin"] .email-tpl-actions { display: flex; gap: 8px; flex: 0 0 auto; padding: 0 16px 12px; }
+/* Enable/disable switch for automated (sweep-sent) emails. */
+body[data-page="admin"] .email-tpl-toggle { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; cursor: pointer; user-select: none; }
+body[data-page="admin"] .email-tpl-toggle input { width: 16px; height: 16px; accent-color: #0f6e56; cursor: pointer; }
+body[data-page="admin"] .email-tpl-toggle span { font-size: 12px; font-weight: 700; color: #4a5f59; min-width: 20px; }
+body[data-page="admin"] .email-tpl-always { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: #6a827d; background: #eef3f1; border-radius: 999px; padding: 4px 10px; }
 body[data-page="admin"] .email-tpl-preview { border-top: 1px solid #eef3f1; background: #f4f6f5; padding: 14px; }
 body[data-page="admin"] .email-preview-frame { width: 100%; height: 540px; border: 1px solid #e4ece9; border-radius: 12px; background: #fff; }
 
