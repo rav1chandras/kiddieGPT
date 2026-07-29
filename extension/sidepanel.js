@@ -6064,6 +6064,16 @@ function parseOpenAIJson(text) {
       } catch { /* fall through to the throw below */ }
     }
   }
+  // Nothing parsed. Record what actually came back -- prose, a refusal, a
+  // malformed object and bad LaTeX escaping all reach here identically, and
+  // without a sample there is no way to tell them apart after the fact.
+  const sample = String(text || "").trim();
+  const shape = !sample ? "empty"
+    : (sample.startsWith("{") || sample.startsWith("[")) ? "json-like but unparseable"
+    : /^(sorry|i'm|i am|unable|cannot|can't|i can)/i.test(sample) ? "refusal or apology"
+    : "prose, not JSON";
+  console.warn("Unparseable AI response", { shape, length: sample.length, head: sample.slice(0, 300) });
+  reportIssue("ai_unparseable", shape + " | len=" + sample.length + " | " + sample.slice(0, 300));
   throw new Error("OpenAI returned text, but not a study-pack JSON object.");
 }
 
