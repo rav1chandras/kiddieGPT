@@ -4162,6 +4162,11 @@
         if (!byStage[t.stage]) { byStage[t.stage] = []; order.push(t.stage); }
         byStage[t.stage].push(t);
       });
+      // Lead with the stages that have on/off switches so the controls are the
+      // first thing on screen — the always-on stages otherwise pushed every
+      // switch below the fold. Stable sort keeps each group's original order.
+      var stageHasToggle = function (stage) { return byStage[stage].some(function (t) { return t.toggleable; }); };
+      order.sort(function (a, b) { return (stageHasToggle(b) ? 1 : 0) - (stageHasToggle(a) ? 1 : 0); });
       // Split the stages into two balanced columns (by card count) so the page
       // reads as two columns rather than a wrapping grid of quadrants.
       var columns = [[], []];
