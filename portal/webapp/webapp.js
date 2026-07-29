@@ -5848,6 +5848,34 @@
       }).join("") : "<tr><td colspan='6' class='empty-state'>No exceptions applied yet.</td></tr>");
     }
 
+    // Inline billing actions on the cancellation-request and cancelled tables.
+    // Destructive ones (end now, reactivate) confirm first.
+    async function runBillingSubscriptionAction(action, familyId, button) {
+      var family = readFamilies().find(function (f) { return familyRowId(f) === familyId || f.id === familyId; });
+      if (!family) return;
+      var confirms = {
+        end_now: "End access for " + family.parentName + " right now? Their child loses access immediately.",
+        reactivate: "Reactivate " + family.parentName + "? Access is restored; with no live subscription this is a comped period until they re-subscribe.",
+        keep: ""
+      };
+      if (confirms[action] && !window.confirm(confirms[action])) return;
+      if (button) button.disabled = true;
+      try {
+        var payload = await fetchJson("/api/admin/subscription-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, subscriptionId: stripeSubscriptionId(family), email: family.email })
+        });
+        writeDevOutput("Subscription " + action, payload);
+        await loadBackendState();
+        renderAdmin();
+      } catch (error) {
+        writeDevOutput("Subscription action failed", error);
+        window.alert((error && error.error) || "Could not complete the billing action.");
+        if (button) button.disabled = false;
+      }
+    }
+
     async function applyException() {
       var select = document.getElementById("exception-family");
       var amountEl = document.getElementById("exception-amount");
@@ -6560,7 +6588,11 @@
           "<td>" + (family.retentionOffer && family.retentionOffer.status ? escapeHtml(family.retentionOffer.status) : String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "Renewal only" : "Save offer") + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='https://dashboard.stripe.com/test/subscriptions/" + encodeURIComponent(subscriptionId) + "' target='_blank' rel='noreferrer'>" + text(subscriptionId || "-") + "</a></td>" +
           "<td>" + statusChip(family.cancellationStatus || family.subscriptionStatus) + "</td>" +
-          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
+          "<td><div class='row-actions'>" +
+            "<button type='button' class='table-action' data-billing-sub-action='keep' data-family-id='" + familyRowId(family) + "'>Keep plan</button>" +
+            "<button type='button' class='table-action danger' data-billing-sub-action='end_now' data-family-id='" + familyRowId(family) + "'>End now</button>" +
+            "<button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button>" +
+          "</div></td>" +
         "</tr>";
       }) : ["<tr><td colspan='9'>No scheduled cancellation requests.</td></tr>"]);
 
@@ -6628,7 +6660,10 @@
           "<td>" + rowDateTime(family.cancelledAt || family.cancellationCompletedAt) + "</td>" +
           "<td>" + rowDateTime(family.cancelAccessUntil || family.cancellationAccessUntil) + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='https://dashboard.stripe.com/test/subscriptions/" + encodeURIComponent(subscriptionId) + "' target='_blank' rel='noreferrer'>" + text(subscriptionId || "-") + "</a></td>" +
-          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
+          "<td><div class='row-actions'>" +
+            "<button type='button' class='table-action' data-billing-sub-action='reactivate' data-family-id='" + familyRowId(family) + "'>Reactivate</button>" +
+            "<button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button>" +
+          "</div></td>" +
         "</tr>";
       }) : ["<tr><td colspan='8'>No cancelled subscriptions in this date range.</td></tr>"]);
 
@@ -7369,6 +7404,13 @@
         var shortcut = event.target.closest("[data-admin-view-shortcut]");
         if (shortcut) {
           setAdminView(shortcut.dataset.adminViewShortcut);
+          return;
+        }
+
+        var billingSubBtn = event.target.closest("[data-billing-sub-action]");
+        if (billingSubBtn) {
+          event.preventDefault();
+          await runBillingSubscriptionAction(billingSubBtn.dataset.billingSubAction, billingSubBtn.dataset.familyId, billingSubBtn);
           return;
         }
 

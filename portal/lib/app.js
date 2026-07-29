@@ -6701,52 +6701,91 @@ app.post("/api/admin/trigger-email", requireAdmin, async (req, res) => {
 
 app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
   const { action, subscriptionId, email } = req.body || {};
-  const allowed = new Set(["pause", "cancel"]);
+  // pause/cancel schedule; end_now finalises immediately; keep undoes a scheduled
+  // cancellation; reactivate restores a cancelled account.
+  const allowed = new Set(["pause", "cancel", "end_now", "keep", "reactivate"]);
   if (!allowed.has(action)) {
     return res.status(400).json({ error: "Unsupported subscription action." });
   }
+  const isYearly = (plan) => String(plan || "").toLowerCase().includes("year");
+  const liveStripe = Boolean(process.env.STRIPE_SECRET_KEY) && subscriptionId && !String(subscriptionId).startsWith("sub_mock");
 
-  if (!process.env.STRIPE_SECRET_KEY || !subscriptionId || subscriptionId.startsWith("sub_mock")) {
-    const updated = mutateDb((db) => {
-      const family = db.families.find((item) => item.email === String(email || "").toLowerCase());
-      if (family) {
-        if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
-        else {
-          const mockPeriodEnd = new Date();
-          mockPeriodEnd.setMonth(mockPeriodEnd.getMonth() + (String(family.plan || "").toLowerCase().includes("year") ? 12 : 1));
-          markCancellationScheduled(family, { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(mockPeriodEnd.getTime() / 1000) }, "Admin scheduled cancellation");
-        }
-      }
-      audit(db, `subscription.${action}.mock`, { subscriptionId, email });
-      return family;
-    });
-    return res.json({
-      mode: "mock",
-      action,
-      subscriptionId: subscriptionId || "sub_mock_kiddiegpt",
-      email,
-      family: updated,
-      message: `${action} subscription was simulated.`
-    });
+  // Best-effort Stripe side-effect for the actions that touch a live sub. A
+  // reactivate can't resurrect a cancelled Stripe subscription, so it is
+  // handled locally as a comped restore below.
+  if (liveStripe) {
+    try {
+      const stripe = stripeClient();
+      if (action === "pause") await stripe.subscriptions.update(subscriptionId, { pause_collection: { behavior: "void" } });
+      else if (action === "cancel") await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
+      else if (action === "keep") await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+      else if (action === "end_now") await stripe.subscriptions.cancel(subscriptionId).catch(() => {});
+    } catch (error) {
+      return res.status(502).json({ error: "Could not update the subscription with Stripe." });
+    }
   }
 
-  try {
-    const stripe = stripeClient();
-    const subscription = action === "pause"
-      ? await stripe.subscriptions.update(subscriptionId, { pause_collection: { behavior: "void" } })
-      : await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
-    mutateDb((db) => {
-      const family = db.families.find((item) => item.stripeSubscriptionId === subscriptionId || item.email === String(email || "").toLowerCase());
-      if (family) {
-        if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
-        else markCancellationScheduled(family, subscription, "Admin scheduled cancellation");
+  const result = mutateDb((db) => {
+    const family = db.families.find((item) =>
+      (subscriptionId && (item.stripeSubscriptionId === subscriptionId || item.cancellationSubscriptionId === subscriptionId)) ||
+      item.email === String(email || "").toLowerCase());
+    if (!family) return { error: "not_found" };
+    let message = "";
+
+    if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
+    else if (action === "cancel") {
+      const end = new Date(); end.setMonth(end.getMonth() + (isYearly(family.plan) ? 12 : 1));
+      markCancellationScheduled(family, { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(end.getTime() / 1000) }, "Admin scheduled cancellation");
+      message = "Cancellation scheduled for the end of the paid period.";
+    }
+    else if (action === "end_now") {
+      markSubscriptionEndedNow(family, "Admin ended access immediately", subscriptionId || effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      message = "Access ended now.";
+    }
+    else if (action === "keep") {
+      if (family.subscriptionStatus !== "cancel_scheduled") return { error: "not_scheduled" };
+      // Mirror the parent-side resume: a cancelled trial goes back to trialing,
+      // not active, so we never invent a payment.
+      family.subscriptionStatus = family.paymentStatus === "trial" ? "trialing" : "active";
+      family.cancellationRequested = false;
+      family.cancellationStatus = "";
+      family.cancelAtPeriodEnd = false;
+      family.cancelReason = "";
+      family.cancelAccessUntil = "";
+      family.cancellationAccessUntil = "";
+      delete family.cancelledAt;
+      message = "Plan kept — auto-renewal is back on.";
+    }
+    else if (action === "reactivate") {
+      family.accountLocked = false;
+      family.cancellationRequested = false;
+      family.cancellationStatus = "";
+      family.cancelAtPeriodEnd = false;
+      family.cancelReason = "";
+      family.cancelAccessUntil = "";
+      family.cancellationAccessUntil = "";
+      delete family.cancelledAt;
+      delete family.cancellationCompletedAt;
+      family.subscriptionStatus = "active";
+      const months = isYearly(family.plan) ? 12 : 1;
+      family.currentPeriodEnd = addMonthsIso(nowIso(), months);
+      if (liveStripe) {
+        message = "Account reactivated.";
+      } else {
+        // No live subscription to re-bill, so grant a comped period; the parent
+        // must re-subscribe for billing to resume.
+        family.entitlementOverrideUntil = addMonthsIso(nowIso(), months);
+        message = "Access restored as a comp through " + emailDate(family.entitlementOverrideUntil) + ". Ask the parent to re-subscribe to resume billing.";
       }
-      audit(db, `subscription.${action}`, { subscriptionId, email });
-    });
-    return res.json({ mode: "stripe", action, subscriptionId: subscription.id, status: subscription.status });
-  } catch (error) {
-    return res.status(500).json({ error: "Unable to update Stripe subscription." });
-  }
+    }
+    audit(db, `subscription.${action}${liveStripe ? "" : ".mock"}`, { subscriptionId, email: family.email });
+    monitor(db, "info", "billing", `Admin subscription action: ${action}`, { email: family.email, subscriptionId }, family.email);
+    return { family, message };
+  });
+
+  if (result.error === "not_found") return res.status(404).json({ error: "Family account not found." });
+  if (result.error === "not_scheduled") return res.status(400).json({ error: "This plan is not scheduled to cancel." });
+  return res.json({ ok: true, mode: liveStripe ? "stripe" : "mock", action, subscriptionId: subscriptionId || "", family: result.family, message: result.message });
 });
 
 app.post("/api/stripe/refund", requireAdmin, async (req, res) => {
