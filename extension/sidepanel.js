@@ -52,19 +52,30 @@ class PortalError extends Error {
   }
 }
 
+// The localStorage fallback (used when the panel runs outside the extension,
+// e.g. a dev preview) must round-trip objects the way chrome.storage.local does.
+// It previously wrote them raw, so every object became "[object Object]" and
+// came back as that string — silently corrupting any non-string setting.
 function storageGet(keys) {
   return new Promise(resolve => {
     if (extensionApi?.storage?.local) { extensionApi.storage.local.get(keys, resolve); return; }
     const list = Array.isArray(keys) ? keys : Object.keys(keys);
     const out = {};
-    list.forEach(key => { const value = localStorage.getItem(key); if (value !== null) out[key] = value; });
+    list.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return;
+      // Values written before this fix, and plain strings, are not JSON.
+      try { out[key] = JSON.parse(raw); } catch { out[key] = raw; }
+    });
     resolve(out);
   });
 }
 function storageSet(obj) {
   return new Promise(resolve => {
     if (extensionApi?.storage?.local) { extensionApi.storage.local.set(obj, resolve); return; }
-    Object.entries(obj).forEach(([key, value]) => localStorage.setItem(key, value));
+    Object.entries(obj).forEach(([key, value]) => {
+      localStorage.setItem(key, typeof value === "string" ? JSON.stringify(value) : JSON.stringify(value));
+    });
     resolve();
   });
 }
@@ -4542,6 +4553,57 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model }) {
 // Solves the problem the student just moved to, if it has not been solved yet.
 // Safe to call on every navigation: "idle" is the only state it acts on, so
 // revisiting a solved problem costs nothing.
+// ---- Solved-worksheet persistence -------------------------------------------
+// Solutions lived only in memory, so closing the panel discarded work the family
+// had already paid for and reopening meant solving (and billing) again. Kept for
+// 24 hours: long enough for "closed it by accident" and coming back after
+// dinner, short enough that it is not an archive.
+const MATH_SESSION_KEY = "kgMathSession";
+const MATH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+// visionParts holds the source image as a data URL. It is deliberately dropped:
+// a phone photo is megabytes, chrome.storage.local is not sized for that, and
+// the text is what makes a restored worksheet readable.
+async function saveMathSession() {
+  if (!lastMathSolve || !mathSolveState.problems?.length) return;
+  const solved = mathSolveState.problems.some(p => p?.status === "ready");
+  if (!solved) return;   // nothing worth restoring yet
+  try {
+    await storageSet({ [MATH_SESSION_KEY]: {
+      savedAt: Date.now(),
+      gradeBand: lastMathSolve.gradeBand,
+      transcript: lastMathSolve.transcript || [],
+      problems: mathSolveState.problems,
+      index: mathSolveState.index
+    }});
+  } catch { /* storage full or unavailable — not worth failing a solve over */ }
+}
+
+async function restoreMathSession() {
+  let saved;
+  try { saved = (await storageGet([MATH_SESSION_KEY]))?.[MATH_SESSION_KEY]; } catch { return false; }
+  if (!saved?.problems?.length) return false;
+  if (Date.now() - Number(saved.savedAt || 0) > MATH_SESSION_TTL_MS) {
+    try { await storageRemove([MATH_SESSION_KEY]); } catch {}
+    return false;
+  }
+  // No visionParts: a restored worksheet has no image, so anything that would
+  // re-read the picture falls back to the transcribed text.
+  lastMathSolve = { transcript: saved.transcript || [], gradeBand: saved.gradeBand || "6-8", visionParts: [] };
+  mathSolveState.problems = saved.problems;
+  mathSolveState.index = Math.min(saved.index || 0, saved.problems.length - 1);
+  mathCorrectionAttempts.clear();
+  // Re-gate. A revealed answer should not stay revealed across a restart, or
+  // reopening the panel becomes a way around the parent's answer gate.
+  mathAnswersRevealed = false;
+  renderMathSolution();
+  return true;
+}
+
+async function clearMathSession() {
+  try { await storageRemove([MATH_SESSION_KEY]); } catch {}
+}
+
 async function ensureMathProblemSolved(index) {
   const problem = mathSolveState.problems[index];
   if (!problem || problem.status !== "idle") return;
@@ -4615,6 +4677,7 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
   }
   if (token !== mathSolveToken) return;
   renderMathSolution();
+  saveMathSession();   // a solved problem is worth keeping if the panel closes
   // Normal math stays lightweight: transcription + one text solve, so a
   // worksheet costs one call per problem rather than two.
   //
@@ -4729,6 +4792,7 @@ async function solveMathWithAI() {
   }
 
   lastMathSolve = { transcript, gradeBand, visionParts: parts };
+  clearMathSession();   // a new worksheet supersedes whatever was stored
   const total = transcript.length;
   const problems = transcript.map((item, index) => mathPlaceholderFromTranscript(item, index, total));
   mathCorrectionAttempts.clear();
@@ -4856,6 +4920,7 @@ async function correctMathProblem() {
     // A new worksheet was started while this was in flight — drop the result.
     if (token !== mathSolveToken) return;
     mathSolveState.problems[index] = corrected;
+    saveMathSession();
     if (lastMathSolve.transcript?.[index]) {
       lastMathSolve.transcript[index] = { ...lastMathSolve.transcript[index], statement: corrected.equation, figure: corrected.figure };
     }
@@ -6586,6 +6651,10 @@ initSettingsTool();
 // Apply the operator's cached per-tool limits before the portal answers, so the
 // first interaction of a session already uses them rather than the fallbacks.
 restoreCachedToolLimits();
+
+// Bring back a worksheet solved in the last 24 hours, so closing the panel does
+// not throw away work the family already paid for.
+restoreMathSession();
 
 // Check parent sign-in + entitlement, and show the gate if needed.
 bootstrapPortal();
