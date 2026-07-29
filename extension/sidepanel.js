@@ -4692,6 +4692,11 @@ async function solveMathWithAI() {
   mathVisionEscalation = false;
   mathAnswersRevealed = false;
   mathPinPromptOpen = false;
+  // The "How it works" intro has served its purpose the moment a student asks
+  // for help. Hidden here rather than when results arrive, so it does not sit
+  // under the thinking indicator for the several seconds a solve takes.
+  const intro = document.getElementById("mathIntro");
+  if (intro) intro.hidden = true;
   const button = document.getElementById("mathSolveButton");
   const resetButton = () => {
     if (button) {
