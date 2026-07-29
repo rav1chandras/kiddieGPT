@@ -4803,8 +4803,14 @@ function renderCapturePage() {
     touch-action:none;user-select:none;cursor:crosshair}
   #preview{width:100%;display:block;-webkit-user-drag:none}
   .crop{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:3px;pointer-events:auto;cursor:move;touch-action:none}
-  .handle{position:absolute;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #0f8a63;pointer-events:auto;touch-action:none}
-  .handle.tl{left:-16px;top:-16px} .handle.tr{right:-16px;top:-16px} .handle.bl{left:-16px;bottom:-16px} .handle.br{right:-16px;bottom:-16px}
+  /* Halved visually (30 -> 15) so the handles stop covering the photo. The
+     touch target is NOT halved: the ::before extends an invisible 16px ring so
+     the grabbable area stays ~45px, which a child on a phone can actually hit.
+     Offsets follow the new size -- 15px circle + 4px border, centred on the
+     corner at -10px. */
+  .handle{position:absolute;width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #0f8a63;pointer-events:auto;touch-action:none}
+  .handle::before{content:"";position:absolute;left:-16px;top:-16px;right:-16px;bottom:-16px;border-radius:50%}
+  .handle.tl{left:-10px;top:-10px} .handle.tr{right:-10px;top:-10px} .handle.bl{left:-10px;bottom:-10px} .handle.br{right:-10px;bottom:-10px}
   .actions{display:flex;gap:10px}
   #send{flex:1;background:#004f48;color:#fff} #send:disabled,#retake:disabled{opacity:.6}
   .ghost{background:#eef3f1;color:#004f48}
