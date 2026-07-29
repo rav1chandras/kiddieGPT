@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KiddieGPT",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Smart help. Clear answers. Better learning for kids.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "scripting", "sidePanel"],

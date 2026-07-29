@@ -45,37 +45,14 @@ trading it for a safety hole.
 
 ---
 
-### FE-6 — Decide whether answers should be verified at all · owner: product
-**Automatic answer verification is OFF, and has been since `d62c9ed`.** That commit
-removed the only call to `verifyMathProblemInPlace` and replaced it with a comment
-explaining the cost reasoning. The function sat unreachable until 2026-07-27, when
-it was deleted (git history has it if it is ever wanted back). `checkMathOnce` is
-still live, but only when the student asks for a correction.
-
-So a worksheet is **1 transcribe + N solve** — one call per problem, not two.
-
-This is a product decision, not an optimisation:
-- **Off (today):** ~16 calls ≈ 27k tokens for 15 problems, ~7 worksheets/day
-  against the 200k account cap.
-- **On, batched:** ~21 calls ≈ 35k tokens. `checkMathOnce` already accepts a
-  `problems` array, so several can be verified per call — batching is only worth
-  building if verification is coming back.
-- **On, per problem:** ~31 calls ≈ 52k tokens, ~4 worksheets/day. Not worth it
-  when batching exists.
-
-The case for turning it back on is accuracy: the `143^°` wrong answer that reached
-a student in 2026-07-26 testing is exactly what an independent checker catches. The
-case against is cost, and that a second opinion is only useful if it is actually
-more reliable than the first.
-
-- Corrected 2026-07-27. The earlier version of this entry claimed ~31 calls and
-  ~52k tokens per worksheet for the *current* build; that was wrong, read off
-  `checkMathOnce`'s call sites without checking the enclosing function was
-  reachable. Real figures are roughly half that.
-
----
-
 ## Shipped / handed off (kept briefly for context)
+- FE-6 automatic answer verification: **closed 2026-07-29, decided against.**
+  Verification stays off. A worksheet remains 1 transcribe + N solve — one call
+  per problem, ~16 calls / ~27k tokens for 15 problems, ~7 worksheets/day against
+  the 200k account cap. Turning it back on cost ~35k batched or ~52k per problem
+  for a second opinion that is not demonstrably more reliable than the first.
+  `checkMathOnce` stays live for student-requested corrections only. This is now
+  a standing rule, not a backlog item — see guardrail 4 in CLAUDE_HANDOFF.md.
 - FE-2 truncation salvage: shipped 2026-07-29. closeTruncatedJson discards the
   incomplete tail and closes the open brackets, so a cut-off worksheet degrades to
   "most problems" instead of an error. Reachable from parseOpenAIJson only after

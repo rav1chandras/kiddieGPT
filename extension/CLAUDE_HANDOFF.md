@@ -122,7 +122,7 @@ token behavior.
 - The release build intentionally excludes `local-settings.js`.
 - Build from `extension/` with `./build.sh`.
 - The generated release bundle is:
-  `extension/dist/kiddiegpt-1.3.0.zip`
+  `extension/dist/kiddiegpt-1.4.0.zip`
 - After source edits, reload the unpacked extension in `chrome://extensions`.
   Do not test an older `dist` copy and assume source changes are live.
 
