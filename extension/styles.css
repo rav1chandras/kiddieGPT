@@ -1317,4 +1317,9 @@ body{background:#f6f8f5}
 /* One class on the wrapper hides every explanation at once — per-line toggling
    would have to re-render the whole derivation. */
 .math-full-solution.hide-why .tb-why{display:none}
+/* With the explanations gone the two-column grid above has nothing for its
+   second column, so equations pack two-per-row. Collapse to one column while
+   hiding, and give the rows back their own box so each step stays a step. */
+.math-full-solution.hide-why .tb-derivation{grid-template-columns:minmax(0,1fr);row-gap:9px}
+.math-full-solution.hide-why .tb-row{display:grid;grid-template-columns:minmax(0,1fr)}
 .math-full-solution.hide-why .tb-check small{display:none}
