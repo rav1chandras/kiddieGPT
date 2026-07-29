@@ -8003,7 +8003,9 @@ body[data-page="admin"] .tts-default-field small { font-weight: 600; color: #6a8
 /* Delivery pane: Save in the card head, the three fields on one row, and
    Clear tucked inline against the token input. */
 body[data-page="admin"] .admin-card-head-actions { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
-body[data-page="admin"] .email-delivery-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; align-items: start; }
+/* Inset matches the card head (16px sides) and .pricing-section-grid this row
+   replaced, so the fields don't sit flush against the card border. */
+body[data-page="admin"] .email-delivery-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; align-items: start; padding: 4px 16px 16px; }
 body[data-page="admin"] .email-delivery-row > label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: #16342d; }
 body[data-page="admin"] .email-delivery-row input { width: 100%; }
 body[data-page="admin"] .email-delivery-row small { color: #6a827d; font-size: 11px; font-weight: 500; }
