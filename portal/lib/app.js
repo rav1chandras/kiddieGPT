@@ -7534,6 +7534,28 @@ app.all("/api/cron/sweep", async (req, res) => {
   }
 });
 
+// Last middleware, after every route: Express's default handler renders errors
+// as an HTML page with a stack trace. Two problems with that here — the
+// extension parses every response as JSON and gets an unparseable blob instead
+// of a readable error, and the trace prints absolute filesystem paths.
+//
+// The oversized-upload case is the one that actually reaches a student. The
+// express.json body limit is derived from AI_MAX_FILE_BYTES precisely so the
+// route's own file_too_large check fires first, but a body large enough to blow
+// that limit is rejected by body-parser before any route runs. Same 413, same
+// refusal — this only makes it machine-readable.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ error: "file_too_large", limit: AI_MAX_FILE_BYTES });
+  }
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "malformed_json" });
+  }
+  console.error("Unhandled error:", err?.message || err);
+  res.status(Number(err?.status) || 500).json({ error: "server_error" });
+});
+
 // Start a long-lived server only when run directly (local/Docker). When the file
 // is imported by the serverless entry (api/index.js), we export the app instead
 // and let the platform invoke it per request.
