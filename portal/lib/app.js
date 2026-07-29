@@ -994,6 +994,7 @@ function readDb() {
       family.lastPaymentAmountCents = yearlyPayment.amountCents;
       family.lastPaymentCurrency = yearlyPayment.currency || "usd";
       family.lastPaymentAt = yearlyPayment.createdAt;
+      family.firstPaymentAt = family.firstPaymentAt || yearlyPayment.createdAt;
       changed = true;
     }
   });
@@ -1471,6 +1472,7 @@ function recordStripePayment(db, event, object, family) {
     family.lastPaymentAmountCents = amountCents || family.lastPaymentAmountCents;
     family.lastPaymentCurrency = record.currency;
     family.lastPaymentAt = record.createdAt;
+    family.firstPaymentAt = family.firstPaymentAt || record.createdAt;
   }
   return record;
 }
@@ -1753,7 +1755,7 @@ function billingCooldownPayload(family) {
 // of the most recent payment is a full refund and access ends immediately.
 // After that there is no refund — access runs to the end of the paid period and
 // simply does not renew. The window re-opens on every payment (each renewal).
-const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 3));
+const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 7));
 const BILLING_COOLDOWN_HOURS = Math.max(1, Number(process.env.BILLING_COOLDOWN_HOURS || 24));
 
 // ---- Stripe card-upfront free trial ----------------------------------------
@@ -1808,7 +1810,12 @@ function eligibleForTrial(family) {
 }
 
 function refundWindowFor(family) {
-  const paidAt = family?.lastPaymentAt || family?.createdAt || "";
+  // Keyed off the FIRST payment of the current subscription, not the last, so a
+  // renewal never re-opens the window. firstPaymentAt is set once when a
+  // subscription starts charging and cleared when it ends, so a fresh
+  // subscription earns a new window. Legacy rows fall back to lastPaymentAt
+  // (long past, so not eligible) rather than throwing the gate open.
+  const paidAt = family?.firstPaymentAt || family?.lastPaymentAt || family?.createdAt || "";
   const paidMs = paidAt ? new Date(paidAt).getTime() : NaN;
   if (!Number.isFinite(paidMs)) {
     return { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 };
@@ -1824,8 +1831,10 @@ function refundWindowFor(family) {
   };
 }
 
-function markCancellationScheduled(family, subscription, reason = "") {
+function markCancellationScheduled(family, subscription, reason = "", source = "") {
   if (!family) return family;
+  // Recorded at schedule time and carried through when the sweep finalises it.
+  family.cancellationSource = source || family.cancellationSource || "other";
   // A yearly upgrade is paid in full up front and bundles bonus months plus the
   // unused days carried over from the monthly plan. Stripe's period end on the
   // subscription being cancelled can still be the old monthly boundary, so take
@@ -1873,8 +1882,14 @@ function retireYearlyUpgrade(family, at = nowIso()) {
   return family;
 }
 
-function markSubscriptionEndedNow(family, reason = "", subscriptionId = "") {
+function markSubscriptionEndedNow(family, reason = "", subscriptionId = "", source = "") {
   if (!family) return family;
+  // How the cancellation happened: "auto" (parent self-serve), "admin" (operator),
+  // or "other" (Stripe/card driven — dispute, failed payment). An explicit source
+  // wins; otherwise keep whatever was set when it was first scheduled.
+  family.cancellationSource = source || family.cancellationSource || "other";
+  // A new subscription later earns its own first-payment refund window.
+  delete family.firstPaymentAt;
   const endedAt = nowIso();
   family.subscriptionStatus = "cancelled";
   family.cancelAtPeriodEnd = false;
@@ -2355,6 +2370,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.stripeCustomerId = stripeId(object.customer) || family.stripeCustomerId;
       family.stripeSubscriptionId = stripeId(object.subscription) || family.stripeSubscriptionId;
       family.lastPaymentAt = nowIso();
+      family.firstPaymentAt = family.firstPaymentAt || family.lastPaymentAt;
       // A renewal actually charged, so any pending cancellation is moot — Stripe
       // would not bill a subscription that was ending. Clearing these stops a
       // resumed subscription carrying a stale "cancels on ..." date after it has
@@ -2376,7 +2392,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     if (event.type === "customer.subscription.updated") {
       if (object.current_period_end) family.currentPeriodEnd = unixToIso(object.current_period_end) || family.currentPeriodEnd;
       if (object.cancel_at_period_end) {
-        markCancellationScheduled(family, object);
+        markCancellationScheduled(family, object, "", "other");
       } else {
         // Status itself is set above from statusFromStripeSubscription(), which
         // also covers trialing/past_due — this branch only clears the
@@ -2408,7 +2424,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         // The Stripe subscription was cancelled above, so record that here too —
         // leaving it "past_due" would imply Stripe is still retrying, and the
         // renewals table would keep forecasting revenue that cannot arrive.
-        markSubscriptionEndedNow(family, "Chargeback opened", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+        markSubscriptionEndedNow(family, "Chargeback opened", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "other");
         family.paymentStatus = "disputed";
         family.dispute.subscriptionCancelled = true;
       } else if (won) {
@@ -2418,7 +2434,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         delete family.dispute;
       } else if (lost) {
         family.paymentStatus = "disputed";
-        markSubscriptionEndedNow(family, "Chargeback lost", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+        markSubscriptionEndedNow(family, "Chargeback lost", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "other");
       }
       monitor(db, "error", "billing",
         won ? "Chargeback resolved in our favour" : lost ? "Chargeback lost — subscription ended" : "Chargeback opened — access suspended",
@@ -2434,7 +2450,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.paymentStatus = fullRefund ? "refunded" : "partial_refunded";
       family.refundedAt = nowIso();
       if (fullRefund) {
-        markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+        markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "other");
       }
     }
     if (event.type.includes("checkout.session") || event.type.includes("invoice") || event.type.includes("payment_intent") || event.type.includes("charge")) {
@@ -5212,7 +5228,7 @@ app.post("/api/admin/users/:id/subscription-toggle", requireAdmin, async (req, r
       family.cancellationAccessUntil = "";
       family.cancelReason = "";
     } else {
-      markSubscriptionEndedNow(family, "Admin ended subscription immediately");
+      markSubscriptionEndedNow(family, "Admin ended subscription immediately", "", "admin");
       family.paymentStatus = family.paymentStatus || "cancelled";
       family.manualSubscriptionEndedAt = nowIso();
     }
@@ -5622,6 +5638,7 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
         delete family.lastPaymentCurrency;
       } else {
         family.lastPaymentAt = nowIso();
+        family.firstPaymentAt = family.firstPaymentAt || family.lastPaymentAt;
       }
       // Only the real Stripe webhook used to set this, so in mock mode - which
       // is every install without STRIPE_SECRET_KEY - a parent who had just
@@ -6034,7 +6051,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
         family.cancelAccessUntil = monthlyEndsIso;
         family.cancellationAccessUntil = monthlyEndsIso;
       } else {
-        markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+        markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "auto");
       }
       recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
@@ -6076,7 +6093,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     }
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
-      markCancellationScheduled(family, { id: family?.stripeSubscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(mockPeriodEnd.getTime() / 1000) }, reason);
+      markCancellationScheduled(family, { id: family?.stripeSubscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(mockPeriodEnd.getTime() / 1000) }, reason, "auto");
       recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_requested.mock", { familyId: family?.id || "", email, reason, accessUntil: family?.cancelAccessUntil || "" }, email);
       return family;
@@ -6101,7 +6118,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     const subscription = await scheduleStripeCancellationAtPeriodEnd(stripe, existingFamily.stripeSubscriptionId);
     const updated = mutateDb((db) => {
       const family = db.families.find((item) => item.email === email);
-      markCancellationScheduled(family, subscription, reason);
+      markCancellationScheduled(family, subscription, reason, "auto");
       recordBillingAction(family, "cancel");
       audit(db, "subscription.cancel_requested", { familyId: family?.id || "", email, subscriptionId: subscription.id, reason, accessUntil: family?.cancelAccessUntil || "" }, email);
       return family;
@@ -6735,11 +6752,11 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
     if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
     else if (action === "cancel") {
       const end = new Date(); end.setMonth(end.getMonth() + (isYearly(family.plan) ? 12 : 1));
-      markCancellationScheduled(family, { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(end.getTime() / 1000) }, "Admin scheduled cancellation");
+      markCancellationScheduled(family, { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(end.getTime() / 1000) }, "Admin scheduled cancellation", "admin");
       message = "Cancellation scheduled for the end of the paid period.";
     }
     else if (action === "end_now") {
-      markSubscriptionEndedNow(family, "Admin ended access immediately", subscriptionId || effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+      markSubscriptionEndedNow(family, "Admin ended access immediately", subscriptionId || effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "admin");
       message = "Access ended now.";
     }
     else if (action === "keep") {
@@ -6807,7 +6824,7 @@ app.post("/api/stripe/refund", requireAdmin, async (req, res) => {
       if (family) {
         family.paymentStatus = "refunded";
         family.refundedAt = nowIso();
-        markSubscriptionEndedNow(family, "Payment refunded", family.stripeSubscriptionId || family.cancellationSubscriptionId || "");
+        markSubscriptionEndedNow(family, "Payment refunded", family.stripeSubscriptionId || family.cancellationSubscriptionId || "", "admin");
       }
       audit(db, "refund.mock", { paymentIntentId, email, amountCents });
     });
@@ -6858,7 +6875,7 @@ app.post("/api/stripe/refund", requireAdmin, async (req, res) => {
         family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
         family.refunds.unshift({ refundId: refund.id, paymentId: resolvedPaymentId, amountCents: refundAmount, status: refund.status, createdAt: nowIso() });
         if (refundStatus === "refunded") {
-          markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "");
+          markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "admin");
         }
       }
       audit(db, "refund.create", { paymentIntentId, resolvedPaymentId, email, refundId: refund.id, amountCents: refundAmount, fullRefund, stripeCancellationResult });
@@ -7435,6 +7452,7 @@ async function runLifecycleSweep(trigger = "cron") {
           family.subscriptionStatus = "cancelled";
           family.cancellationStatus = "completed";
           family.cancelledAt = family.cancelledAt || nowIso();
+          delete family.firstPaymentAt;
           cancelsFinalised += 1;
           audit(db, "cancellation.finalise", { familyId: family.id, email: family.email }, "autopilot");
         }

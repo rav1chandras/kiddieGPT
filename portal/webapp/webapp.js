@@ -5848,6 +5848,22 @@
       }).join("") : "<tr><td colspan='6' class='empty-state'>No exceptions applied yet.</td></tr>");
     }
 
+    // Auto (parent self-serve) / Admin (operator) / Others (Stripe/card driven).
+    // Older rows have no stored source, so infer from the cancel reason.
+    function cancellationSourceChip(family) {
+      var source = family.cancellationSource;
+      if (!source) {
+        var reason = String(family.cancelReason || "").toLowerCase();
+        if (reason.indexOf("admin") >= 0) source = "admin";
+        else if (reason.indexOf("chargeback") >= 0 || reason.indexOf("dispute") >= 0 || reason.indexOf("payment") >= 0) source = "other";
+        else if (family.cancelRequestedAt) source = "auto";
+        else source = "other";
+      }
+      var map = { auto: ["Auto", "ok"], admin: ["Admin", "warning"], other: ["Others", ""] };
+      var meta = map[source] || map.other;
+      return "<span class='state-chip " + meta[1] + "'>" + meta[0] + "</span>";
+    }
+
     // Inline billing actions on the cancellation-request and cancelled tables.
     // Destructive ones (end now, reactivate) confirm first.
     async function runBillingSubscriptionAction(action, familyId, button) {
@@ -6655,6 +6671,7 @@
         return "<tr>" +
           "<td>" + text(family.parentName) + "<small>" + text(family.email) + "</small></td>" +
           "<td>" + text(family.plan || moneyPlan()) + "</td>" +
+          "<td>" + cancellationSourceChip(family) + "</td>" +
           "<td>" + text(family.cancelReason || "Cancelled") + "</td>" +
           "<td>" + rowDateTime(family.cancelRequestedAt) + "</td>" +
           "<td>" + rowDateTime(family.cancelledAt || family.cancellationCompletedAt) + "</td>" +
@@ -6665,7 +6682,7 @@
             "<button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button>" +
           "</div></td>" +
         "</tr>";
-      }) : ["<tr><td colspan='8'>No cancelled subscriptions in this date range.</td></tr>"]);
+      }) : ["<tr><td colspan='9'>No cancelled subscriptions in this date range.</td></tr>"]);
 
       var paymentRows = filteredPaymentRecords(families);
       setMetric("payment-toggle-payments", paymentRows.length);
