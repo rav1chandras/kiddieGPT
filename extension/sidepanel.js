@@ -6124,6 +6124,28 @@ function closeTruncatedJson(text) {
   return out;
 }
 
+// True when a string carries a control character that cannot be legitimate.
+//
+// The distinction is the field, not the character. \t \n \r are real
+// whitespace in a sentence, so a "why" may contain them -- but a math field is
+// a single expression where they can only mean JSON swallowed a command
+// (\theta -> tab + "heta", \neq -> newline + "eq", \rho -> return + "ho").
+// The remaining control codes are never legitimate anywhere.
+const MATH_FIELDS = new Set(["math", "equation", "answer", "formula", "expression", "statement", "check"]);
+const CTRL_ALWAYS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/;
+const CTRL_IN_MATH = /[\u0000-\u001f]/;
+
+function hasControlChars(value, depth = 0, inMathField = false) {
+  if (depth > 6 || value == null) return false;
+  if (typeof value === "string") return (inMathField ? CTRL_IN_MATH : CTRL_ALWAYS).test(value);
+  if (Array.isArray(value)) return value.some(item => hasControlChars(item, depth + 1, inMathField));
+  if (typeof value === "object") {
+    return Object.entries(value).some(([key, item]) =>
+      hasControlChars(item, depth + 1, inMathField || MATH_FIELDS.has(key)));
+  }
+  return false;
+}
+
 function parseOpenAIJson(text) {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   const start = cleaned.indexOf("{");
@@ -6133,7 +6155,16 @@ function parseOpenAIJson(text) {
   const candidates = [cleaned];
   if (slice) candidates.push(slice);
   for (const candidate of candidates) {
-    try { return JSON.parse(candidate); } catch { /* try next */ }
+    // A raw parse can SUCCEED and still be wrong. \f \n \r \t \b are valid JSON
+    // escapes, so "\\frac" parses happily into <formfeed> + "rac" -- the command
+    // is replaced by a control character and the repair below is never reached,
+    // precisely when it was needed. Anything with a control character in it was
+    // LaTeX that JSON ate, so re-parse it with the backslashes protected.
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!hasControlChars(parsed)) return parsed;
+      try { return JSON.parse(escapeLatexBackslashes(candidate)); } catch { return parsed; }
+    } catch { /* try next */ }
     try { return JSON.parse(escapeLatexBackslashes(candidate)); } catch { /* try next */ }
   }
   // Last resort: salvage the complete items from a response that was cut off.
