@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=192">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=193">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -744,26 +744,28 @@
         <article class="admin-table-card">
           <div class="admin-card-head">
             <div><p class="eyebrow">Delivery</p><h2>Email provider (Postmark)</h2></div>
-            <span class="state-chip" id="email-provider-state">Not configured</span>
+            <div class="admin-card-head-actions">
+              <span class="state-chip" id="email-provider-state">Not configured</span>
+              <span class="support-status" id="email-settings-status"></span>
+              <button class="button primary" type="button" id="save-email-settings">Save provider</button>
+            </div>
           </div>
-          <div class="pricing-section-grid">
+          <div class="email-delivery-row">
             <label>Postmark Server API token
-              <input type="password" id="postmark-token" placeholder="Enter your Postmark Server API token" autocomplete="off">
-              <small id="postmark-token-hint">Stored server-side. Leave blank to keep the current token.</small>
+              <div class="input-with-action">
+                <input type="password" id="postmark-token" placeholder="Server API token" autocomplete="off">
+                <button class="table-action danger" type="button" id="clear-postmark-token">Clear</button>
+              </div>
+              <small id="postmark-token-hint">Stored server-side. Blank keeps the current token.</small>
             </label>
             <label>From email
               <input type="email" id="postmark-from" placeholder="hello@kiddiegpt.com" autocomplete="off">
-              <small>A verified sender signature in your Postmark account.</small>
+              <small>A verified Postmark sender.</small>
             </label>
             <label>Send test emails to
               <input type="email" id="email-test-to" placeholder="you@example.com" autocomplete="off">
-              <small>Where the "Send test" buttons below deliver.</small>
+              <small>Where "Send test" delivers.</small>
             </label>
-            <div class="ai-settings-actions">
-              <button class="button primary" type="button" id="save-email-settings">Save provider</button>
-              <button class="table-action danger" type="button" id="clear-postmark-token">Clear token</button>
-              <span class="support-status" id="email-settings-status"></span>
-            </div>
           </div>
         </article>
 
@@ -909,6 +911,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=210"></script>
+  <script src="/webapp/webapp.js?v=211"></script>
 </body>
 </html>

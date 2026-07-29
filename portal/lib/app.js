@@ -2627,16 +2627,16 @@ const EMAIL_TEMPLATES = [
     build: (d) => ({ chip: "Upgraded", title: "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've switched to the yearly plan with <b>${escHtml(String(d.bonusMonths))} bonus months</b>. Your unused days this month carried over — you lost nothing.`, `Your plan renews on ${escHtml(d.nextDate)}.`], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
   { key: "payment_failed", name: "Payment failed", stage: "Payments & billing", subject: () => "Your KiddieGPT payment didn't go through",
     build: (d) => ({ chip: "Action needed", title: "Your payment didn't go through", greeting: `Hi ${d.parentName},`, paragraphs: [`We couldn't process your payment for <b>${escHtml(d.planName)}</b>. Please update your payment method to keep your child's access.`], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
-  { key: "payment_retry", automated: true, name: "Payment retry reminder", stage: "Payments & billing", subject: () => "Reminder: update your payment method",
+  { key: "payment_retry", name: "Payment retry reminder", stage: "Payments & billing", subject: () => "Reminder: update your payment method",
     build: (d) => ({ chip: "Reminder", title: "Still can't reach your card", greeting: `Hi ${d.parentName},`, paragraphs: ["We tried your payment again and it didn't go through. Update your card soon to avoid losing access."], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
-  { key: "access_paused", automated: true, name: "Access paused — unpaid", stage: "Payments & billing", subject: () => "Your KiddieGPT access is paused",
+  { key: "access_paused", name: "Access paused — unpaid", stage: "Payments & billing", subject: () => "Your KiddieGPT access is paused",
     build: (d) => ({ chip: "Paused", title: "Your access is paused", greeting: `Hi ${d.parentName},`, paragraphs: ["Because the payment is still unpaid, we've paused access for now. Update your payment method to turn everything back on right away."], ctaText: "Restore access", ctaUrl: emailBaseUrl() }) },
   { key: "renewal_reminder", name: "Renewal reminder", stage: "Payments & billing", subject: () => "Your KiddieGPT plan renews soon",
     build: (d) => ({ chip: "Heads up", title: "Your plan renews soon", greeting: `Hi ${d.parentName},`, paragraphs: [`A quick heads-up: your <b>${escHtml(d.planName)}</b> renews on ${escHtml(d.nextDate)}. No action needed — we'll charge your card on file.`], ctaText: "Manage plan", ctaUrl: emailBaseUrl() }) },
 
-  { key: "weekly_summary", automated: true, name: "Weekly progress summary", stage: "Engagement", subject: (d) => `${d.childName}'s week on KiddieGPT`,
+  { key: "weekly_summary", name: "Weekly progress summary", stage: "Engagement", subject: (d) => `${d.childName}'s week on KiddieGPT`,
     build: (d) => ({ chip: "Weekly", title: `${d.childName}'s week on KiddieGPT`, greeting: `Hi ${d.parentName},`, paragraphs: [`Here's how ${escHtml(d.childName)} did this week:`], steps: [{ title: "Flashcards & quizzes", text: "Reviewed and practiced across the week." }, { title: "Math problems solved", text: "Worked through problems step by step." }, { title: "Goals in progress", text: "Making steady progress toward rewards." }], ctaText: "See full progress", ctaUrl: emailBaseUrl() }) },
-  { key: "finish_setup", automated: true, name: "Finish setup nudge", stage: "Engagement", subject: () => "Finish setting up KiddieGPT",
+  { key: "finish_setup", name: "Finish setup nudge", stage: "Engagement", subject: () => "Finish setting up KiddieGPT",
     build: (d) => ({ chip: "Almost there", title: "Finish setting up KiddieGPT", greeting: `Hi ${d.parentName},`, paragraphs: ["You're one step away. Complete setup so your child can start learning:"], steps: [{ title: "Complete checkout", text: "Pick a plan to unlock the tools." }, { title: "Add the extension", text: "Install KiddieGPT in Chrome." }], ctaText: "Finish setup", ctaUrl: emailBaseUrl() }) },
   { key: "low_usage", name: "Low-usage rescue", stage: "Engagement", subject: (d) => `We miss ${d.childName}!`,
     build: (d) => ({ chip: "Check-in", title: `We miss ${d.childName}!`, greeting: `Hi ${d.parentName},`, paragraphs: [`It's been a quiet week — ${escHtml(d.childName)} hasn't used KiddieGPT lately. Try the Tutor or Math tool for a quick 10-minute win.`], ctaText: "Open KiddieGPT", ctaUrl: emailBaseUrl() }) },
@@ -2647,7 +2647,7 @@ const EMAIL_TEMPLATES = [
     build: (d) => ({ chip: "Scheduled", title: "Your plan is set to cancel", greeting: `Hi ${d.parentName},`, paragraphs: [`Your subscription is scheduled to cancel. Your child keeps access until <b>${escHtml(d.nextDate)}</b>. Change your mind anytime before then.`], ctaText: "Keep my plan", ctaUrl: emailBaseUrl() }) },
   { key: "subscription_ended", name: "Subscription ended", stage: "Cancellation & winback", subject: () => "Your KiddieGPT plan has ended",
     build: (d) => ({ chip: "Ended", title: "Your plan has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["Your subscription has ended and the extension tools are now locked. Your child's profiles and progress are saved — reactivate anytime to pick up where they left off."], ctaText: "Reactivate", ctaUrl: emailBaseUrl() }) },
-  { key: "winback", automated: true, name: "Winback offer", stage: "Cancellation & winback", subject: () => "Come back to KiddieGPT",
+  { key: "winback", name: "Winback offer", stage: "Cancellation & winback", subject: () => "Come back to KiddieGPT",
     build: (d) => ({ chip: "Come back", title: "We'd love to have you back", greeting: `Hi ${d.parentName},`, paragraphs: [`Ready to give it another go? Reactivate now and get <b>${escHtml(String(d.discountPercent))}% off</b> your next month.`], ctaText: "Reactivate & save", ctaUrl: emailBaseUrl() }) },
 
   { key: "support_reply", name: "Support reply", stage: "Support & account", subject: () => "Reply from KiddieGPT support",
@@ -2657,9 +2657,9 @@ const EMAIL_TEMPLATES = [
 
   { key: "trial_started", name: "Free trial started", stage: "Free trial", subject: (d) => `Your ${d.trialDays}-day KiddieGPT trial is live`,
     build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b> — no card needed.`, "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
-  { key: "trial_ending", automated: true, name: "Free trial ending soon", stage: "Free trial", subject: () => "Your KiddieGPT trial ends soon",
+  { key: "trial_ending", name: "Free trial ending soon", stage: "Free trial", subject: () => "Your KiddieGPT trial ends soon",
     build: (d) => ({ chip: "Ending soon", title: "Your trial ends in a few days", greeting: `Hi ${d.parentName},`, paragraphs: [d.cardOnFile ? `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>, and your card will be charged for the plan you chose unless you cancel before then. Nothing has been charged so far.` : `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>. Pick a plan to keep your child's tools unlocked — their profiles and progress stay exactly as they are.`], ctaText: d.cardOnFile ? "Review your plan" : "Choose a plan", ctaUrl: emailBaseUrl() }) },
-  { key: "trial_ended", automated: true, name: "Free trial ended", stage: "Free trial", subject: () => "Your KiddieGPT trial has ended",
+  { key: "trial_ended", name: "Free trial ended", stage: "Free trial", subject: () => "Your KiddieGPT trial has ended",
     build: (d) => ({ chip: "Ended", title: "Your free trial has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["The extension tools are locked for now. Your child's profiles, goals, and progress are saved — choose a plan anytime to pick up where they left off."], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
     build: (d) => ({ chip: "New", title: "New paid family 🎉", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
@@ -2676,12 +2676,14 @@ function renderTemplate(key, data) {
   return { key: t.key, name: t.name, stage: t.stage, subject: t.subject(d), html: renderEmailShell(opts) };
 }
 
-// Only automated (sweep-sent) templates can be switched off. Transactional
-// emails — sign-in codes, password resets, receipts — are never gate-able, so a
-// toggle can never silently break account access. Default is enabled.
-const AUTOMATED_TEMPLATE_KEYS = new Set(EMAIL_TEMPLATES.filter((t) => t.automated).map((t) => t.key));
+// Only lifecycle/marketing emails can be switched off — the Engagement,
+// Cancellation & winback, and Free trial stages. Account/security (sign-in
+// codes, password resets) and billing emails are never gate-able, so a toggle
+// can never silently break login, recovery, or payment notices. Default: on.
+const TOGGLEABLE_EMAIL_STAGES = new Set(["Engagement", "Cancellation & winback", "Free trial"]);
+const TOGGLEABLE_TEMPLATE_KEYS = new Set(EMAIL_TEMPLATES.filter((t) => TOGGLEABLE_EMAIL_STAGES.has(t.stage)).map((t) => t.key));
 function emailTemplateEnabled(db, key) {
-  if (!AUTOMATED_TEMPLATE_KEYS.has(key)) return true; // transactional: always on
+  if (!TOGGLEABLE_TEMPLATE_KEYS.has(key)) return true; // always-on stages
   return (db?.emailToggles || {})[key] !== false;
 }
 
@@ -2714,7 +2716,7 @@ app.get("/api/admin/email-templates", requireAdmin, (req, res) => {
     configured: postmarkConfigured() || smtpConfigured(),
     templates: EMAIL_TEMPLATES.map((t) => ({
       ...renderTemplate(t.key),
-      automated: Boolean(t.automated),
+      toggleable: TOGGLEABLE_TEMPLATE_KEYS.has(t.key),
       enabled: emailTemplateEnabled(db, t.key)
     }))
   });
@@ -2722,8 +2724,8 @@ app.get("/api/admin/email-templates", requireAdmin, (req, res) => {
 // Enable/disable an automated template. The lifecycle sweep skips disabled ones.
 app.put("/api/admin/email-templates/:key/enabled", requireAdmin, (req, res) => {
   const key = req.params.key;
-  if (!AUTOMATED_TEMPLATE_KEYS.has(key)) {
-    return res.status(400).json({ error: "not_toggleable", message: "Only automated lifecycle emails can be turned off." });
+  if (!TOGGLEABLE_TEMPLATE_KEYS.has(key)) {
+    return res.status(400).json({ error: "not_toggleable", message: "This email is always on and cannot be turned off." });
   }
   const enabled = req.body?.enabled !== false;
   const updated = mutateDb((db) => {
@@ -3573,11 +3575,14 @@ app.post("/api/admin/trials", requireAdmin, async (req, res) => {
   });
   if (result.error) return res.status(409).json({ error: result.error });
 
-  const tpl = renderTemplate("trial_started", { parentName: name, trialDays: days, trialEndsAt: endsAt });
-  try {
-    await sendEmail({ to: email, template: "Trial started", subject: tpl.subject, html: tpl.html, message: tpl.text });
-  } catch (error) {
-    mutateDb((db) => monitor(db, "warning", "email", "Trial start email failed", { email, detail: String(error.message || error) }, email));
+  // Respect the admin on/off switch for this (toggleable) email.
+  if (emailTemplateEnabled(readDb(), "trial_started")) {
+    const tpl = renderTemplate("trial_started", { parentName: name, trialDays: days, trialEndsAt: endsAt });
+    try {
+      await sendEmail({ to: email, template: "Trial started", subject: tpl.subject, html: tpl.html, message: tpl.text });
+    } catch (error) {
+      mutateDb((db) => monitor(db, "warning", "email", "Trial start email failed", { email, detail: String(error.message || error) }, email));
+    }
   }
   return res.json({ ok: true, familyId: result.family.id, email, days, trialEndsAt: endsAt });
 });
@@ -7288,7 +7293,7 @@ async function runLifecycleSweep(trigger = "cron") {
   const emailToggles = readDb().emailToggles || {};
   const queueEmail = (family, key, message) => {
     // Respect the admin enable/disable switch for automated emails.
-    if (AUTOMATED_TEMPLATE_KEYS.has(key) && emailToggles[key] === false) return;
+    if (TOGGLEABLE_TEMPLATE_KEYS.has(key) && emailToggles[key] === false) return;
     const name = (EMAIL_TEMPLATES.find((t) => t.key === key) || {}).name || key;
     if (emailsToSend.length < SWEEP_EMAIL_CAP) emailsToSend.push({ family: { id: family.id, email: family.email }, template: name, message });
   };

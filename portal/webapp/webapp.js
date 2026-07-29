@@ -4174,13 +4174,13 @@
       function cardMarkup(t) {
         // Automated (sweep-sent) emails get an on/off switch. Transactional ones
         // are always on, so they show a locked badge instead of a control.
-        var toggle = t.automated
-          ? "<label class='email-tpl-toggle' title='The lifecycle sweep only sends this when it is on'>" +
+        var toggle = t.toggleable
+          ? "<label class='email-tpl-toggle' title='Turn this email on or off'>" +
               "<input type='checkbox' data-email-enabled='" + t.key + "'" + (t.enabled === false ? "" : " checked") + ">" +
               "<span>" + (t.enabled === false ? "Off" : "On") + "</span>" +
             "</label>"
           : "<span class='email-tpl-always' title='Transactional email — always sent'>Always on</span>";
-        return "<div class='email-tpl" + (t.automated && t.enabled === false ? " is-disabled" : "") + "' data-email-card='" + t.key + "'>" +
+        return "<div class='email-tpl" + (t.toggleable && t.enabled === false ? " is-disabled" : "") + "' data-email-card='" + t.key + "'>" +
           "<div class='email-tpl-head'>" +
             "<div class='email-tpl-meta'><strong>" + text(t.name) + "</strong><small>" + text(t.subject) + "</small></div>" +
             toggle +
