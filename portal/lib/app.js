@@ -4806,15 +4806,18 @@ function renderCapturePage() {
   .handle{position:absolute;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #0f8a63;pointer-events:auto;touch-action:none}
   .handle.tl{left:-16px;top:-16px} .handle.tr{right:-16px;top:-16px} .handle.bl{left:-16px;bottom:-16px} .handle.br{right:-16px;bottom:-16px}
   .actions{display:flex;gap:10px}
-  #send{flex:1;background:#0f8a63;color:#fff} #send:disabled,#retake:disabled{opacity:.6}
+  #send{flex:1;background:#004f48;color:#fff} #send:disabled,#retake:disabled{opacity:.6}
   .ghost{background:#eef3f1;color:#004f48}
   .link{background:none;border:none;color:#4f6b67;text-decoration:underline;font-size:13px;font-weight:600;padding:0;cursor:pointer}
   .done{font-size:44px} #status{min-height:18px;font-weight:600}
   [hidden]{display:none!important}
   #camera{display:flex;flex-direction:column;gap:12px;align-items:center}
+  /* Without this the action row butts straight up against the photo --
+     the card's own gap only separates ITS children, not these. */
+  #editor{display:flex;flex-direction:column;gap:14px}
   .viewfinder{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden;max-height:62vh}
   #video{width:100%;display:block;max-height:62vh;object-fit:cover}
-  .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #0f8a63;box-shadow:0 4px 14px rgba(0,0,0,.2);margin:2px auto 0;padding:0}
+  .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #004f48;box-shadow:0 4px 14px rgba(0,0,0,.2);margin:2px auto 0;padding:0}
   .shutter:active{transform:scale(.94)}
   .brand{align-self:flex-start;font-size:15px;font-weight:800;color:#004f48;letter-spacing:.2px}
 </style></head>
