@@ -7,18 +7,6 @@ ships, delete it (git history keeps the record). Newest first.
 
 ## Open
 
-### FE-2 — Recover complete items from a truncated transcription · owner: extension
-**Shipped 2026-07-27.** `parseOpenAIJson` now falls back to `closeTruncatedJson`,
-which discards the incomplete tail and shuts whatever brackets are still open.
-
-Truncation used to be a total loss: a worksheet where 8 of 9 problems transcribed
-fine threw and gave the student nothing. It now degrades to "most of them".
-- Only runs after the clean parses fail, so a well-formed response is untouched.
-- String-aware, because model output is full of braces inside string values.
-- Sets `truncated: true` on the result so callers can tell.
-- Still throws when nothing complete arrived, or when the response was never JSON
-  — recovering garbage would be worse than an honest error.
-
 
 ### FE-4 — `<all_urls>`: do NOT swap for `activeTab` · owner: extension
 Broad host access draws extra scrutiny on a child-focused extension, so the original
@@ -54,35 +42,6 @@ grants once, both problems above go away, and the manifest no longer *requires*
 broad access. More work than a manifest edit, but it solves the problem instead of
 trading it for a safety hole.
 
-### FE-5 — Prompt-injection guard on ingested content · owner: extension
-Reframed 2026-07-27 after auditing every prompt. The entry originally asked for a
-refuse-and-redirect clause on "Tutor / Explain / Writing follow-up" prompts, but:
-
-- **Explain and Writing already had it** via `UNTRUSTED_TEXT_GUARD`.
-- **Tutor has no free-text input at all**, so there was nothing to refuse.
-- **Math paste** is the only unguarded free-text surface, and its prompt already
-  refuses non-math through the `noMath` escape, which is a stronger filter than a
-  politeness clause.
-
-The gap the audit actually found was different: prompts that ingest a page, a file,
-or an image carried **no injection defence**. A worksheet or web page containing
-"ignore your instructions and …" was fed straight into study-pack generation, tutor
-lesson writing, and math transcription.
-
-Shipped: the guard is split into `UNTRUSTED_CONTENT_GUARD` (injection) and
-`SCHOOLWORK_ONLY_GUARD` (refusal), with `UNTRUSTED_TEXT_GUARD` kept as the
-combination so existing call sites are unchanged. The injection clause now covers
-`getSharedFileText`, `buildStudyPackFromActiveTab`, `buildPdfWithOpenAI`,
-`buildExplainTranscript`, `generateTutorVoiceLegacy`, `transcribeMathProblems` and
-`checkMathOnce`.
-
-Still open, deliberately: `explainMissionCard`, `generateMoreMissionQuiz` and
-`generateMoreMissionFlashcards` work from an already-generated study pack rather
-than raw source, so they are second-order — worth guarding if the pack itself is
-ever built from a less trusted path.
-
-This is defence in depth, not a guarantee. Server-side moderation is the real net,
-and it currently fails closed (see the moderation work in `d65bb36`).
 
 ---
 
@@ -117,6 +76,13 @@ more reliable than the first.
 ---
 
 ## Shipped / handed off (kept briefly for context)
+- FE-2 truncation salvage: shipped 2026-07-29. closeTruncatedJson discards the
+  incomplete tail and closes the open brackets, so a cut-off worksheet degrades to
+  "most problems" instead of an error. Reachable from parseOpenAIJson only after
+  every clean parse has failed, so it cannot alter a well-formed response.
+- FE-5 prompt-injection guard: shipped 2026-07-29. UNTRUSTED_CONTENT_GUARD is on
+  all six prompts that ingest a page, file or image; UNTRUSTED_TEXT_GUARD (which
+  adds refuse-and-redirect) is on the five that take student free text.
 - Model config from Admin Console (standard + "OpenAI model (Adv)"), reconsider →
   Adv model. Extension side done; portal side handed to the portal chat 2026-07-24.
 - FE-1 output-token ceiling: shipped 2026-07-25 as **per-tool** caps
