@@ -399,6 +399,9 @@ let mathAnswerGate = true;
 let mathParentPinHash = "";
 let mathPinPromptOpen = false;
 let mathAnswersRevealed = false;
+// Some students want the working without the prose once they have the idea.
+// Remembered across problems and sessions so it is set once, not every time.
+let mathHideExplanations = false;
 let lastMathSolve = null;
 // Re-solve attempts per problem index, reset when a new solve starts.
 const mathCorrectionAttempts = new Map();
@@ -3358,9 +3361,13 @@ function renderMathFullSolutionPanel(current) {
   const answerOption = getMathAnswerOption(current);
   const answerText = stripMathAnswerOption(current.answer);
   return `
-    <div class="tb-solution math-full-solution">
+    <div class="tb-solution math-full-solution${mathHideExplanations ? " hide-why" : ""}">
       <div class="tb-solution-head">
         <span class="tb-solution-label">Full solution</span>
+        <label class="tb-hide-why">
+          <input type="checkbox" id="mathHideWhy"${mathHideExplanations ? " checked" : ""}>
+          <span>Hide explanation</span>
+        </label>
       </div>
       <div class="tb-derivation">${lines.map(line => renderDerivationLine(line)).join("")}</div>
       ${check && (check.math || check.why) ? `<div class="tb-check"><i>✓</i><div>${check.math ? `<div class="tb-check-math">${renderMathHtml(check.math)}</div>` : ""}<small>${escapeHtml(check.why || "The answer fits every given, so it checks out.")}</small></div></div>` : ""}
@@ -5060,6 +5067,15 @@ function initMathTool() {
       solveMathWithAI();
     }
   });
+  // Delegated: the solution panel is re-rendered on every navigation, so a
+  // listener bound to the checkbox itself would be lost each time.
+  document.getElementById("mathPanel")?.addEventListener("change", event => {
+    if (event.target?.id !== "mathHideWhy") return;
+    mathHideExplanations = event.target.checked;
+    saveSettings({ mathHideExplanations });
+    const panel = document.querySelector("#mathPanel .math-full-solution");
+    if (panel) panel.classList.toggle("hide-why", mathHideExplanations);
+  });
   document.getElementById("mathPrevProblem")?.addEventListener("click", () => {
     mathSolveState.index = Math.max(0, mathSolveState.index - 1);
     renderMathSolution();
@@ -6608,6 +6624,7 @@ getSettings().then(data => {
   mathAnswerGate = data.mathAnswerGate !== false;
   mathParentPinHash = data.mathParentPin || "";
   mathMode = data.mathMode === "solution" ? "solution" : "help";
+  mathHideExplanations = data.mathHideExplanations === true;
   const gateToggle = document.getElementById("mathAnswerGateToggle");
   if (gateToggle) gateToggle.checked = mathAnswerGate;
   renderParentPinArea();

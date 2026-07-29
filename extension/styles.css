@@ -1302,3 +1302,19 @@ body{background:#f6f8f5}
 .upload-clear:hover{border-color:#c24141;color:#c24141;background:#fff5f5}
 .upload-clear:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 .upload-clear svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
+
+/* Hide-explanation toggle, sitting opposite the "Full solution" label. Kept
+   deliberately quiet: it is a preference, not an action, and should never
+   compete with the solution itself for attention. */
+/* .tb-solution-head already lays this row out as flex/space-between — a second
+   copy here would be the kind of duplicate that makes these rules hard to reason
+   about later. */
+.tb-hide-why{display:inline-flex;align-items:center;gap:6px;margin:0;cursor:pointer;
+  color:#9aa8a4;font-size:11px;font-weight:600;white-space:nowrap;user-select:none}
+.tb-hide-why:hover{color:#7d8c88}
+.tb-hide-why input{width:13px;height:13px;margin:0;cursor:pointer;accent-color:#9aa8a4}
+.tb-hide-why input:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+/* One class on the wrapper hides every explanation at once — per-line toggling
+   would have to re-render the whole derivation. */
+.math-full-solution.hide-why .tb-why{display:none}
+.math-full-solution.hide-why .tb-check small{display:none}
