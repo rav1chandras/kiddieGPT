@@ -4867,7 +4867,7 @@ function renderCapturePage() {
     title.textContent=t; title.hidden=!t;
     hint.textContent=which==="camera"?"Point at one problem and click."
       :which==="fallback"?"Take a photo of one problem from the book."
-      :"Make sure it's sharp and clear.";
+      :"Crop to a single problem. Make sure the writing is clear.";
   }
   function stopCamera(){if(stream){try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}stream=null;}}
   function startCamera(){
