@@ -3389,9 +3389,12 @@ function renderMathSolution() {
   updateMathModeUi();
   if (title) title.textContent = current.title;
   if (count) count.textContent = `${mathSolveState.index + 1} / ${problems.length}`;
-  const pending = current.status === "solving" || current.status === "error";
+  const pending = current.status === "solving" || current.status === "error" || current.status === "idle";
   if (steps) {
-    if (current.status === "solving") {
+    // "idle" is a problem the student has not opened yet. It is treated as
+    // solving because ensureMathProblemSolved starts it the moment they arrive —
+    // rendering it as a solution first would flash an empty panel.
+    if (current.status === "solving" || current.status === "idle") {
       // The thinking hero (#mathThinking) already shows a "solving" state for the
       // problem being actively worked. Only show this per-problem placeholder when
       // the hero is hidden (e.g. a queued background problem) so we never show two.
@@ -4512,7 +4515,7 @@ function mathPlaceholderFromTranscript(transcribed, index, total) {
     tags: Array.isArray(transcribed.tags) ? transcribed.tags.slice(0, 4).map(cleanMathText) : [],
     choices: normalizeMathChoices(transcribed.choices || transcribed.options),
     givens: [], goal: "", lines: [], check: null, warning: "", answer: "",
-    figure: normalizeFigure(transcribed.figure), disputed: false, checked: false, status: "solving", error: ""
+    figure: normalizeFigure(transcribed.figure), disputed: false, checked: false, status: "idle", error: ""
   };
 }
 
@@ -4526,6 +4529,24 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model }) {
     maxOutputTokens: MATH_TRANSCRIBE_MAX_TOKENS,
     instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. IMPORTANT: a worksheet usually contains SEVERAL separately numbered problems (1, 2, 3, …, sometimes 10+). You MUST transcribe EVERY numbered problem as its own item in the problems array, in reading order. Never merge two problems into one, and never stop after the first — scan the entire page top to bottom. Read EVERY number, label, and angle, and copy each number with its EXACT sign: coordinate points like P(-4, 3) or (-4,-3) have negative values — never drop a minus sign, and keep the order and sign of every coordinate. Copy any multiple-choice options verbatim. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. For circle geometry, explicitly identify every center, radius or diameter, point on each circle, chord, tangent line, intersection, arc, and whether a curve is a full circle, semicircle, quarter circle, or another arc. Preserve relationships stated by the problem, such as a segment being both a chord and a tangent. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON." + UNTRUSTED_CONTENT_GUARD,
     text: `Read this source and list EVERY separately numbered problem (1, 2, 3, …) as its own array item, in reading order, up to 15. Do not stop after the first problem and do not merge problems. Grade band: ${gradeBand}. Return JSON with a problems array. Each item must have: statement (the full question in plain words, for example "Find b in a right triangle with hypotenuse 8, one leg 4, and a 30 degree angle"), choices (an array of objects with label and expression copied exactly from every visible multiple-choice option, or [] if none), meta (short topic like "Geometry · right triangle"), tags (array up to 4 short words), diagram (a complete text description of any figure so it can be solved without the image, or "" if there is no figure), and figure (ONLY for a right triangle: { type:"rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown } using the exact labels shown; omit otherwise).`
+  });
+}
+
+// Solves the problem the student just moved to, if it has not been solved yet.
+// Safe to call on every navigation: "idle" is the only state it acts on, so
+// revisiting a solved problem costs nothing.
+async function ensureMathProblemSolved(index) {
+  const problem = mathSolveState.problems[index];
+  if (!problem || problem.status !== "idle") return;
+  const settings = await getOpenAISettings();
+  if (!settings || !lastMathSolve) return;
+  problem.status = "solving";
+  renderMathSolution();
+  await solveMathProblemInPlace({
+    settings,
+    gradeBand: lastMathSolve.gradeBand,
+    index,
+    token: mathSolveToken
   });
 }
 
@@ -4718,11 +4739,11 @@ async function solveMathWithAI() {
   stopMathThinking();
   resetButton();
 
-  // Background: solve + verify the remaining problems one at a time (text-only).
-  for (let index = 1; index < problems.length; index += 1) {
-    if (token !== mathSolveToken) return;
-    await solveMathProblemInPlace({ settings, gradeBand, index, token });
-  }
+  // Deliberately NOT solving the rest here. Each remaining problem is solved
+  // when the student actually navigates to it (see ensureMathProblemSolved), for
+  // two reasons: a worksheet stops costing anything for problems nobody opens,
+  // and a student can no longer dump 15 problems and get 15 answers at once,
+  // which is the opposite of "help first".
   // Nothing should be left showing the spinner once the run is over. A problem
   // still marked "solving" here was orphaned rather than slow, and without this
   // it spins for the rest of the session with no way to retry.
@@ -5042,10 +5063,12 @@ function initMathTool() {
   document.getElementById("mathPrevProblem")?.addEventListener("click", () => {
     mathSolveState.index = Math.max(0, mathSolveState.index - 1);
     renderMathSolution();
+    ensureMathProblemSolved(mathSolveState.index);
   });
   document.getElementById("mathNextProblem")?.addEventListener("click", () => {
     mathSolveState.index = Math.min(mathSolveState.problems.length - 1, mathSolveState.index + 1);
     renderMathSolution();
+    ensureMathProblemSolved(mathSolveState.index);
   });
   document.getElementById("mathModeSwitch")?.addEventListener("click", event => {
     const toggle = event.target.closest("[data-math-mode]");
