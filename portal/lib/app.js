@@ -5028,6 +5028,14 @@ app.post("/api/capture/:token/image", async (req, res) => {
   const dataUrl = String((req.body && req.body.image) || "");
   const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl);
   if (!match) { setSession({ status: "error", reason: "That didn't look like a photo. Try again." }); return res.status(400).json({ error: "bad_image" }); }
+  // Accept only what the vision API actually reads. This route took any image/*,
+  // so an iPhone sending HEIC got as far as OpenAI before being refused, and the
+  // student saw "couldn't read that photo" for a perfectly good picture.
+  const VISION_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
+  if (!VISION_TYPES.has(String(match[1]).toLowerCase())) {
+    setSession({ status: "error", reason: "That photo format can't be read. Take the picture again with the camera on this page." });
+    return res.status(415).json({ error: "unsupported_image_type", received: match[1] });
+  }
 
   const settings = normaliseAiSettings(readDb().aiSettings);
   // Read the cap from settings, not the constant: the admin console's "Max

@@ -2873,6 +2873,11 @@ function handlePdfFileChange(event) {
 
 async function handleStudyFile(file, tool = "pdf") {
   if (!file) return;
+  if (isHeicFile(file)) {
+    selectedPdfFile = null;
+    setToolUploadStatus(tool, HEIC_ADVICE, "warn");
+    return;
+  }
   const isAcceptedType = acceptedStudyTypes.includes(file.type) || /\.(pdf|txt|jpe?g|png)$/i.test(file.name);
   if (!isAcceptedType) {
     setToolUploadStatus(tool, "Use a PDF, TXT, JPG, or PNG file.", "warn");
@@ -3013,6 +3018,19 @@ const minImageEdge = 300;
 
 // Decodes once and returns both the measurement and the (possibly downscaled)
 // image, so a blurry-photo check doesn't cost a second decode.
+// Chrome cannot decode HEIC/HEIF in <img> or createImageBitmap, and OpenAI's
+// vision API does not accept it either, so there is no path that works -- adding
+// it to the picker would only move the failure later and make it vaguer. The
+// accept attribute does not stop drag-and-drop or "All Files", so detect it and
+// say something a parent can act on.
+function isHeicFile(file) {
+  if (!file) return false;
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  return type.includes("heic") || type.includes("heif") || /\.(heic|heif)$/.test(name);
+}
+const HEIC_ADVICE = "iPhone photos (HEIC) can't be read here. On your iPhone open Settings > Camera > Formats and pick \u201cMost Compatible\u201d, or share the photo as a JPG first.";
+
 async function prepareImageForUpload(dataUrl) {
   const img = await new Promise((resolve, reject) => {
     const el = new Image();
@@ -4157,6 +4175,14 @@ function mathPageHint() {
 async function handleMathFileChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (isHeicFile(file)) {
+    // Clear the selection to match what the panel now shows. The size branch
+    // already does this; leaving a previous file selected behind a "no file"
+    // display is the kind of mismatch that makes Solve fail confusingly later.
+    selectedMathFile = null;
+    setMathUploadState(null, HEIC_ADVICE);
+    return;
+  }
   const isAcceptedType = ["application/pdf", "image/jpeg", "image/png"].includes(file.type) || /\.(pdf|jpe?g|png)$/i.test(file.name);
   if (!isAcceptedType) {
     setMathUploadState(null, "Use a PDF, JPG, or PNG file.");
