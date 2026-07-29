@@ -1810,6 +1810,15 @@ function eligibleForTrial(family) {
 }
 
 function refundWindowFor(family) {
+  // A card-upfront trial already gave the parent a risk-free week — cancelling
+  // during it costs nothing — so a charge that follows a trial does NOT also get
+  // a refund window. The trial itself IS the window. Only a subscription that
+  // was never on a trial (e.g. admin-created paid, or trials disabled) earns the
+  // post-payment refund window. Same markers eligibleForTrial() uses.
+  const hadTrial = Boolean(family?.trialUsedAt || family?.trialStartedAt || family?.trialEndedAt);
+  if (hadTrial) {
+    return { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: family?.firstPaymentAt || "", endsAt: "", daysLeft: 0, trialWasWindow: true };
+  }
   // Keyed off the FIRST payment of the current subscription, not the last, so a
   // renewal never re-opens the window. firstPaymentAt is set once when a
   // subscription starts charging and cleared when it ends, so a fresh
