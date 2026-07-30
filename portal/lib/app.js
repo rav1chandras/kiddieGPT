@@ -1437,8 +1437,17 @@ async function checkoutSessionPaymentIntentId(stripe, session) {
 }
 
 function recordStripePayment(db, event, object, family) {
+  // In live mode the invoice.paid event is the ledger record for a subscription
+  // charge; the checkout session (fired again by the browser-return confirm)
+  // would duplicate it. Mock mode has no invoice webhook, so it still records.
+  if (process.env.STRIPE_SECRET_KEY && event.type === "checkout.session.completed") return;
   const amountCents = Number(object.amount_paid || object.amount_total || object.amount_received || object.amount || object.amount_due || 0);
-  const paymentId = stripeId(object.payment_intent) || stripeId(object.latest_charge) || stripeId(object.charge) || stripeId(object.id) || event.id;
+  // Invoice events (invoice.paid AND invoice.payment_succeeded fire for the same
+  // charge) are keyed by the invoice id so they dedup to a single row. Other
+  // events key by payment_intent/charge.
+  const paymentId = event.type.startsWith("invoice.")
+    ? (stripeId(object.id) || stripeId(object.payment_intent) || event.id)
+    : (stripeId(object.payment_intent) || stripeId(object.latest_charge) || stripeId(object.charge) || stripeId(object.id) || event.id);
   const subscriptionId = stripeId(object.subscription);
   const customerId = stripeId(object.customer);
   const replacedMonthlyIds = Array.isArray(family?.yearlyUpgrade?.monthlySubscriptionIds) ? family.yearlyUpgrade.monthlySubscriptionIds : [];
@@ -2473,7 +2482,16 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "other");
       }
     }
-    if (event.type.includes("checkout.session") || event.type.includes("invoice") || event.type.includes("payment_intent") || event.type.includes("charge")) {
+    // One subscription charge fires many events (checkout.session, payment_intent,
+    // charge, invoice.paid, invoice.payment_succeeded, invoice_payment.paid) —
+    // recording each produced ~5 ledger rows for one $10 charge. Record only the
+    // canonical events: a paid/failed invoice, or a refund. The two paid-invoice
+    // events collapse to one row via the invoice-id dedup in recordStripePayment.
+    const isLedgerEvent = event.type === "invoice.paid"
+      || event.type === "invoice.payment_succeeded"
+      || event.type === "invoice.payment_failed"
+      || event.type.includes("refund");
+    if (isLedgerEvent) {
       recordStripePayment(db, event, object, family);
     }
     audit(db, "stripe.webhook", { type: event.type, familyId: family.id, webhookCancellationResult });
@@ -2562,6 +2580,10 @@ async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   }
 
   if (!smtpConfigured()) {
+    // No real provider (dev/test): print the body so codes (sign-in OTP, email
+    // verification, password reset) are readable in `docker compose logs`.
+    // Never runs once Postmark or SMTP is configured, so real codes are not logged.
+    console.log(`[mock-email] to=${recipient} | ${subject} | ${text}`);
     return {
       mode: "mock",
       to: recipient,
