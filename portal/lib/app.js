@@ -1450,6 +1450,12 @@ function recordStripePayment(db, event, object, family) {
     : object.status === "paid" || object.status === "succeeded" || object.paid || event.type === "checkout.session.completed" || event.type.includes("invoice.paid")
     ? "paid"
     : object.status || "pending";
+  // The Payments ledger is for real money movement only. A $0 trial invoice, the
+  // $0 checkout session, and draft/upcoming invoices are Stripe bookkeeping, not
+  // charges — recording them showed "2 payments for 1 checkout" for a trial that
+  // had not been billed. Keep only paid-with-amount, failures, and refunds.
+  const isCharge = status === "failed" || status === "refunded" || (status === "paid" && amountCents > 0);
+  if (!isCharge) return;
   const existingIndex = db.payments.findIndex((payment) => payment.stripeEventId === event.id || payment.paymentId === paymentId);
   const record = {
     id: existingIndex >= 0 ? db.payments[existingIndex].id : makeId("pay"),
@@ -2371,7 +2377,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.subscriptionStatus = family.subscriptionStatus === "active" ? "active" : "pending";
       startDunning(db, family);
     }
-    if (event.type === "invoice.payment_succeeded" || event.type === "invoice.paid" || event.type === "invoice_payment.paid") {
+    // A card-upfront trial's first invoice is $0. Stripe still fires
+    // invoice.payment_succeeded for it, but nothing was charged — the sub stays
+    // trialing until the real charge at trial end. Only a paid invoice with
+    // money on it flips the family to active/paid and stamps first payment.
+    if ((event.type === "invoice.payment_succeeded" || event.type === "invoice.paid" || event.type === "invoice_payment.paid")
+        && Number(object.amount_paid || 0) > 0) {
       family.paymentStatus = "paid";
       family.subscriptionStatus = "active";
       clearDunning(family); // payment recovered — stop dunning, restore access
