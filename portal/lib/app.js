@@ -1393,7 +1393,7 @@ function audit(db, action, payload, actor) {
   if (activityLog) {
     const bits = [];
     if (payload && typeof payload === "object") {
-      for (const k of ["amountCents", "amount", "plan", "planName", "status", "refundId", "reason", "subscriptionId"]) {
+      for (const k of ["amountCents", "amount", "plan", "planName", "status", "refundId", "reason", "subscriptionId", "priceId", "fix"]) {
         if (payload[k] != null && payload[k] !== "") bits.push(`${k}=${payload[k]}`);
       }
     }
@@ -1658,8 +1658,18 @@ function stripeClient() {
   return process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 }
 
+// A price that Stripe rejects as missing is the classic "someone hit Delete all
+// test data" symptom: the product/prices are gone but the app still holds their
+// dead IDs. Stripe reports this as resource_missing on param "price" OR
+// "line_items[0][price]", and the message reads "No such price".
+function checkoutPriceMissing(error) {
+  if (error?.code !== "resource_missing") return false;
+  const param = String(error?.param || "");
+  return param === "price" || param.includes("[price]") || /no such price/i.test(String(error?.message || ""));
+}
+
 function checkoutStripeError(error, priceId) {
-  if (error?.code === "resource_missing" && error?.param === "price") {
+  if (checkoutPriceMissing(error)) {
     return `Stripe Price ID ${priceId} was not found for the current Stripe secret key. Create test prices in Admin or paste a valid price_... ID from the same Stripe account.`;
   }
   if (error?.type === "StripeAuthenticationError") {
@@ -4657,7 +4667,17 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
       // Refund the reservation — the call cost nothing, so holding the estimate
       // would let a run of upstream errors lock the family out of its own budget.
       await settle(0);
-      return res.status(response.status || 502).json({ error: "openai_error", detail: data });
+      // A dead OpenAI key or an exhausted quota fails every kid's tool at once
+      // with no operator signal — surface it on Command, classified so the
+      // right fix is obvious. 401/403 = key, 429 = quota/rate, 5xx = outage.
+      const status = response.status || 0;
+      const apiMessage = data?.error?.message || data?.error?.code || data?.error?.type || "";
+      let alert = { severity: "error", reason: `OpenAI HTTP ${status}` };
+      if (status === 401 || status === 403) alert = { severity: "error", reason: "OpenAI rejected the API key (invalid or revoked)" };
+      else if (status === 429) alert = { severity: "error", reason: /quota|billing|insufficient/i.test(apiMessage) ? "OpenAI quota/billing exhausted" : "OpenAI rate limit hit" };
+      else if (status >= 500) alert = { severity: "warning", reason: "OpenAI upstream outage" };
+      mutateDb((store) => monitor(store, alert.severity, "ai", alert.reason, { status, tool: tool || "ai", model: modelToUse, detail: apiMessage }, req.auth.email));
+      return res.status(status || 502).json({ error: "openai_error", detail: data });
     }
     // Backstop: cap Tutor Explain narration server-side so a stale/modified
     // extension can't run up TTS cost. The tutor returns { title, script } as JSON
@@ -5683,9 +5703,25 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     mutateDb((db) => audit(db, "stripe.checkout.create", { sessionId: session.id, familyId: checkoutFamilyId, parentEmail, promoCode: checkoutPromotion?.code || "" }));
     return res.json({ mode: "stripe", sessionId: session.id, url: session.url, promotion: checkoutPromotion, trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0 });
   } catch (error) {
-    const safeError = checkoutStripeError(error, effectivePriceId);
-    mutateDb((db) => monitor(db, "error", "stripe", "Stripe Checkout creation failed", { parentEmail, planName, priceId: effectivePriceId, detail: error.message, code: error.code || "", requestId: error.requestId || "" }, parentEmail));
-    return res.status(500).json({ error: safeError, stripeCode: error.code || "", stripeRequestId: error.requestId || "" });
+    const priceMissing = checkoutPriceMissing(error);
+    // The parent never needs to see a Stripe price ID. A missing price is an
+    // operator problem (test data was wiped), so show a calm "try again later"
+    // and shout the real cause — plus the exact fix — into the activity feed.
+    const parentFacingError = priceMissing
+      ? "Checkout is temporarily unavailable. Please try again in a few minutes."
+      : checkoutStripeError(error, effectivePriceId);
+    mutateDb((db) => {
+      monitor(db, "error", "stripe", "Stripe Checkout creation failed", { parentEmail, planName, priceId: effectivePriceId, detail: error.message, code: error.code || "", requestId: error.requestId || "" }, parentEmail);
+      if (priceMissing) {
+        audit(db, "stripe.checkout.price_missing", {
+          priceId: effectivePriceId,
+          plan: planName || "",
+          reason: "Stripe has no such price — test data was likely wiped",
+          fix: "re-run POST /api/dev/stripe/bootstrap-prices (admin) to recreate product + prices"
+        }, parentEmail || "system");
+      }
+    });
+    return res.status(priceMissing ? 503 : 500).json({ error: parentFacingError, stripeCode: error.code || "", stripeRequestId: error.requestId || "" });
   }
 });
 

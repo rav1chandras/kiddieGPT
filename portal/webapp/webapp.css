@@ -4418,6 +4418,68 @@ body[data-page="admin"] .button {
   border-bottom: 1px solid rgba(0, 79, 72, 0.08);
 }
 
+/* Command "Critical alerts" strip */
+.command-alerts {
+  margin-bottom: 12px;
+  border: 1px solid rgba(200, 60, 40, 0.22);
+  box-shadow: 0 12px 30px rgba(180, 40, 30, 0.08);
+}
+.command-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+.command-alert-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(12, 42, 60, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.command-alert-tile:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(12, 42, 60, 0.1); }
+.command-alert-tile .cat-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+}
+.command-alert-tile .cat-icon svg { width: 18px; height: 18px; }
+.command-alert-tile .cat-body { display: grid; gap: 1px; min-width: 0; }
+.command-alert-tile .cat-label { color: #60747d; font-size: 0.72rem; font-weight: 720; }
+.command-alert-tile .cat-count { color: #083e52; font-size: 1.34rem; font-weight: 760; line-height: 1.05; }
+.command-alert-tile .cat-detail {
+  color: #7d8d98; font-size: 0.68rem; font-weight: 620;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.command-alert-tile.level-error {
+  border-color: rgba(200, 60, 40, 0.35);
+  background: rgba(255, 244, 242, 0.9);
+}
+.command-alert-tile.level-error .cat-icon { background: rgba(200, 60, 40, 0.14); color: #c0341f; }
+.command-alert-tile.level-error .cat-count { color: #b12e1c; }
+.command-alert-tile.level-warning {
+  border-color: rgba(197, 138, 12, 0.32);
+  background: rgba(255, 250, 238, 0.9);
+}
+.command-alert-tile.level-warning .cat-icon { background: rgba(197, 138, 12, 0.16); color: #a8760a; }
+.command-alert-tile.level-warning .cat-count { color: #97690a; }
+.command-alert-tile.level-ok { opacity: 0.62; }
+.command-alert-tile.level-ok .cat-icon { background: rgba(12, 120, 92, 0.12); color: #0c785c; }
+@media (max-width: 1080px) {
+  .command-alert-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .command-alert-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .admin-card-head h2 {
   margin: 0;
   color: #083e52;

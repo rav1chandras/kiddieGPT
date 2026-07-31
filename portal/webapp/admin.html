@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=196">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=197">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -81,6 +81,14 @@
       </header>
 
       <section class="admin-view active" data-admin-panel="overview">
+        <article class="admin-table-card command-alerts" id="command-alerts" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Critical alerts</p><h2 id="command-alerts-title">Systems needing attention</h2></div>
+            <span class="state-chip" id="command-alerts-window">Last 24h</span>
+          </div>
+          <div class="command-alert-grid" id="command-alert-tiles"></div>
+        </article>
+
         <div class="admin-stat-grid founder-kpis">
           <article><span>Monthly revenue</span><strong id="monthly-revenue">$0</strong><small id="revenue-note">Across active families</small></article>
           <article><span>Active families</span><strong id="active-subs">0</strong><small id="active-note">Subscribed and unlocked</small></article>
@@ -922,6 +930,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=221"></script>
+  <script src="/webapp/webapp.js?v=223"></script>
 </body>
 </html>

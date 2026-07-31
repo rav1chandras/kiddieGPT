@@ -2929,7 +2929,9 @@
         });
         var result = await response.json();
         if (!response.ok) {
-          throw new Error(result.error || "Stripe checkout failed");
+          var err = new Error(result.error || "Stripe checkout failed");
+          err.temporary = response.status === 503;
+          throw err;
         }
         if (result.url) {
           window.location.href = result.url;
@@ -2943,8 +2945,13 @@
         localStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
         paymentState.textContent = error.message;
         paymentState.className = "state-chip error";
-        completionTitle.textContent = "Checkout needs attention";
-        completionText.textContent = "Check the Stripe Price ID in Admin, then try checkout again.";
+        if (error.temporary) {
+          completionTitle.textContent = "Checkout temporarily unavailable";
+          completionText.textContent = "We couldn't reach checkout just now. Please try again in a few minutes.";
+        } else {
+          completionTitle.textContent = "Checkout needs attention";
+          completionText.textContent = "Check the Stripe Price ID in Admin, then try checkout again.";
+        }
       }
       preview();
     }
@@ -4487,6 +4494,60 @@
       if (totals.moderation) parts.push(totals.moderation + " flagged");
       var note = document.getElementById("abuse-note");
       if (note) note.textContent = parts.join(" · ") || "Accounts hitting limits";
+    }
+
+    // Command "Critical alerts" strip. Rolls the last 24h of monitor events up
+    // into one tile per failure domain, so a dead OpenAI key, a broken Stripe
+    // webhook, or a login-failure spike is visible the moment an operator opens
+    // Command — instead of being buried in the raw event feed two views away.
+    function renderCommandAlerts(families) {
+      var card = document.getElementById("command-alerts");
+      var host = document.getElementById("command-alert-tiles");
+      if (!card || !host) return;
+      var since = Date.now() - 24 * 60 * 60 * 1000;
+      var events = (monitorEventsCache || []).filter(function (e) {
+        var t = e && e.createdAt ? new Date(e.createdAt).getTime() : 0;
+        return t >= since && (e.severity === "error" || e.severity === "warning");
+      });
+      function roll(predicate, extra) {
+        var matched = events.filter(predicate);
+        var errors = matched.filter(function (e) { return e.severity === "error"; }).length;
+        var latest = matched[0] ? (matched[0].message || "") : "";
+        return { count: matched.length + (extra ? extra.count : 0), errors: errors + (extra && extra.errors ? extra.errors : 0), latest: (extra && extra.latest) || latest };
+      }
+      var openIssues = (issuesCache || []).filter(function (i) { return i.status !== "resolved"; }).length;
+      var flaggedFamilies = (families || []).filter(abuseFlagged).length;
+      var failedLogins = events.filter(function (e) { return e.category === "auth" && /failed login/i.test(e.message || ""); }).length;
+
+      var tiles = [
+        { key: "ai", label: "AI / API", icon: "sparkles", roll: roll(function (e) { return e.category === "ai" && /openai/i.test(e.message || ""); }) },
+        { key: "billing", label: "Payments & Stripe", icon: "credit-card", roll: roll(function (e) { return e.category === "stripe" || e.category === "billing"; }) },
+        { key: "auth", label: "Logins & auth", icon: "log-in", roll: roll(function (e) { return e.category === "auth"; }) },
+        { key: "email", label: "Email delivery", icon: "mail", roll: roll(function (e) { return e.category === "email"; }) },
+        { key: "support", label: "Complaints", icon: "life-buoy", roll: roll(function (e) { return e.category === "support"; }, { count: openIssues, errors: 0, latest: openIssues ? openIssues + " open ticket" + (openIssues === 1 ? "" : "s") : "" }) },
+        { key: "abuse", label: "Safety & abuse", icon: "shield-alert", roll: roll(function () { return false; }, { count: flaggedFamilies + failedLogins, errors: flaggedFamilies, latest: [flaggedFamilies ? flaggedFamilies + " account" + (flaggedFamilies === 1 ? "" : "s") + " over limit" : "", failedLogins ? failedLogins + " failed login" + (failedLogins === 1 ? "" : "s") : ""].filter(Boolean).join(" · ") }) }
+      ];
+
+      var active = tiles.filter(function (t) { return t.roll.count > 0; });
+      card.hidden = active.length === 0;
+      var totalErrors = active.reduce(function (n, t) { return n + t.roll.errors; }, 0);
+      var titleEl = document.getElementById("command-alerts-title");
+      if (titleEl) titleEl.textContent = active.length ? (totalErrors ? totalErrors + " error" + (totalErrors === 1 ? "" : "s") + " need attention" : "Warnings to review") : "Systems needing attention";
+      if (!active.length) { host.innerHTML = ""; return; }
+
+      host.innerHTML = tiles.map(function (t) {
+        var count = t.roll.count;
+        var level = count === 0 ? "ok" : (t.roll.errors > 0 ? "error" : "warning");
+        var detail = count === 0 ? "All clear" : (t.roll.latest || (count + " event" + (count === 1 ? "" : "s")));
+        return "<button type='button' class='command-alert-tile level-" + level + "' data-admin-view-shortcut='logs'>" +
+          "<span class='cat-icon'><i data-lucide='" + t.icon + "'></i></span>" +
+          "<span class='cat-body'>" +
+            "<span class='cat-label'>" + text(t.label) + "</span>" +
+            "<strong class='cat-count'>" + count + "</strong>" +
+            "<small class='cat-detail'>" + text(detail) + "</small>" +
+          "</span></button>";
+      }).join("");
+      if (window.lucide && typeof window.lucide.createIcons === "function") window.lucide.createIcons();
     }
 
     async function dismissAbuseAlerts() {
@@ -6520,6 +6581,7 @@
       setMetric("engagement-rate", percent(engagedStudents, studentTotal));
       setMetric("churn-risk", riskFamilies.length);
       renderAbuseTile(families);
+      renderCommandAlerts(families);
       setMetric("failed-payment-count", failedPayments.length);
       setMetric("payment-collected", money(monthlyRevenue));
       setMetric("payment-failed", money(failedPayments.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
