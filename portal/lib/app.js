@@ -7019,12 +7019,28 @@ app.post("/api/admin/billing-exception", requireAdmin, async (req, res) => {
     const stripe = stripeClient();
 
     if (action === "partial_refund") {
-      const paymentIntentId = req.body?.paymentIntentId || family.stripePaymentId || "";
       const amountCents = Math.max(1, Number(req.body?.amountCents || 1000));
-      if (stripe && paymentIntentId && !paymentIntentId.startsWith("pi_mock")) {
-        const refund = await stripe.refunds.create({ payment_intent: paymentIntentId, amount: amountCents });
+      const liveStripe = Boolean(process.env.STRIPE_SECRET_KEY) && stripe;
+      if (liveStripe) {
+        // Resolve a real charge to refund. family.stripePaymentId is often unset
+        // (subscription renewals capture it inconsistently), so fall back to the
+        // customer's most recent refundable charge. Never silently record a mock
+        // refund in live mode — if nothing is found, fail loudly so it does not
+        // look refunded in the app while Stripe has no record.
+        let payId = req.body?.paymentIntentId || family.stripePaymentId || "";
+        if ((!payId || payId.startsWith("pi_mock")) && family.stripeCustomerId) {
+          const charges = await stripe.charges.list({ customer: family.stripeCustomerId, limit: 10 });
+          const ch = (charges.data || []).find((c) => c.paid && !c.refunded && Number(c.amount_captured || c.amount || 0) > 0);
+          payId = ch ? (stripeId(ch.payment_intent) || ch.id) : "";
+        }
+        const resolved = payId ? await stripeRefundParamsFor(stripe, payId, amountCents) : null;
+        if (!resolved) {
+          return res.status(400).json({ error: "No refundable Stripe charge found for this customer. Refund a specific charge from the Payments tab, or check the customer in Stripe." });
+        }
+        const refund = await stripe.refunds.create(resolved.params);
         result.refundId = refund.id;
         result.status = refund.status;
+        result.resolvedPaymentId = resolved.resolvedPaymentId;
       } else {
         result.mode = "mock";
         result.refundId = "re_mock_exception";
