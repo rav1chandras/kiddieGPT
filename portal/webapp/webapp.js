@@ -6370,6 +6370,10 @@
           var summary = usageSummary(child, mode);
           var last = (child.usage && child.usage.lastExtensionUseAt) || family.lastExtensionUseAt || "";
           if (!withinDateWindow(last, mode) && mode !== "all") last = "";
+          // Usage tab = who is actually USING AI in this window. Skip students
+          // with no activity so freshly signed-up / test accounts don't appear
+          // as zero-usage roster rows.
+          if (!summary.used && !last) return;
           rows.push({ family: family, child: child, summary: summary, last: last, flagged: familyFlagged });
         });
       });
@@ -6396,7 +6400,7 @@
           "<td class='usage-number'>" + s.explain.toLocaleString() + "</td>" +
           "<td class='usage-number'>" + Math.round(s.timeSeconds / 60).toLocaleString() + " min</td>" +
         "</tr>";
-      }).join("") : "<tr><td colspan='12' class='empty-state'>No usage matches these filters.</td></tr>");
+      }).join("") : "<tr><td colspan='12' class='empty-state'>No AI usage recorded in this period.</td></tr>");
     }
 
     function familyForRawLog(log, families) {
