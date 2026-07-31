@@ -448,8 +448,14 @@ body{background:#f6f8f5}
     .tb-solution-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
     .tb-derivation{display:grid;gap:9px}
     /* Collapsible problem statement, above Help and Solution alike. */
-    .tb-problem{border:1px solid #e2ead2;border-radius:16px;background:#fbfcf1;margin-bottom:11px}
-    .tb-problem>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 14px}
+    /* min-width:0 is load-bearing: .math-step-list is a grid, grid items default
+       to min-width:auto, and the peek's white-space:nowrap makes this tile's
+       min-content the full statement width -- so it pushed past the panel edge
+       and the chevron went with it. overflow:hidden also keeps the body inside
+       the rounded corners. No margin-bottom: the grid's 8px gap already spaces
+       it from the solution card, and adding 11px made this one seam 19px. */
+    .tb-problem{border:1px solid #e2ead2;border-radius:16px;background:#fbfcf1;min-width:0;overflow:hidden}
+    .tb-problem>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 14px;min-width:0}
     .tb-problem>summary::-webkit-details-marker{display:none}
     .tb-problem>summary:focus-visible{outline:2px solid #004f48;outline-offset:-2px;border-radius:15px}
     .tb-problem-num{flex:0 0 auto;background:#e6f2ee;color:#004f48;border-radius:6px;padding:2px 7px;
