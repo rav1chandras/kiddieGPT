@@ -447,6 +447,25 @@ body{background:#f6f8f5}
     .tb-solution-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid rgba(113,153,0,.16)}
     .tb-solution-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
     .tb-derivation{display:grid;gap:9px}
+    /* Collapsible problem statement, above Help and Solution alike. */
+    .tb-problem{border:1px solid #e2ead2;border-radius:16px;background:#fbfcf1;margin-bottom:11px}
+    .tb-problem>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 14px}
+    .tb-problem>summary::-webkit-details-marker{display:none}
+    .tb-problem>summary:focus-visible{outline:2px solid #004f48;outline-offset:-2px;border-radius:15px}
+    .tb-problem-num{flex:0 0 auto;background:#e6f2ee;color:#004f48;border-radius:6px;padding:2px 7px;
+      font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+    .tb-problem-peek{flex:1;min-width:0;font-size:11.5px;color:#60747d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    /* margin-left:auto, not peek's flex — the chevron must sit hard right in BOTH
+       states, and the peek is hidden once the statement is open. */
+    .tb-problem-chev{flex:0 0 auto;margin-left:auto;color:#9aa8a4;font-size:12px;transition:transform .18s ease}
+    .tb-problem[open]>summary .tb-problem-chev{transform:rotate(180deg)}
+    .tb-problem[open]>summary .tb-problem-peek{display:none}
+    .tb-problem-body{padding:11px 14px 13px;border-top:1px solid rgba(113,153,0,.16)}
+    .tb-problem-text{font-size:13.5px;line-height:1.5;color:#0b2d43}
+    .tb-problem-choices{display:grid;gap:5px;margin-top:9px}
+    .tb-problem-choices span{font-size:12.5px;color:#40535c}
+    .tb-problem-choices b{color:#004f48;margin-right:5px}
+    @media (prefers-reduced-motion:reduce){.tb-problem-chev{transition:none}}
     /* One row per step: equation, then explanation. Stacked by default (Help, and
        narrow Solution). At >=560px the Solution rows use display:contents so every
        equation and explanation shares ONE grid — the left (equation) and right

@@ -3394,6 +3394,40 @@ function stripMathAnswerOption(value) {
     .trim() || "See final line";
 }
 
+// Which problem index the statement is expanded for, or -1 for none. Tracked by
+// index rather than a plain boolean so arrowing to another problem always lands
+// collapsed (the requested default), while a re-render of the SAME problem --
+// a solve landing, switching Help/Solution -- does not snap it shut under the
+// student mid-read.
+let mathStatementOpenFor = -1;
+
+// The statement was dropped from Help/Solution, which is fine on a single
+// problem and not fine on a worksheet: the panel showed a derivation with no
+// indication of which of fifteen problems it belonged to.
+function renderMathProblemStatement(current, total) {
+  const statement = cleanMathText(current.equation || "");
+  if (!statement) return "";
+  const open = mathStatementOpenFor === mathSolveState.index;
+  const position = `Problem ${mathSolveState.index + 1} of ${total}`;
+  const choices = normalizeMathChoices(current.choices || []);
+  // Collapsed still has to answer "which problem is this?", so the summary keeps
+  // the position chip and a one-line peek at the statement. The chip alone does
+  // the job on a numbered sheet; the peek confirms it without a tap.
+  return `
+    <details class="tb-problem"${open ? " open" : ""}>
+      <summary>
+        <span class="tb-problem-num">${escapeHtml(position)}</span>
+        <span class="tb-problem-peek">${escapeHtml(statement)}</span>
+        <span class="tb-problem-chev" aria-hidden="true">&#9662;</span>
+      </summary>
+      <div class="tb-problem-body">
+        <div class="tb-problem-text">${renderMathHtml(statement)}</div>
+        ${choices.length ? `<div class="tb-problem-choices">${choices.map(choice =>
+          `<span><b>${escapeHtml(choice.label)}</b>${renderMathHtml(choice.text)}</span>`).join("")}</div>` : ""}
+      </div>
+    </details>`;
+}
+
 function renderMathHelpPanel(current) {
   const help = current.help || {};
   const helpLines = Array.isArray(help.lines) && help.lines.length ? help.lines.slice(0, 5) : [];
@@ -3476,6 +3510,7 @@ function renderMathSolution() {
     } else {
       const solutionLocked = mathMode === "solution" && shouldHideMathSolution();
       steps.innerHTML = `
+        ${renderMathProblemStatement(current, problems.length)}
         ${mathMode === "solution" ? (solutionLocked ? renderMathSolutionLocked(current) : renderMathFullSolutionPanel(current)) : renderMathHelpPanel(current)}
       `;
     }
@@ -5246,13 +5281,18 @@ function initMathTool() {
     const panel = document.querySelector("#mathPanel .math-full-solution");
     if (panel) panel.classList.toggle("hide-why", mathHideExplanations);
   });
+  // Collapse on navigation, explicitly. Letting the index comparison do it means
+  // arrowing away and back RE-OPENS the statement, because the recorded index
+  // still matches -- which is not "collapsed when arrowing between problems".
   document.getElementById("mathPrevProblem")?.addEventListener("click", () => {
     mathSolveState.index = Math.max(0, mathSolveState.index - 1);
+    mathStatementOpenFor = -1;
     renderMathSolution();
     ensureMathProblemSolved(mathSolveState.index);
   });
   document.getElementById("mathNextProblem")?.addEventListener("click", () => {
     mathSolveState.index = Math.min(mathSolveState.problems.length - 1, mathSolveState.index + 1);
+    mathStatementOpenFor = -1;
     renderMathSolution();
     ensureMathProblemSolved(mathSolveState.index);
   });
@@ -5261,6 +5301,14 @@ function initMathTool() {
     if (!toggle) return;
     setMathMode(toggle.dataset.mathMode);
   });
+  // Record which problem the statement is open for. `toggle` does NOT bubble,
+  // so this only reaches a delegated listener in the capture phase — without
+  // the `true` the handler silently never runs and the panel always collapses.
+  document.getElementById("mathStepList")?.addEventListener("toggle", (event) => {
+    const details = event.target;
+    if (!details?.classList?.contains("tb-problem")) return;
+    mathStatementOpenFor = details.open ? mathSolveState.index : -1;
+  }, true);
   // Delegated: the tile is rewritten by renderMathSolution on every navigation,
   // so a listener bound to the button itself would die on the first re-render.
   // Rather than duplicate the correction logic, click the real Reconsider pill —
