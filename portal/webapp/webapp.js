@@ -1,6 +1,10 @@
 (function () {
-  var STORAGE_KEY = "kiddiegptFamilies";
-  var PRICING_KEY = "kiddiegptPricing";
+  // Bumped to _v2: families are now server-authoritative and no longer carry
+  // client-fabricated usage. Renaming the key orphans any stale cache a browser
+  // still holds (with fake lastExtensionUseAt etc.), so it can't render — the app
+  // reads the empty new key and repopulates from the server. No manual clear.
+  var STORAGE_KEY = "kiddiegptFamilies_v2";
+  var PRICING_KEY = "kiddiegptPricing_v2";
   var ADMIN_TOKEN_KEY = "kiddiegptAdminToken";
 
   // Status chips start hidden so screens are not littered with idle "Ready"
