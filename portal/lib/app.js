@@ -334,10 +334,18 @@ function normalisePricing(pricing = {}) {
     note: String(rawUpgrade.note || "")
   };
   const rawCancellationPromo = pricing.cancellationPromo || {};
+  // How many renewals the discount applies to (1-99). Legacy records used a
+  // "once"/"repeating" duration; map "repeating" to a small default so old
+  // configs still behave. duration is kept in sync for the Stripe coupon.
+  const rawRenewals = rawCancellationPromo.durationRenewals != null
+    ? Number(rawCancellationPromo.durationRenewals)
+    : (rawCancellationPromo.duration === "repeating" ? 3 : 1);
+  const durationRenewals = Math.min(99, Math.max(1, Math.round(rawRenewals) || 1));
   const cancellationPromo = {
     enabled: rawCancellationPromo.enabled !== false,
     amountOff: Math.min(999, legacyAmountOff(rawCancellationPromo.amountOff, rawCancellationPromo.percentOff, monthly.amount)),
-    duration: rawCancellationPromo.duration === "repeating" ? "repeating" : "once",
+    durationRenewals,
+    duration: durationRenewals > 1 ? "repeating" : "once",
     description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
     stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
     stripeCouponPercentOff: Number(rawCancellationPromo.stripeCouponPercentOff || 0)
@@ -1651,20 +1659,25 @@ async function retentionCouponId(stripe, db) {
   const pricing = normalisePricing(db.pricing);
   const promo = pricing.cancellationPromo || defaultPricing().cancellationPromo;
   const envConfigured = process.env.STRIPE_RETENTION_COUPON_ID || "";
+  const renewals = Math.min(99, Math.max(1, Number(promo.durationRenewals) || 1));
   const configured = envConfigured || promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId;
   const configuredAmount = Number(promo.stripeCouponAmountOff || 0);
-  if (envConfigured || (configured && configuredAmount === Number(promo.amountOff || 0))) return configured;
+  const configuredRenewals = Number(promo.stripeCouponRenewals || 0);
+  // Reuse the stored coupon only when BOTH the amount and the renewal count still
+  // match — a changed duration must mint a new Stripe coupon.
+  if (envConfigured || (configured && configuredAmount === Number(promo.amountOff || 0) && configuredRenewals === renewals)) return configured;
 
   const coupon = await stripe.coupons.create({
     amount_off: Math.round(Number(promo.amountOff || 0) * 100),
     currency: "usd",
-    duration: promo.duration === "repeating" ? "repeating" : "once",
-    ...(promo.duration === "repeating" ? { duration_in_months: 1 } : {}),
+    duration: renewals > 1 ? "repeating" : "once",
+    ...(renewals > 1 ? { duration_in_months: renewals } : {}),
     name: "KiddieGPT cancellation save offer",
     metadata: {
       app: "KiddieGPT",
       offer: "cancellation_promo",
-      amountOff: String(promo.amountOff || 0)
+      amountOff: String(promo.amountOff || 0),
+      renewals: String(renewals)
     }
   });
 
@@ -1673,7 +1686,8 @@ async function retentionCouponId(stripe, db) {
     nextDb.pricing.cancellationPromo = nextDb.pricing.cancellationPromo || {};
     nextDb.pricing.cancellationPromo.stripeCouponId = coupon.id;
     nextDb.pricing.cancellationPromo.stripeCouponAmountOff = Number(promo.amountOff || 0);
-    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, amountOff: Number(promo.amountOff || 0) });
+    nextDb.pricing.cancellationPromo.stripeCouponRenewals = renewals;
+    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, amountOff: Number(promo.amountOff || 0), renewals });
   });
 
   return coupon.id;

@@ -2050,9 +2050,13 @@
     function cancellationPromoConfig() {
       var pricing = readPricing();
       var promo = pricing.cancellationPromo || {};
+      var renewals = Math.min(99, Math.max(1, Number(promo.durationRenewals) || (promo.duration === "repeating" ? 3 : 1)));
       return {
         enabled: promo.enabled !== false && Number(promo.amountOff || 0) > 0,
         amountOff: Math.max(0, Number(promo.amountOff || 0)),
+        durationRenewals: renewals,
+        // "renewal" or "N renewals" for the generated copy.
+        renewalsLabel: renewals > 1 ? ("next " + renewals + " renewals") : "next renewal",
         duration: promo.duration === "repeating" ? "repeating" : "once",
         description: String(promo.description || "Keep your plan and get a discount on the next renewal.")
       };
@@ -2096,7 +2100,7 @@
       if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
-        if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? "$" + promo.amountOff + " off your first renewal" : "End your free trial";
+        if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? "$" + promo.amountOff + " off your " + promo.renewalsLabel : "End your free trial";
         if (cancelFlowCopy) {
           cancelFlowCopy.textContent = promoAvailable
             ? "Your current plan cancels on " + trialEndsText() + " if you continue. Keep it instead and get $" + promo.amountOff + " off when billing starts on " + trialEndsText() + ". No code is needed."
@@ -2117,7 +2121,7 @@
         cancelFlowTitle.textContent = (refundable && upgradeRefundKeepsMonthly()) ? "Refund your yearly upgrade"
           : refundable
           ? "Cancel and get a full refund"
-          : yearly ? "Cancel yearly renewal" : promoAvailable ? "$" + promo.amountOff + " off your next renewal" : "Cancel your renewal";
+          : yearly ? "Cancel yearly renewal" : promoAvailable ? "$" + promo.amountOff + " off your " + promo.renewalsLabel : "Cancel your renewal";
       }
       if (cancelFlowCopy) {
         // Inside the refund window cancelling refunds the payment in full and
@@ -5771,10 +5775,10 @@
       var cancellationPromo = pricing.cancellationPromo || {};
       if (pricingForm.elements.cancellationPromoEnabled) pricingForm.elements.cancellationPromoEnabled.checked = cancellationPromo.enabled !== false;
       if (pricingForm.elements.cancellationPromoAmountOff) pricingForm.elements.cancellationPromoAmountOff.value = Number(cancellationPromo.amountOff || 0);
-      var cancellationDuration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
-      pricingForm.querySelectorAll('input[name="cancellationPromoDuration"]').forEach(function (input) {
-        input.checked = input.value === cancellationDuration;
-      });
+      if (pricingForm.elements.cancellationPromoDurationRenewals) {
+        var renewals = Number(cancellationPromo.durationRenewals) || (cancellationPromo.duration === "repeating" ? 3 : 1);
+        pricingForm.elements.cancellationPromoDurationRenewals.value = Math.min(99, Math.max(1, renewals));
+      }
       if (pricingForm.elements.cancellationPromoDescription) pricingForm.elements.cancellationPromoDescription.value = cancellationPromo.description || "";
       if (stripeTestForm && stripeTestForm.elements.priceId) {
         stripeTestForm.elements.priceId.value = pricing.monthly.stripePriceId || "price_demo_monthly";
@@ -7311,7 +7315,7 @@
         targetPlan.amount = Number(pricingForm.elements.planAmount.value) || Number(targetPlan.amount || 19);
         targetPlan.stripePriceId = pricingForm.elements.planStripePriceId.value.trim();
         targetPlan.familyMemberCount = Number(pricingForm.elements.planFamilyMemberCount.value) || Number(targetPlan.familyMemberCount || 3);
-        var selectedCancellationDuration = pricingForm.querySelector('input[name="cancellationPromoDuration"]:checked');
+        var cancellationRenewals = Math.min(99, Math.max(1, Math.round(Number(pricingForm.elements.cancellationPromoDurationRenewals ? pricingForm.elements.cancellationPromoDurationRenewals.value : 1)) || 1));
         await writePricing({
           monthly: monthlyPlan,
           yearly: yearlyPlan,
@@ -7338,7 +7342,8 @@
           cancellationPromo: {
             enabled: pricingForm.elements.cancellationPromoEnabled ? pricingForm.elements.cancellationPromoEnabled.checked : true,
             amountOff: Number(pricingForm.elements.cancellationPromoAmountOff ? pricingForm.elements.cancellationPromoAmountOff.value : 0) || 0,
-            duration: selectedCancellationDuration ? selectedCancellationDuration.value : "once",
+            durationRenewals: cancellationRenewals,
+            duration: cancellationRenewals > 1 ? "repeating" : "once",
             description: pricingForm.elements.cancellationPromoDescription ? pricingForm.elements.cancellationPromoDescription.value.trim() : ""
           }
         });

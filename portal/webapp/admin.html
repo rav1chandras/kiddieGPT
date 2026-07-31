@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=195">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=196">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -521,13 +521,7 @@
               </div>
               <div class="pricing-section-grid">
                 <label class="retention-amount-field">Discount amount ($)<input type="number" name="cancellationPromoAmountOff" min="0" max="999" step="0.01" placeholder="5"></label>
-                <fieldset class="duration-radio-field">
-                  <legend>Duration</legend>
-                  <div class="duration-radio-options">
-                    <label><input type="radio" name="cancellationPromoDuration" value="once" checked><span>Next renewal only</span></label>
-                    <label><input type="radio" name="cancellationPromoDuration" value="repeating"><span>Every renewal</span></label>
-                  </div>
-                </fieldset>
+                <label class="retention-amount-field">Renewals to apply<input type="number" name="cancellationPromoDurationRenewals" min="1" max="99" step="1" placeholder="1"><small>How many renewals the discount rides along for. 1 = next renewal only.</small></label>
                 <label class="plan-detail-wide">Parent-facing description<input type="text" name="cancellationPromoDescription" placeholder="Keep your plan and get 50% off the next renewal."></label>
                 <small class="pricing-help">Shown for monthly plans, including card-upfront trials. Stripe applies it automatically; no code is needed.</small>
               </div>
@@ -911,6 +905,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=216"></script>
+  <script src="/webapp/webapp.js?v=217"></script>
 </body>
 </html>
