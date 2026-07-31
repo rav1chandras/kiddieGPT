@@ -434,7 +434,7 @@ body{background:#f6f8f5}
     .math-help-inline-steps>span{font-size:10px;font-weight:900;text-transform:uppercase;color:#719900;letter-spacing:.06em}
     .math-help-inline-steps .tb-derivation{gap:8px}
     .math-help-steps .tb-lhs,.math-help-steps .tb-op,.math-help-steps .tb-rhs,.math-help-steps .tb-prose{color:#004f48}
-    .math-help-steps .tb-why{color:#3f6d63}
+    .math-help-steps .tb-why{color:#8a918f}
     .math-try-card{border:1px solid #dce8df;border-radius:12px;background:#fff;padding:10px 12px;display:grid;gap:5px}
     .math-try-card{background:#fbfde6;border-color:#d4e56d}
     .math-try-card p{font-size:13px;line-height:1.5;color:#29495b;margin:0}
@@ -442,7 +442,7 @@ body{background:#f6f8f5}
     .math-full-solution{background:#fff;border-color:#dce8df;box-shadow:0 10px 22px rgba(12,42,60,.045)}
     .math-full-solution .tb-solution-label{color:#004f48}
     .math-full-solution .tb-lhs,.math-full-solution .tb-op,.math-full-solution .tb-rhs,.math-full-solution .tb-prose{color:#004f48}
-    .math-full-solution .tb-why{color:#3f6d63}
+    .math-full-solution .tb-why{color:#8a918f}
     .math-full-solution .tb-check{background:#f4fbf5;border-radius:11px;padding:10px;border-top:1px solid #cfe6d2}
     .tb-solution-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid rgba(113,153,0,.16)}
     .tb-solution-label{font-size:10px;font-weight:900;color:#719900;text-transform:uppercase;letter-spacing:.08em}
@@ -474,11 +474,17 @@ body{background:#f6f8f5}
     .tb-eq{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 6px;min-width:0}
     .tb-lhs,.tb-op,.tb-rhs{font-size:16px;line-height:1.6;color:#0f3d38;font-weight:700;overflow-wrap:anywhere;min-width:0}
     .tb-prose{min-width:0;font-size:16px;line-height:1.5;color:#0f3d38;font-weight:700;overflow-wrap:anywhere}
-    .tb-why{font-size:11.5px;line-height:1.45;color:#6b7d84;font-weight:500;margin:0;padding-left:2px}
+    .tb-why{font-size:11.5px;line-height:1.45;color:#8a918f;font-weight:500;margin:0;padding-left:2px}
+    /* Leading dash marks the explanation as an aside to the equation beside it. */
+    .tb-why::before{content:"\2014\00a0";color:#a8aeac}
+    /* Only a grid item in the wide two-column layout; anywhere else it would add
+       an empty stacked row above the explanation. */
+    .tb-eq-spacer{display:none}
     @media (min-width:560px){
       .math-full-solution .tb-derivation{grid-template-columns:auto minmax(0,1fr);column-gap:20px;row-gap:11px;align-items:baseline}
       .math-full-solution .tb-row{display:contents}
       .math-full-solution .tb-prose{grid-column:1 / -1}
+      .math-full-solution .tb-eq-spacer{display:block}
     }
     .tb-check{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;margin-top:11px;padding-top:11px;border-top:1px dashed rgba(0,79,72,.22)}
     .tb-check i{width:24px;height:24px;border-radius:8px;background:#004f48;color:#fff;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:900}

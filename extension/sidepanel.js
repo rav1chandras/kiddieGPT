@@ -3855,7 +3855,12 @@ async function unlockMathReveal() {
 
 function renderDerivationLine(line, blur = false) {
   const why = line.why ? `<small class="tb-why">${escapeHtml(line.why)}</small>` : "";
-  if (!line.math) return why ? `<div class="tb-row">${why}</div>` : "";
+  // A step with no equation used to emit the explanation as the row's ONLY
+  // child. The wide Solution layout sets .tb-row{display:contents}, so that
+  // child became grid column 1 -- the equation column -- and the explanation
+  // jumped to the left for that one row. The spacer holds column 1 so every
+  // explanation stays in column 2, whatever the step contains.
+  if (!line.math) return why ? `<div class="tb-row"><span class="tb-eq-spacer" aria-hidden="true"></span>${why}</div>` : "";
   const cls = blur ? " tb-blur" : "";
   // Each step is one .tb-row (equation + explanation). The Solution panel places
   // the explanation to the right on wide widths and stacks it below when narrow;
