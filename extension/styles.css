@@ -558,8 +558,17 @@ body{background:#f6f8f5}
     .math-pending{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;border:1.5px solid #d4e56d;border-radius:15px;background:#fbfde6;padding:16px}
     .math-pending b{display:block;font-size:14px;color:#0b2d43;font-weight:800}
     .math-pending small{display:block;font-size:11.5px;color:#60747d;line-height:1.4;margin-top:2px}
-    .math-pending.error{grid-template-columns:1fr;border-color:#e3b34e;background:#fdf6e3}
+    /* Second column holds the retry shortcut; the text column stays minmax(0,..)
+       so a long error message wraps instead of pushing the button off the tile. */
+    .math-pending.error{grid-template-columns:minmax(0,1fr) auto;border-color:#e3b34e;background:#fdf6e3}
     .math-pending.error b{color:#8a5a00}
+    .math-retry-tile{width:38px;height:38px;flex:0 0 auto;border-radius:50%;cursor:pointer;
+      border:1.5px solid #e3b34e;background:#fff;color:#8a5a00;font-size:19px;line-height:1;
+      display:grid;place-items:center;transition:background .15s ease,color .15s ease}
+    .math-retry-tile:hover{background:#8a5a00;color:#fff;border-color:#8a5a00}
+    .math-retry-tile:focus-visible{outline:2px solid #004f48;outline-offset:2px}
+    .math-retry-tile:disabled{opacity:.45;cursor:not-allowed}
+    @media (prefers-reduced-motion:reduce){.math-retry-tile{transition:none}}
     .math-notice{display:grid;justify-items:center;text-align:center;gap:9px;padding:28px 18px}
     .math-notice-icon{width:52px;height:52px;border-radius:16px;background:#eef6b5;color:#004f48;display:grid;place-items:center;font-size:24px;font-weight:900}
     .math-notice h3{font-size:18px;color:#0b2d43}

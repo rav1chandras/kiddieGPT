@@ -3440,7 +3440,11 @@ function renderMathSolution() {
       const errorDetail = current.error && current.error !== "Something went wrong."
         ? `<small>${escapeHtml(current.error)}</small>`
         : `<small>Tap “Something not right?” below to choose a correction, or press Give Me Nudge again.</small>`;
-      steps.innerHTML = `<div class="math-pending error"><div><b>Couldn't solve this one.</b>${errorDetail}<small>Give Me Nudge again after checking the picture or choosing a correction.</small></div></div>`;
+      // The retry shortcut runs the same "Reconsider and solve it again"
+      // correction the pill does — this is the only thing a student wants from
+      // this tile, and making them open "Something not right?" to reach it is
+      // three taps for one obvious action.
+      steps.innerHTML = `<div class="math-pending error"><div><b>Couldn't solve this one.</b>${errorDetail}<small>Give Me Nudge again after checking the picture or choosing a correction.</small></div><button type="button" id="mathRetryTile" class="math-retry-tile" title="Reconsider and solve it again" aria-label="Reconsider and solve it again">&#8635;</button></div>`;
     } else {
       const solutionLocked = mathMode === "solution" && shouldHideMathSolution();
       steps.innerHTML = `
@@ -5205,6 +5209,18 @@ function initMathTool() {
     const toggle = event.target.closest("[data-math-mode]");
     if (!toggle) return;
     setMathMode(toggle.dataset.mathMode);
+  });
+  // Delegated: the tile is rewritten by renderMathSolution on every navigation,
+  // so a listener bound to the button itself would die on the first re-render.
+  // Rather than duplicate the correction logic, click the real Reconsider pill —
+  // that reuses its selection handler, so the attempt cap, the advanced model
+  // and the status messages all behave exactly as they do from the panel.
+  document.getElementById("mathStepList")?.addEventListener("click", event => {
+    if (!event.target.closest("#mathRetryTile")) return;
+    const pill = document.querySelector("#mathCorrectPanel .math-correction-pill[data-math-advanced]");
+    if (!pill) return;
+    pill.click();
+    correctMathProblem();
   });
   document.getElementById("mathStepList")?.addEventListener("keydown", event => {
     if (event.target.id === "mathRevealPin" && event.key === "Enter") {
