@@ -10645,3 +10645,7 @@ body[data-page="admin"] .ai-voice-enable input {
 body[data-page="admin"] .ai-tool-extras {
   display: grid; gap: 10px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
 }
+
+/* Price placeholder shown until server pricing loads — avoids flashing a stale
+   cached price before the fresh one arrives. */
+body[data-page="parent"] .price-loading { color: var(--parent-muted, #9aa7a0); opacity: .45; font-weight: 700; }

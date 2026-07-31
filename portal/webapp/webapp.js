@@ -27,6 +27,10 @@
   var selectedFamilyId = null;
   var familiesCache = [];
   var pricingCache = null;
+  // False until pricing has been loaded (server or, offline, the cache fallback).
+  // Tiles show a placeholder instead of a possibly-stale cached price until then,
+  // so an admin price change never flashes the old number on first paint.
+  var pricingReady = false;
   var auditLogsCache = [];
   var monitorEventsCache = [];
   var emailLogsCache = [];
@@ -254,6 +258,7 @@
       paymentsCache = Array.isArray(state.payments) ? state.payments : [];
       deletedUserSequence = Number(state.deletedUserSequence || 0);
       backendReady = true;
+      pricingReady = true;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(familiesCache));
       localStorage.setItem(PRICING_KEY, JSON.stringify(pricingCache));
       return state;
@@ -271,6 +276,8 @@
       } catch (pricingError) {
         pricingCache = readPricing();
       }
+      // Best effort done (fresh, or cache fallback): let tiles render.
+      pricingReady = true;
       return { families: familiesCache, pricing: pricingCache };
     }
   }
@@ -1690,7 +1697,7 @@
         tile.classList.toggle("is-selected", input.checked);
         tile.classList.toggle("has-promo", Boolean(promo));
         document.querySelector('[data-plan-name="' + key + '"]').textContent = planLabelForKey(key);
-        document.querySelector('[data-plan-price="' + key + '"]').innerHTML = priceLabelMarkup(plan, promoAmount);
+        document.querySelector('[data-plan-price="' + key + '"]').innerHTML = pricingReady ? priceLabelMarkup(plan, promoAmount) : "<span class='price-loading'>&hellip;</span>";
         document.querySelector('[data-plan-note="' + key + '"]').textContent = promo
           ? promo.code + ": " + (promo.description || "Limited-time promotion")
           : key === "yearly"
@@ -1732,7 +1739,9 @@
         if (badge) badge.textContent = 'Flexible choice';
         if (currentPackageName) currentPackageName.textContent = familyPlanLabelForKey('monthly');
         if (currentPackageSubcopy) currentPackageSubcopy.textContent = 'Easy to start, easy to pause.';
-        if (currentPackagePrice) currentPackagePrice.innerHTML = (monthlyNow < monthlyBase ? "<s>$" + monthlyBase + "</s> " : "") + "$" + monthlyNow;
+        if (currentPackagePrice) currentPackagePrice.innerHTML = pricingReady
+          ? ((monthlyNow < monthlyBase ? "<s>$" + monthlyBase + "</s> " : "") + "$" + monthlyNow)
+          : "<span class='price-loading'>&hellip;</span>";
         var monthlyInterval = document.getElementById('current-package-interval');
         if (monthlyInterval) monthlyInterval.textContent = '/ month';
         var signupTrial = trialInfo();

@@ -5734,6 +5734,13 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
     const stripe = stripeClient();
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription", "subscription.latest_invoice.payment_intent"] });
     const subscription = session.subscription && typeof session.subscription === "object" ? session.subscription : null;
+    // A card-upfront trial returns from Checkout as a trialing subscription with
+    // no charge. Marking it active/paid here (as this used to) put a trial in the
+    // paying book, hid the trial-end date, and reported revenue that had not
+    // moved. Detect it and mirror the webhook: trialing + trial-end.
+    const isTrialing = subscription?.status === "trialing"
+      || Boolean(subscription?.trial_end && Number(subscription.trial_end) * 1000 > Date.now());
+    const trialEnd = unixToIso(subscription?.trial_end || 0);
     const paid = session.payment_status === "paid" || subscription?.status === "active" || subscription?.status === "trialing";
     if (!paid) {
       return res.json({ mode: "stripe", active: false, paymentStatus: session.payment_status || subscription?.status || "pending" });
@@ -5755,8 +5762,10 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
           grade: metadata.grade || "",
           readingLevel: metadata.readingLevel || "",
           plan: metadata.planName || "Family Monthly",
-          subscriptionStatus: "active",
-          paymentStatus: "paid",
+          subscriptionStatus: isTrialing ? "trialing" : "active",
+          paymentStatus: isTrialing ? "trial" : "paid",
+          trialEndsAt: isTrialing ? trialEnd : "",
+          trialUsedAt: isTrialing ? nowIso() : "",
           stripeCustomerId: stripeId(session.customer) || "",
           stripeSubscriptionId: stripeId(subscription?.id || session.subscription) || ""
         });
@@ -5773,14 +5782,18 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
         });
       }
       if (!next) return null;
-      next.subscriptionStatus = "active";
+      next.subscriptionStatus = isTrialing ? "trialing" : "active";
       // Upgrading is an explicit renewal, so any pending cancellation is off.
       next.cancellationRequested = false;
       next.cancellationStatus = "";
       next.cancelAtPeriodEnd = false;
       next.cancelAccessUntil = "";
       next.cancellationAccessUntil = "";
-      next.paymentStatus = "paid";
+      next.paymentStatus = isTrialing ? "trial" : "paid";
+      if (isTrialing) {
+        next.trialUsedAt = next.trialUsedAt || nowIso();
+        if (trialEnd) next.trialEndsAt = trialEnd;
+      }
       const keepYearlyUpgrade = hasConfirmedYearlyUpgrade(next);
       next.plan = keepYearlyUpgrade ? "Family Yearly" : metadata.planName || next.pendingPlanName || next.plan;
       next.stripeCustomerId = stripeId(session.customer) || next.stripeCustomerId;
