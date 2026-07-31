@@ -302,6 +302,7 @@
 
         <div class="payment-table-toggle" role="tablist" aria-label="Payment tables">
           <button class="active" type="button" data-payment-table="payments">Payments <span id="payment-toggle-payments">0</span></button>
+          <button type="button" data-payment-table="trials">Trials <span id="payment-toggle-trials">0</span></button>
           <button type="button" data-payment-table="renewals">Upcoming renewals</button>
           <button type="button" data-payment-table="cancellations">Cancellation requests <span id="payment-toggle-cancellations">0</span></button>
           <button type="button" data-payment-table="upgrades">Yearly upgrades <span id="payment-toggle-upgrades">0</span></button>
@@ -335,6 +336,22 @@
             <table>
               <thead><tr><th>Date</th><th>Parent</th><th>Plan</th><th>Amount</th><th>Status</th><th>Payment ID</th><th>Account state</th><th>Actions</th></tr></thead>
               <tbody id="payment-table"></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="admin-table-card" data-payment-table-panel="trials" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Free trials</p><h2>Trialing accounts</h2></div>
+            <div class="admin-filters date-filter-row">
+              <input id="trials-from" type="date" aria-label="Trial start from date">
+              <input id="trials-to" type="date" aria-label="Trial start to date">
+              <button class="table-action" type="button" data-export-table="trials-table" data-export-name="kiddiegpt-trials">Export CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr><th>Parent</th><th>Plan</th><th>Type</th><th>Trial ends</th><th>Days left</th><th>Charges at end</th><th>Stripe sub</th><th>Actions</th></tr></thead>
+              <tbody id="trials-table"></tbody>
             </table>
           </div>
         </article>
@@ -905,6 +922,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=217"></script>
+  <script src="/webapp/webapp.js?v=218"></script>
 </body>
 </html>

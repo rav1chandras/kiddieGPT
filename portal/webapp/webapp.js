@@ -3963,6 +3963,8 @@
     var upgradeTo = document.getElementById("upgrade-to");
     var cancelledFrom = document.getElementById("cancelled-from");
     var cancelledTo = document.getElementById("cancelled-to");
+    var trialsFrom = document.getElementById("trials-from");
+    var trialsTo = document.getElementById("trials-to");
     var paymentFrom = document.getElementById("payment-from");
     var paymentTo = document.getElementById("payment-to");
     var paymentTableButtons = Array.from(document.querySelectorAll("[data-payment-table]"));
@@ -6701,6 +6703,36 @@
         "</tr>";
       }) : ["<tr><td colspan='9'>No cancelled subscriptions in this date range.</td></tr>"]);
 
+      // Trials tab: accounts currently in a free trial. A card-upfront trial
+      // (trialing + card on file) will charge at trial end; an admin-comped
+      // trial (status "trial", no card) just ends. Kept out of Payments, which
+      // only lists real charges.
+      var trialRows = families.filter(function (family) {
+        var isTrial = family.subscriptionStatus === "trialing" || family.subscriptionStatus === "trial";
+        return isTrial && dateInRange(family.trialStartedAt || family.createdAt, trialsFrom, trialsTo);
+      }).sort(function (a, b) {
+        return new Date(a.trialEndsAt || 0) - new Date(b.trialEndsAt || 0);
+      });
+      setMetric("payment-toggle-trials", trialRows.length);
+      renderRows("trials-table", trialRows.length ? trialRows.map(function (family) {
+        var cardOnFile = Boolean(family.stripeSubscriptionId);
+        var endsMs = family.trialEndsAt ? new Date(family.trialEndsAt).getTime() : 0;
+        var daysLeft = endsMs ? Math.max(0, Math.ceil((endsMs - Date.now()) / 86400000)) : "";
+        var planKey = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
+        var willCharge = cardOnFile ? money(Number((readPricing()[planKey] || {}).amount || 0)) : "";
+        var subscriptionId = family.stripeSubscriptionId || "";
+        return "<tr>" +
+          "<td>" + text(family.parentName) + "<small>" + text(family.email) + "</small></td>" +
+          "<td>" + text(family.plan || moneyPlan()) + "</td>" +
+          "<td>" + (cardOnFile ? "<span class='state-chip trialing'>Card trial</span>" : "<span class='state-chip'>No-card trial</span>") + "</td>" +
+          "<td>" + rowDateTime(family.trialEndsAt) + "</td>" +
+          "<td>" + (daysLeft === "" ? "-" : (daysLeft + (daysLeft === 1 ? " day" : " days"))) + "</td>" +
+          "<td>" + (cardOnFile ? willCharge : "<span class='muted-cell'>no card</span>") + "</td>" +
+          "<td>" + (subscriptionId ? "<a class='stripe-link payment-id-link' href='https://dashboard.stripe.com/test/subscriptions/" + encodeURIComponent(subscriptionId) + "' target='_blank' rel='noreferrer'>" + text(subscriptionId) + "</a>" : "-") + "</td>" +
+          "<td>" + (family.id ? "<button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button>" : "-") + "</td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='8'><div class='empty-state'>No trialing accounts.</div></td></tr>"]);
+
       var paymentRows = filteredPaymentRecords(families);
       setMetric("payment-toggle-payments", paymentRows.length);
       paymentTableButtons.forEach(function (button) {
@@ -7040,7 +7072,7 @@
     if (paymentSearch) paymentSearch.addEventListener("input", renderAdmin);
     if (paymentStatusFilter) paymentStatusFilter.addEventListener("change", renderAdmin);
     if (paymentPlanFilter) paymentPlanFilter.addEventListener("change", renderAdmin);
-    [cancellationFrom, cancellationTo, upgradeFrom, upgradeTo, cancelledFrom, cancelledTo, paymentFrom, paymentTo].forEach(function (input) {
+    [cancellationFrom, cancellationTo, upgradeFrom, upgradeTo, cancelledFrom, cancelledTo, trialsFrom, trialsTo, paymentFrom, paymentTo].forEach(function (input) {
       if (input) input.addEventListener("change", renderAdmin);
     });
     paymentTableButtons.forEach(function (button) {
