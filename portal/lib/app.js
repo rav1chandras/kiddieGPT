@@ -4359,7 +4359,9 @@ const ISSUE_LABELS = {
 app.post("/api/issues/report", (req, res) => {
   const body = req.body || {};
   const type = ISSUE_TYPES.has(String(body.type)) ? String(body.type) : "other";
-  const detail = String(body.detail || "").slice(0, 500);
+  // 4000: an ai_unparseable sample is useless truncated -- the JSON parse
+  // error is rarely in the first few hundred characters.
+  const detail = String(body.detail || "").slice(0, 4000);
   const email = normalizeEmail(body.email || "");
   const auth = authFromRequest(req);
   mutateDb((db) => {

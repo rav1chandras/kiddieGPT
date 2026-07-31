@@ -362,7 +362,9 @@ async function reportIssue(type, detail, context) {
       headers: { "Content-Type": "application/json", ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {}) },
       body: JSON.stringify({
         type,
-        detail: String(detail || "").slice(0, 500),
+        // 4000 so a widened ai_unparseable sample survives the trip; the
+        // portal caps it again at the same figure.
+        detail: String(detail || "").slice(0, 4000),
         email: stored[PORTAL_EMAIL_KEY] || "",
         source: "extension",
         context: context || {}
@@ -4441,7 +4443,21 @@ function stopMathThinking() {
 
 let mathSolveToken = 0;
 
-function showMathNotice(title, message) {
+// Tips for a photo KiddieGPT genuinely could not read.
+const MATH_TIPS_UNREADABLE = [
+  "Capture or crop just the math problem.",
+  "Make sure the picture is clear and not blurry.",
+  "Check that it is actually a math question."
+];
+// Tips when the picture was fine but the reply came back mangled. Telling a
+// student to re-photograph here sends them to fix something that is not broken.
+const MATH_TIPS_RETRY = [
+  "Press Give Me Nudge to try again — this usually clears on a second run.",
+  "Your picture is fine; nothing needs changing.",
+  "If it keeps happening, try one problem at a time."
+];
+
+function showMathNotice(title, message, tips = MATH_TIPS_UNREADABLE) {
   const notice = document.getElementById("mathNotice");
   const top = document.querySelector("#mathPanel .math-solution-top");
   const layout = document.querySelector("#mathPanel .math-solution-layout");
@@ -4456,9 +4472,7 @@ function showMathNotice(title, message) {
     <h3>${escapeHtml(title)}</h3>
     <p>${escapeHtml(message)}</p>
     <ul class="math-notice-tips">
-      <li>Capture or crop just the math problem.</li>
-      <li>Make sure the picture is clear and not blurry.</li>
-      <li>Check that it is actually a math question.</li>
+      ${tips.map(tip => `<li>${escapeHtml(tip)}</li>`).join("")}
     </ul>
   `;
 }
@@ -4841,7 +4855,15 @@ async function solveMathWithAI() {
     // Surface the real reason (auth/key/network) instead of only "blurry image".
     const reason = friendlyError(error);
     const generic = "KiddieGPT had trouble reading the image. Try a clearer screenshot of just the problem, then press Give Me Nudge again.";
-    showMathNotice("Couldn't read that", reason && reason !== "Something went wrong." ? reason : generic);
+    // A mangled reply is not a bad photo, and it does not get the photo title
+    // or the photo tips — the student would go and re-shoot a picture that was
+    // never the problem.
+    const mangled = error?.code === "ai_unparseable";
+    showMathNotice(
+      mangled ? "That didn't come through" : "Couldn't read that",
+      reason && reason !== "Something went wrong." ? reason : generic,
+      mangled ? MATH_TIPS_RETRY : MATH_TIPS_UNREADABLE
+    );
     return;
   }
 
@@ -5097,7 +5119,10 @@ async function solveCapturedProblems(problems) {
     .filter(item => item.statement);
   if (!transcript.length) { setCaptureState("No problem found", "I couldn't read a math problem. Try another photo.", true); return; }
   const settings = await getOpenAISettings();
-  if (!settings) { showMathNotice("Turn on OpenAI first", "Sign in to solve the problem from your photo."); return; }
+  // Heading used to say "Turn on OpenAI first" while the body said "Sign in" —
+  // two different remedies for one state. In production the key comes from the
+  // portal, so signing in is the actual fix.
+  if (!settings) { showMathNotice("Sign in first", "Sign in to KiddieGPT to solve the problem from your photo."); return; }
   const gradeBand = settings.gradeBand || "6-8";
   const token = ++mathSolveToken;
   mathAnswersRevealed = false;
@@ -6147,10 +6172,39 @@ function extractOutputText(data) {
 // failing the whole solve. Double any lone backslash before a letter (odd runs
 // only, so already-escaped "\\frac" is untouched); leave valid \uXXXX alone.
 function escapeLatexBackslashes(text) {
-  return text.replace(/(\\+)([a-zA-Z])/g, (match, slashes, ch, offset, full) => {
+  // Was letters-only, which covered \frac and \theta but not the delimiters a
+  // model actually writes around them: \( \) \[ \] and the escaped specials
+  // \% \_ \& \# \$. Those are invalid JSON escapes, so one of them anywhere in
+  // a transcription failed the whole worksheet with "couldn't read that".
+  //
+  // So: double any ODD-length backslash run, whatever follows it, except the
+  // three sequences that are genuinely JSON. \" must be left alone above all --
+  // doubling it closes the string early and corrupts everything after.
+  return text.replace(/(\\+)([\s\S])/g, (match, slashes, ch, offset, full) => {
+    if (slashes.length % 2 === 0) return match;              // already a literal backslash
+    if (ch === '"' || ch === "/") return match;              // real JSON escapes
     if (ch === "u" && /^[0-9a-fA-F]{4}/.test(full.slice(offset + slashes.length + 1))) return match;
-    return (slashes.length % 2 === 0 ? slashes : slashes + "\\") + ch;
+    return slashes + "\\" + ch;
   });
+}
+
+// A raw newline or tab inside a JSON string is illegal, and models emit them in
+// long `diagram` descriptions. Rewrite them as escapes -- but only inside string
+// literals, so the formatting of a pretty-printed document is left alone.
+function escapeControlCharsInStrings(text) {
+  let out = "", inString = false, escaped = false;
+  for (const ch of text) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === "\\") { out += ch; escaped = inString; continue; }
+    if (ch === '"') { inString = !inString; out += ch; continue; }
+    if (inString && ch < " ") {
+      out += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : ch === "\t" ? "\\t"
+        : "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
 
 // Close a truncated JSON document by discarding the incomplete tail and shutting
@@ -6219,6 +6273,12 @@ function hasControlChars(value, depth = 0, inMathField = false) {
   return false;
 }
 
+const REPAIRS = [
+  escapeLatexBackslashes,
+  escapeControlCharsInStrings,
+  (text) => escapeControlCharsInStrings(escapeLatexBackslashes(text))
+];
+
 function parseOpenAIJson(text) {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   const start = cleaned.indexOf("{");
@@ -6238,14 +6298,19 @@ function parseOpenAIJson(text) {
       if (!hasControlChars(parsed)) return parsed;
       try { return JSON.parse(escapeLatexBackslashes(candidate)); } catch { return parsed; }
     } catch { /* try next */ }
-    try { return JSON.parse(escapeLatexBackslashes(candidate)); } catch { /* try next */ }
+    // Repairs, cheapest first. LaTeX escaping runs BEFORE control-char escaping:
+    // the reverse order would double the backslash of an escape we just inserted
+    // and turn a real newline into the literal text "\n".
+    for (const repair of REPAIRS) {
+      try { return JSON.parse(repair(candidate)); } catch { /* try next repair */ }
+    }
   }
   // Last resort: salvage the complete items from a response that was cut off.
   // Only reached once the clean parses have failed, so it can never change the
   // result for a well-formed response.
   const closed = closeTruncatedJson(cleaned.slice(start >= 0 ? start : 0));
   if (closed) {
-    for (const candidate of [closed, escapeLatexBackslashes(closed)]) {
+    for (const candidate of [closed, ...REPAIRS.map(repair => repair(closed))]) {
       try {
         const parsed = JSON.parse(candidate);
         console.warn("Recovered a truncated AI response; some items may be missing.");
@@ -6262,14 +6327,19 @@ function parseOpenAIJson(text) {
     : (sample.startsWith("{") || sample.startsWith("[")) ? "json-like but unparseable"
     : /^(sorry|i'm|i am|unable|cannot|can't|i can)/i.test(sample) ? "refusal or apology"
     : "prose, not JSON";
-  console.warn("Unparseable AI response", { shape, length: sample.length, head: sample.slice(0, 300) });
-  reportIssue("ai_unparseable", shape + " | len=" + sample.length + " | " + sample.slice(0, 300));
+  // 3000, not 300: at 300 chars every stored sample cut off mid-string, so the
+  // only thing recoverable from it was "the model returned something JSON-ish".
+  // The parse error is almost never in the first 300 characters.
+  console.warn("Unparseable AI response", { shape, length: sample.length, head: sample.slice(0, 3000) });
+  reportIssue("ai_unparseable", shape + " | len=" + sample.length + " | " + sample.slice(0, 3000));
   // Student-facing: no vendor name, no "JSON". It must also NOT blame the photo
   // — by the time we get here the tutor has usually read the page correctly and
   // the reply was mangled on the way back, so "take a clearer picture" sends the
   // student off to fix something that is not broken. The shape/length/sample
   // needed to debug it goes to reportIssue above, not to the child.
-  throw new Error("KiddieGPT couldn't understand the reply that came back. Try again.");
+  const unreadable = new Error("KiddieGPT couldn't understand the reply that came back. Try again.");
+  unreadable.code = "ai_unparseable";   // lets the caller show retry advice, not photo advice
+  throw unreadable;
 }
 
 function normalizeStudyPack(pack) {
