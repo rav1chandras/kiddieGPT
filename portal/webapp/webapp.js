@@ -2088,7 +2088,11 @@
       // Inside the refund window a monthly parent used to get no retention
       // attempt at all — the most cancellable moment there is. The refund stays
       // the headline and is never withheld; the discount is offered beside it.
-      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly;
+      // Server caps how often the save offer can be taken (once per cooldown),
+      // so hide it once used — otherwise it pops on every cancel attempt and
+      // the accept just errors.
+      var retentionAvailable = !parentEntitlement || parentEntitlement.retentionOfferAvailable !== false;
+      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly && retentionAvailable;
       if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";

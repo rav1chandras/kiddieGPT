@@ -1771,6 +1771,17 @@ function billingCooldownPayload(family) {
 // After that there is no refund — access runs to the end of the paid period and
 // simply does not renew. The window re-opens on every payment (each renewal).
 const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 7));
+// A parent could otherwise threaten to cancel every month and collect the
+// retention discount each time. Once accepted, the save offer is not shown or
+// applied again until this cooldown passes (default one year).
+const RETENTION_OFFER_COOLDOWN_DAYS = Math.max(0, Number(process.env.RETENTION_OFFER_COOLDOWN_DAYS || 365));
+function retentionOfferEligible(family) {
+  if (!family) return false;
+  const lastAt = family.retentionLastAcceptedAt || family.retentionOffer?.acceptedAt || "";
+  if (!lastAt) return true;
+  const days = (Date.now() - new Date(lastAt).getTime()) / 86400000;
+  return !Number.isFinite(days) || days >= RETENTION_OFFER_COOLDOWN_DAYS;
+}
 const BILLING_COOLDOWN_HOURS = Math.max(1, Number(process.env.BILLING_COOLDOWN_HOURS || 24));
 
 // ---- Stripe card-upfront free trial ----------------------------------------
@@ -5429,6 +5440,10 @@ app.get("/api/entitlements/me", (req, res) => {
     // Lets the portal tell the parent what cancelling will actually do before
     // they confirm: full refund + access ends now, or access to the period end.
     refundWindow: refundWindowFor(family),
+    // Whether the cancellation save offer may still be shown to this parent
+    // (false once they've used it within the cooldown), so the portal doesn't
+    // dangle an offer they can no longer take.
+    retentionOfferAvailable: retentionOfferEligible(family) || family.retentionOffer?.status === "accepted",
     // Card-upfront Stripe trial: the portal shows the end date and when billing
     // starts; the extension only needs `active`, which already covers trialing.
     trial: {
@@ -5881,6 +5896,12 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
   if (!trialing && existingFamily.subscriptionStatus !== "active") {
     return res.status(400).json({ error: "A cancellation save offer can only be applied to an active subscription or card-upfront trial." });
   }
+  // A discount already pending on the next invoice is fine to re-confirm (handled
+  // below), but a parent who already used the offer this cycle cannot collect it
+  // again until the cooldown passes.
+  if (existingFamily.retentionOffer?.status !== "accepted" && !retentionOfferEligible(existingFamily)) {
+    return res.status(400).json({ error: "retention_offer_used", message: "You've already used a save offer recently. It will be available again later." });
+  }
   if (!process.env.STRIPE_SECRET_KEY || !existingFamily.stripeSubscriptionId || existingFamily.stripeSubscriptionId.startsWith("sub_mock")) {
     if (existingFamily.retentionOffer?.status === "accepted") {
       return res.json({
@@ -5907,6 +5928,10 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
         reason,
         acceptedAt: nowIso()
       };
+      // Persistent markers that survive the retentionOffer being consumed/cleared,
+      // so the cooldown is enforced across cycles.
+      family.retentionLastAcceptedAt = nowIso();
+      family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
       audit(db, "retention.discount.mock", { familyId: family.id, email, reason });
       return family;
     });
@@ -5976,6 +6001,8 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
         duplicateSubscriptionIds,
         acceptedAt: nowIso()
       };
+      family.retentionLastAcceptedAt = nowIso();
+      family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
       audit(db, "retention.discount.apply", {
         familyId: family.id,
         email,
