@@ -1376,13 +1376,29 @@ function usageWindow(child, days = 7) {
 }
 
 function audit(db, action, payload, actor) {
+  const who = actor || payload?.actor || payload?.adminEmail || payload?.email || "system";
   db.auditLogs.unshift({
     id: makeId("log"),
     action,
     payload,
-    actor: actor || payload?.actor || payload?.adminEmail || payload?.email || "system",
+    actor: who,
     createdAt: nowIso()
   });
+  // Live activity feed for local/test runs: every audited action streams to
+  // stdout so `docker compose logs -f` shows logins, checkouts, webhooks,
+  // cancellations, refunds, usage, etc. as they happen. Off in production
+  // (live Stripe key) to avoid log noise; force with ACTIVITY_LOG=on/off.
+  const activityLog = process.env.ACTIVITY_LOG === "on"
+    || (process.env.ACTIVITY_LOG !== "off" && !String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live"));
+  if (activityLog) {
+    const bits = [];
+    if (payload && typeof payload === "object") {
+      for (const k of ["amountCents", "amount", "plan", "planName", "status", "refundId", "reason", "subscriptionId"]) {
+        if (payload[k] != null && payload[k] !== "") bits.push(`${k}=${payload[k]}`);
+      }
+    }
+    console.log(`[activity] ${new Date().toISOString().slice(11, 19)} ${action}  ${who}${bits.length ? "  " + bits.join(" ") : ""}`);
+  }
 }
 
 function monitor(db, severity, category, message, payload, actor) {
