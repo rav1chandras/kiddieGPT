@@ -6024,9 +6024,9 @@
         var status = i.status === "resolved"
           ? "<span class='state-chip active'>Resolved</span>"
           : "<span class='state-chip warning'>Open</span>";
-        return "<tr><td>" + rowDateTime(i.createdAt) + "</td><td>" + text(i.label || i.type) + "</td><td>" + text(i.email || "—") + "</td><td>" + text(i.detail || "—") + "</td><td>" + status + "</td>" +
+        return "<tr><td>" + rowDateTime(i.createdAt) + "</td><td>" + text(i.label || i.type) + "</td><td>" + text(i.version || "—") + "</td><td>" + text(i.email || "—") + "</td><td>" + text(i.detail || "—") + "</td><td>" + status + "</td>" +
           "<td><button type='button' class='table-action' data-issue-resolve='" + i.id + "'>" + (i.status === "resolved" ? "Reopen" : "Resolve") + "</button></td></tr>";
-      }).join("") : "<tr><td colspan='6' class='empty-state'>No issues reported.</td></tr>");
+      }).join("") : "<tr><td colspan='7' class='empty-state'>No issues reported.</td></tr>");
     }
     async function resolveIssue(id) {
       try {

@@ -367,10 +367,23 @@ async function reportIssue(type, detail, context) {
         detail: String(detail || "").slice(0, 4000),
         email: stored[PORTAL_EMAIL_KEY] || "",
         source: "extension",
-        context: context || {}
+        // Stamped here rather than at the nine call sites, so every report
+        // carries it and a new call site cannot forget. Version is the load
+        // bearing one: without it there is no way to tell a bug that is still
+        // happening from one a release already fixed.
+        context: { ...envContext(), ...(context || {}) }
       })
     });
   } catch (error) { /* best effort */ }
+}
+
+// Build/browser facts attached to every report. Deliberately no page URL, no
+// student text: this endpoint is about diagnosing the build, not the child.
+function envContext() {
+  const env = {};
+  try { env.version = chrome?.runtime?.getManifest?.()?.version || ""; } catch { /* not in an extension host */ }
+  try { env.ua = (navigator.userAgent.match(/Chrom(e|ium)\/[\d.]+/) || [""])[0]; } catch { /* ignore */ }
+  return env;
 }
 
 // Report uncaught extension errors so the admin can see failures in the field.
@@ -379,6 +392,19 @@ if (typeof window !== "undefined") {
     const msg = (event.error && event.error.message) || event.message || "";
     if (!msg || /ResizeObserver loop/.test(msg)) return; // ignore benign noise
     reportIssue("extension_error", (msg + (event.filename ? " @ " + event.filename : "")).slice(0, 200));
+  });
+  // Every AI call in this panel is async, and "error" does NOT fire for a
+  // rejected promise -- so the failures most likely to break a student's
+  // worksheet were the ones least likely to be reported. Same noise filter,
+  // and the stack is worth more than the filename here because a rejection
+  // carries no event.filename.
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    const msg = (reason && (reason.message || reason.error || reason)) || "";
+    const text = typeof msg === "string" ? msg : String(msg);
+    if (!text || /ResizeObserver loop/.test(text)) return;
+    const where = (reason && reason.stack ? " @ " + String(reason.stack).split("\n")[1] : "").trim();
+    reportIssue("extension_error", ("Unhandled promise rejection: " + text + " " + where).slice(0, 400));
   });
   // Student flags a math answer as wrong → report WITH the problem + answer so
   // the admin's "Reported problems" view is actionable, not just a count.

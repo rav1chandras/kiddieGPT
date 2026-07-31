@@ -4347,23 +4347,67 @@ app.post("/api/admin/support/resolve", requireAdmin, (req, res) => {
 // ---- Issue reporting (from the extension) ---------------------------------
 // No auth: login failures happen before a token exists. CORS-allowed so the
 // extension can post from any signed-in or signed-out state.
-const ISSUE_TYPES = new Set(["login_failed", "api_key", "math_feedback", "extension_error", "other"]);
+const ISSUE_TYPES = new Set([
+  "login_failed", "api_key", "math_feedback", "extension_error",
+  // Both were already being reported by the extension and both silently
+  // collapsed to "other" -- the digest's lowest-priority bucket, described to
+  // the model as "everything else worth a glance". A worksheet that would not
+  // parse is not a glance.
+  "ai_unparseable", "tutor_telemetry",
+  "other"
+]);
 const ISSUE_LABELS = {
   login_failed: "Login failed",
   api_key: "API key / AI not working",
   math_feedback: "Math tool: “didn't work”",
   extension_error: "Extension error",
+  ai_unparseable: "AI reply could not be read",
+  tutor_telemetry: "Tutor voice telemetry",
   other: "Other"
 };
+// An unrecognised type FROM THE EXTENSION is an extension error, not "other".
+// New instrumentation should surface loudly by default; requiring a portal
+// deploy to stop a signal being filed as noise is how ai_unparseable went
+// unnoticed for ten occurrences.
+function issueTypeFor(rawType, source) {
+  const type = String(rawType || "");
+  if (ISSUE_TYPES.has(type)) return type;
+  return source === "extension" ? "extension_error" : "other";
+}
+
+// The report endpoint cannot require auth (login failures happen before a token
+// exists), which left it open: 500 posts evict every real signal, since the
+// store is a 500-entry unshift. A per-reporter ceiling keeps a stuck client --
+// or someone poking the endpoint -- from flushing the error history that
+// alerting will depend on.
+const ISSUE_REPORT_WINDOW_MS = 60 * 1000;
+const ISSUE_REPORT_MAX = 20;
+const issueReportHits = new Map();
+function takeIssueReportSlot(key) {
+  const now = Date.now();
+  const hits = (issueReportHits.get(key) || []).filter((t) => now - t < ISSUE_REPORT_WINDOW_MS);
+  if (hits.length >= ISSUE_REPORT_MAX) { issueReportHits.set(key, hits); return false; }
+  hits.push(now);
+  issueReportHits.set(key, hits);
+  if (issueReportHits.size > 5000) issueReportHits.clear();   // unbounded-growth guard
+  return true;
+}
 
 app.post("/api/issues/report", (req, res) => {
   const body = req.body || {};
-  const type = ISSUE_TYPES.has(String(body.type)) ? String(body.type) : "other";
+  const auth = authFromRequest(req);
+  const email = normalizeEmail(body.email || "");
+  const reporter = auth?.email || email || req.ip || "anon";
+  if (!takeIssueReportSlot(reporter)) {
+    // Accepted-and-dropped, not 429: a client in a crash loop should not get a
+    // new error to report about its error reporting.
+    return res.json({ ok: true, throttled: true });
+  }
+  const source = String(body.source || "extension").slice(0, 40);
+  const type = issueTypeFor(body.type, source);
   // 4000: an ai_unparseable sample is useless truncated -- the JSON parse
   // error is rarely in the first few hundred characters.
   const detail = String(body.detail || "").slice(0, 4000);
-  const email = normalizeEmail(body.email || "");
-  const auth = authFromRequest(req);
   mutateDb((db) => {
     db.issues = db.issues || [];
     db.issues.unshift({
@@ -4372,8 +4416,12 @@ app.post("/api/issues/report", (req, res) => {
       label: ISSUE_LABELS[type],
       detail,
       email: email || auth?.email || "",
-      source: String(body.source || "extension").slice(0, 40),
+      source,
       context: (body.context && typeof body.context === "object") ? body.context : {},
+      // Promoted out of context so the admin table and the digest can group by
+      // it without reaching into a free-form object. "" for a client too old to
+      // send one, which is itself the answer to "is anyone still on 1.3.0?".
+      version: String((body.context && body.context.version) || "").slice(0, 20),
       status: "open",
       createdAt: nowIso()
     });
