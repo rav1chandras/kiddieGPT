@@ -10686,6 +10686,7 @@ body[data-page="admin"] .ai-tool-bands {
   display: grid; gap: 7px; margin-top: 2px; padding-top: 11px; border-top: 1px dashed #dfe8e2;
 }
 body[data-page="admin"] .ai-bands-note { color: #8a98a4; font-size: .66rem; line-height: 1.35; margin: -3px 0 2px; }
+body[data-page="admin"] .ai-group-hint { color: #7d8d98; font-size: .72rem; line-height: 1.4; font-weight: 600; margin: 4px 0 0; }
 /* Label above input, not beside it. The 44px label column left ~37px for the
    number once the card narrowed to a fifth of the row. */
 body[data-page="admin"] .ai-tool-bands .word-target-row span {

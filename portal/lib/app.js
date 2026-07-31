@@ -58,21 +58,25 @@ const AI_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS || 5000);
 // were the same constant, which is why the console refused to accept anything
 // over the default.
 const HARD_MAX_OUTPUT_TOKENS = 10000;
-// Transcribing a multi-problem worksheet needs a bigger reply than a chat turn.
-// This is per-TOOL on purpose: raising the global ceiling would multiply across
-// the ~30 solve/check calls one worksheet makes and blow the account cap in a
-// single run, whereas transcription is one call.
-const AI_MAX_OUTPUT_TOKENS_LONG = Number(process.env.AI_MAX_OUTPUT_TOKENS_LONG || 8000);
-const LONG_OUTPUT_TOOLS = new Set(["transcribe", "transcription"]);
+// Default reply-length cap for any tool WITHOUT its own per-tool card. It has to
+// be safe for the most demanding uncarded tool — worksheet transcription, which
+// lists up to 15 problems in one reply — so it ships at 8000, not the 5000 a
+// chat turn needs. Carded tools (mission/math/write/explain/tutor) override this.
+const AI_DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS_LONG || process.env.AI_DEFAULT_MAX_OUTPUT_TOKENS || 8000);
 function maxOutputTokensForTool(tool, settings) {
-  const long = LONG_OUTPUT_TOOLS.has(String(tool || "").trim().toLowerCase());
-  const configured = long
-    ? settings?.maxOutputTokensLong ?? AI_MAX_OUTPUT_TOKENS_LONG
-    : settings?.maxOutputTokens ?? AI_MAX_OUTPUT_TOKENS;
-  // Clamp to the hard ceiling, not to the configured default -- otherwise an
-  // admin could never raise the value above whatever ships as the default.
-  const ceiling = HARD_MAX_OUTPUT_TOKENS;
-  return Math.min(Math.max(1, Number(configured) || (long ? AI_MAX_OUTPUT_TOKENS_LONG : AI_MAX_OUTPUT_TOKENS)), ceiling);
+  const key = String(tool || "").trim().toLowerCase();
+  // Per-tool is the source of truth: each tool that has a limit card carries its
+  // own reply-length cap in toolLimits. A study-pack tool can run longer than a
+  // chat turn without raising the ceiling for every other tool.
+  const perTool = Number(settings?.toolLimits?.[key]?.maxOutputTokens);
+  if (Number.isFinite(perTool) && perTool > 0) {
+    return Math.min(Math.max(1, perTool), HARD_MAX_OUTPUT_TOKENS);
+  }
+  // Every tool without a card (pdf, read, transcribe, ...) shares this one
+  // configurable global default.
+  const globalDefault = Number(settings?.defaultMaxOutputTokens);
+  const fallback = Number.isFinite(globalDefault) && globalDefault > 0 ? globalDefault : AI_DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.max(1, fallback), HARD_MAX_OUTPUT_TOKENS);
 }
 // OpenAI's TTS endpoint rejects >4096 characters, so stay just under it.
 const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
@@ -82,7 +86,7 @@ const TTS_MAX_INPUT_CHARS = Number(process.env.TTS_MAX_INPUT_CHARS || 4000);
 // Admin settings and env can only tune BELOW this — there is deliberately no
 // "unlimited" state, because the previous `0 = unlimited` convention meant an
 // operator typing 0 to mean "allow nothing" silently got "allow everything".
-const HARD_FAMILY_TOKENS_DAILY = 200000;
+const HARD_FAMILY_TOKENS_DAILY = 900000;
 // Largest single request we will forward, estimated before the call. This is
 // the defense that does not depend on parsing the payload: a 300-page PDF and a
 // 300-page anything-else are both rejected on estimated size alone.
@@ -117,30 +121,30 @@ const AI_ABUSE_PAUSE_THRESHOLD = Number(process.env.AI_ABUSE_PAUSE_THRESHOLD || 
 // extension's own hardcoded ceilings, so the effective limit is always
 // min(extension ceiling, admin value) no matter which side is consulted.
 const TOOL_LIMIT_CEILINGS = {
-  mission: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
-  math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, pdfPages: 10, problems: 20, reconsiderAttempts: 5 },
-  write:   { inputChars: 10000 },
-  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
-  tutor:   { readChars: 30000, sourceChars: 24000 }
+  mission: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
+  math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, pdfPages: 10, problems: 20, reconsiderAttempts: 5, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
+  write:   { inputChars: 10000, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
+  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
+  tutor:   { readChars: 30000, sourceChars: 24000, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS }
 };
 // Shipped defaults: today's behaviour, except where it was plainly wrong.
 // `write.inputChars` moves 900 -> 4000 because 900 characters is roughly 150
 // words, which is not an essay.
 const TOOL_LIMIT_DEFAULTS = {
-  mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
-  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3 },
-  write:   { inputChars: 4000 },
-  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-  tutor:   { readChars: 30000, sourceChars: 24000 }
+  mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10, maxOutputTokens: 5000 },
+  math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3, maxOutputTokens: 5000 },
+  write:   { inputChars: 4000, maxOutputTokens: 5000 },
+  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10, maxOutputTokens: 5000 },
+  tutor:   { readChars: 30000, sourceChars: 24000, maxOutputTokens: 5000 }
 };
 // Below these a tool stops working rather than merely being strict, so they are
 // floors rather than advisory minimums.
 const TOOL_LIMIT_FLOORS = {
-  mission: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
-  math:    { pasteChars: 80, fileBytes: 64 * 1024, pdfPages: 1, problems: 1, reconsiderAttempts: 0 },
-  write:   { inputChars: 100 },
-  explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
-  tutor:   { readChars: 500, sourceChars: 500 }
+  mission: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3, maxOutputTokens: 500 },
+  math:    { pasteChars: 80, fileBytes: 64 * 1024, pdfPages: 1, problems: 1, reconsiderAttempts: 0, maxOutputTokens: 500 },
+  write:   { inputChars: 100, maxOutputTokens: 500 },
+  explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0, maxOutputTokens: 500 },
+  tutor:   { readChars: 500, sourceChars: 500, maxOutputTokens: 500 }
 };
 
 function normaliseToolLimits(input = {}) {
@@ -539,8 +543,10 @@ function defaultAiSettings() {
     // Per-request bounds (see the "Cost ceilings" block for the rationale).
     maxTokensPerRequest: AI_MAX_TOKENS_PER_REQUEST,
     maxFileBytes: AI_MAX_FILE_BYTES,
-    maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
-    maxOutputTokensLong: AI_MAX_OUTPUT_TOKENS_LONG,
+    // Reply-length caps live per-tool in toolLimits.maxOutputTokens. Any tool
+    // WITHOUT its own card (pdf, read, transcribe, ...) uses this one global
+    // default instead.
+    defaultMaxOutputTokens: AI_DEFAULT_MAX_OUTPUT_TOKENS,
     // Velocity + containment.
     requestsPerFamilyMinute: AI_RATE_MAX,
     abusePauseThreshold: AI_ABUSE_PAUSE_THRESHOLD,
@@ -589,13 +595,11 @@ function normaliseAiSettings(settings = {}) {
       AI_MAX_FILE_BYTES,
       Math.max(0, Number(settings.maxFileBytes ?? defaults.maxFileBytes) || defaults.maxFileBytes)
     ),
-    maxOutputTokens: Math.min(
+    // Floored at 1, capped at the hard ceiling: this is the reply-length cap for
+    // every uncarded tool, so a stray 0 must not silently mute those tools.
+    defaultMaxOutputTokens: Math.min(
       HARD_MAX_OUTPUT_TOKENS,
-      Math.max(1, Number(settings.maxOutputTokens ?? defaults.maxOutputTokens) || defaults.maxOutputTokens)
-    ),
-    maxOutputTokensLong: Math.min(
-      HARD_MAX_OUTPUT_TOKENS,
-      Math.max(1, Number(settings.maxOutputTokensLong ?? defaults.maxOutputTokensLong) || defaults.maxOutputTokensLong)
+      Math.max(1, Number(settings.defaultMaxOutputTokens ?? defaults.defaultMaxOutputTokens) || defaults.defaultMaxOutputTokens)
     ),
     requestsPerFamilyMinute: Math.max(0, Number(settings.requestsPerFamilyMinute ?? defaults.requestsPerFamilyMinute) || 0),
     abusePauseThreshold: Math.max(0, Number(settings.abusePauseThreshold ?? defaults.abusePauseThreshold) || 0),
@@ -641,8 +645,7 @@ function safeAiSettings(settings = {}) {
     tokensPerFamilyDaily: normalised.tokensPerFamilyDaily,
     maxTokensPerRequest: normalised.maxTokensPerRequest,
     maxFileBytes: normalised.maxFileBytes,
-    maxOutputTokens: normalised.maxOutputTokens,
-    maxOutputTokensLong: normalised.maxOutputTokensLong,
+    defaultMaxOutputTokens: normalised.defaultMaxOutputTokens,
     requestsPerFamilyMinute: normalised.requestsPerFamilyMinute,
     abusePauseThreshold: normalised.abusePauseThreshold,
     toolLimits: normalised.toolLimits,
@@ -3819,11 +3822,8 @@ app.put("/api/admin/ai-settings", requireAdmin, (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, "maxFileBytes")) {
       next.maxFileBytes = Math.min(AI_MAX_FILE_BYTES, Math.max(0, Number(body.maxFileBytes) || AI_MAX_FILE_BYTES));
     }
-    if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokens")) {
-      next.maxOutputTokens = Math.min(HARD_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokens) || AI_MAX_OUTPUT_TOKENS));
-    }
-    if (Object.prototype.hasOwnProperty.call(body, "maxOutputTokensLong")) {
-      next.maxOutputTokensLong = Math.min(HARD_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.maxOutputTokensLong) || AI_MAX_OUTPUT_TOKENS_LONG));
+    if (Object.prototype.hasOwnProperty.call(body, "defaultMaxOutputTokens")) {
+      next.defaultMaxOutputTokens = Math.min(HARD_MAX_OUTPUT_TOKENS, Math.max(1, Number(body.defaultMaxOutputTokens) || AI_DEFAULT_MAX_OUTPUT_TOKENS));
     }
     if (Object.prototype.hasOwnProperty.call(body, "requestsPerFamilyMinute")) {
       next.requestsPerFamilyMinute = Math.max(0, Number(body.requestsPerFamilyMinute) || 0);

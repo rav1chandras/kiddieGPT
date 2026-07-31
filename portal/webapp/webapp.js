@@ -5501,33 +5501,32 @@
         tokensPerFamilyDaily: 200000,
         maxTokensPerRequest: 40000,
         maxFileBytes: 4 * 1024 * 1024,
-        maxOutputTokens: 5000,
-        maxOutputTokensLong: 8000,
+        defaultMaxOutputTokens: 8000,
         requestsPerFamilyMinute: 40,
         abusePauseThreshold: 25,
         // Mirrors the server so the section still renders before the settings
         // fetch resolves. The server's values overwrite these on arrival, and
         // the server clamps whatever is saved regardless of what is shown here.
         toolLimits: {
-          mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
-          math: { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3 },
-          write: { inputChars: 4000 },
-          explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-          tutor: { readChars: 30000, sourceChars: 24000 }
+          mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10, maxOutputTokens: 5000 },
+          math: { pasteChars: 900, fileBytes: 4 * 1024 * 1024, problems: 15, reconsiderAttempts: 3, maxOutputTokens: 5000 },
+          write: { inputChars: 4000, maxOutputTokens: 5000 },
+          explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10, maxOutputTokens: 5000 },
+          tutor: { readChars: 30000, sourceChars: 24000, maxOutputTokens: 5000 }
         },
         toolLimitCeilings: {
-          mission: { fileBytes: 5 * 1024 * 1024, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12 },
-          math: { pasteChars: 2000, fileBytes: 5 * 1024 * 1024, problems: 20, reconsiderAttempts: 5 },
-          write: { inputChars: 10000 },
-          explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25 },
-          tutor: { readChars: 30000, sourceChars: 24000 }
+          mission: { fileBytes: 5 * 1024 * 1024, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12, maxOutputTokens: 10000 },
+          math: { pasteChars: 2000, fileBytes: 5 * 1024 * 1024, problems: 20, reconsiderAttempts: 5, maxOutputTokens: 10000 },
+          write: { inputChars: 10000, maxOutputTokens: 10000 },
+          explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25, maxOutputTokens: 10000 },
+          tutor: { readChars: 30000, sourceChars: 24000, maxOutputTokens: 10000 }
         },
         toolLimitFloors: {
-          mission: { fileBytes: 65536, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3 },
-          math: { pasteChars: 80, fileBytes: 65536, problems: 1, reconsiderAttempts: 0 },
-          write: { inputChars: 100 },
-          explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0 },
-          tutor: { readChars: 500, sourceChars: 500 }
+          mission: { fileBytes: 65536, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3, maxOutputTokens: 500 },
+          math: { pasteChars: 80, fileBytes: 65536, problems: 1, reconsiderAttempts: 0, maxOutputTokens: 500 },
+          write: { inputChars: 100, maxOutputTokens: 500 },
+          explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0, maxOutputTokens: 500 },
+          tutor: { readChars: 500, sourceChars: 500, maxOutputTokens: 500 }
         },
         tutorVoiceEnabled: true,
         ttsModel: "gpt-4o-mini-tts",
@@ -5600,6 +5599,7 @@
       followupsPerSession: { label: "Follow-ups per session" },
       readChars:           { label: "Read-aloud source (chars)" },
       sourceChars:         { label: "Lesson source text (chars)" },
+      maxOutputTokens:     { label: "Max output tokens" },
     };
 
 
@@ -5740,15 +5740,12 @@
           if (uploadCeil) aiSettingsForm.elements.maxUploadMb.max = String(Math.round(uploadCeil / (1024 * 1024) * 10) / 10);
           aiSettingsForm.elements.maxUploadMb.value = (Number(settings.maxFileBytes || 4194304) / (1024 * 1024)).toFixed(1);
         }
-        // Drive both maxima from the server's hard ceiling. Hardcoding them in
-        // markup is what made the field refuse values above the old default.
-        var outCeil = Number(settings.hardMaxOutputTokens) || 10000;
-        ["maxOutputTokens", "maxOutputTokensLong"].forEach(function (name) {
-          var el = aiSettingsForm.elements[name];
-          if (el) el.max = String(outCeil);
-        });
-        if (aiSettingsForm.elements.maxOutputTokens) aiSettingsForm.elements.maxOutputTokens.value = Number(settings.maxOutputTokens || 5000);
-        if (aiSettingsForm.elements.maxOutputTokensLong) aiSettingsForm.elements.maxOutputTokensLong.value = Number(settings.maxOutputTokensLong || 8000);
+        // One global default for tools without their own card; per-tool "Max
+        // reply tokens" on the cards below override it.
+        if (aiSettingsForm.elements.defaultMaxOutputTokens) {
+          aiSettingsForm.elements.defaultMaxOutputTokens.max = String(Number(settings.hardMaxOutputTokens) || 10000);
+          aiSettingsForm.elements.defaultMaxOutputTokens.value = Number(settings.defaultMaxOutputTokens || 8000);
+        }
         if (aiSettingsForm.elements.requestsPerFamilyMinute) aiSettingsForm.elements.requestsPerFamilyMinute.value = Number(settings.requestsPerFamilyMinute || 0);
         if (aiSettingsForm.elements.abusePauseThreshold) aiSettingsForm.elements.abusePauseThreshold.value = Number(settings.abusePauseThreshold || 0);
         aiSettingsForm.elements.tutorVoiceEnabled.checked = settings.tutorVoiceEnabled !== false;
@@ -5796,8 +5793,7 @@
             tokensPerFamilyDaily: aiSettingsForm.elements.tokensPerFamilyDaily ? Number(aiSettingsForm.elements.tokensPerFamilyDaily.value || 0) : undefined,
             maxTokensPerRequest: aiSettingsForm.elements.maxTokensPerRequest ? Number(aiSettingsForm.elements.maxTokensPerRequest.value || 0) : undefined,
             maxFileBytes: aiSettingsForm.elements.maxUploadMb ? Math.round(Number(aiSettingsForm.elements.maxUploadMb.value || 0) * 1024 * 1024) : undefined,
-            maxOutputTokens: aiSettingsForm.elements.maxOutputTokens ? Number(aiSettingsForm.elements.maxOutputTokens.value || 0) : undefined,
-            maxOutputTokensLong: aiSettingsForm.elements.maxOutputTokensLong ? Number(aiSettingsForm.elements.maxOutputTokensLong.value || 0) : undefined,
+            defaultMaxOutputTokens: aiSettingsForm.elements.defaultMaxOutputTokens ? Number(aiSettingsForm.elements.defaultMaxOutputTokens.value || 0) : undefined,
             requestsPerFamilyMinute: aiSettingsForm.elements.requestsPerFamilyMinute ? Number(aiSettingsForm.elements.requestsPerFamilyMinute.value || 0) : undefined,
             abusePauseThreshold: aiSettingsForm.elements.abusePauseThreshold ? Number(aiSettingsForm.elements.abusePauseThreshold.value || 0) : undefined,
             toolLimits: collectToolLimits(),
