@@ -3449,6 +3449,15 @@ function renderMathSolution() {
     }
   }
   if (continueSteps) continueSteps.hidden = true;
+  // Dim + disable the solution area only while the problem ON SCREEN is the one
+  // being worked. The arrows sit outside this layout and stay live, so without
+  // the index check a student who navigates away mid-correction lands on a
+  // perfectly good solution they cannot read or interact with.
+  const layout = document.querySelector("#mathPanel .math-solution-layout");
+  if (layout && !document.getElementById("mathThinking")?.hidden) {
+    layout.classList.toggle("is-thinking",
+      mathThinkingIndex === null || mathThinkingIndex === mathSolveState.index);
+  }
   if (prev) prev.disabled = mathSolveState.index === 0;
   if (next) next.disabled = mathSolveState.index === problems.length - 1;
 }
@@ -4343,6 +4352,12 @@ const mathTipBank = {
 };
 let mathThinkingTimer = 0;
 let mathThinkingTipIndex = 0;
+// Which problem the thinking overlay belongs to, or null when it covers the
+// whole panel (transcription, the first solve). `.is-thinking` dims the solution
+// layout and makes it inert, which is right for the problem being replaced and
+// wrong for the others — without this, a student who navigates away during a
+// Reconsider gets a ghosted, unclickable panel for a problem that is not busy.
+let mathThinkingIndex = null;
 let mathActiveTips = mathTipBank.general.slice();
 
 function mathTopicHint(problems) {
@@ -4369,6 +4384,9 @@ function startMathThinking(stageText, options = {}) {
   const panel = document.getElementById("mathThinking");
   const layout = document.querySelector("#mathPanel .math-solution-layout");
   const tip = document.getElementById("mathThinkingTip");
+  // Scoped to one problem when the caller says so (a correction), panel-wide
+  // otherwise (transcription, first solve — there is nothing else to look at).
+  mathThinkingIndex = Number.isInteger(options.problemIndex) ? options.problemIndex : null;
   if (panel) panel.hidden = false;
   if (layout) layout.classList.add("is-thinking");
   updateMathThinkingStage(stageText);
@@ -4410,6 +4428,7 @@ function refreshMathThinkingTips(options) {
 function stopMathThinking() {
   clearInterval(mathThinkingTimer);
   mathThinkingTimer = 0;
+  mathThinkingIndex = null;
   const panel = document.getElementById("mathThinking");
   const layout = document.querySelector("#mathPanel .math-solution-layout");
   if (panel) panel.hidden = true;
@@ -4918,7 +4937,7 @@ async function correctMathProblem() {
   const visualParts = getMathVisionParts(transcribed || current);
   mathVisionEscalation = false;
   setMathCorrectStatus("Re-reading your problem with this correction...", "blue");
-  startMathThinking("Re-reading your problem with your correction…", { gradeBand, hint: mathTopicHint(current) });
+  startMathThinking("Re-reading your problem with your correction…", { gradeBand, hint: mathTopicHint(current), problemIndex: index });
   try {
     const correctionNote = `The student selected this correction request: "${note}" Apply it to the problem below and solve ONLY this one problem again. Re-read the original source carefully, preserve every visible number, symbol, label, and choice, and return a problems array with exactly this one corrected problem.`;
     const rawResult = await solveMathOnce({ settings, parts: visualParts, sourceText: baseSource, gradeBand, disputeNote: correctionNote, advanced });
