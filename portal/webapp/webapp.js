@@ -4049,6 +4049,8 @@
         panel.classList.toggle("active", panel.dataset.adminPanel === name);
       });
       title.textContent = labels[name] || name.charAt(0).toUpperCase() + name.slice(1).replace("-", " ");
+      // Remember the screen so a refresh stays put instead of snapping to Command.
+      if (labels[name]) { try { localStorage.setItem("kiddiegptAdminView", name); } catch (e) {} }
       if (name === "support") loadSupportConversations();
       if (name === "logs") loadLogDigest();
       if (name === "email-studio") loadEmailStudio();
@@ -4936,17 +4938,14 @@
           next.loginType = "Parent";
           changed = true;
         }
-        if (!next.lastLoginAt) {
-          next.lastLoginAt = new Date(Date.now() - (index + 1) * 3600000 - daysSinceActivity(next) * 86400000).toISOString();
-          changed = true;
-        }
-        if (!next.lastExtensionUseAt) {
-          next.lastExtensionUseAt = new Date(Date.now() - daysSinceActivity(next) * 86400000 - (index + 1) * 1800000).toISOString();
-          changed = true;
-        }
+        // Do NOT invent lastLoginAt / lastExtensionUseAt. Fabricating them made
+        // the Usage tab show a "last used" time for accounts that never used the
+        // extension, and (via the old push) wrote fake usage onto the server.
         return next;
       });
-      if (changed) writeFamilies(normalised);
+      // Local display cache only — never pushed to the server (see the read-only
+      // POST /api/admin/state). Server owns family data.
+      if (changed) { familiesCache = normalised.slice(); localStorage.setItem(STORAGE_KEY, JSON.stringify(normalised)); }
       return normalised;
     }
 
@@ -6971,6 +6970,13 @@
         setAdminView(button.dataset.adminView);
       });
     });
+    // Restore the last screen so a refresh keeps you where you were.
+    try {
+      var savedAdminView = localStorage.getItem("kiddiegptAdminView");
+      if (savedAdminView && navButtons.some(function (b) { return b.dataset.adminView === savedAdminView; })) {
+        setAdminView(savedAdminView);
+      }
+    } catch (e) {}
 
     aiSectionTabs.forEach(function (button) {
       button.addEventListener("click", function () {

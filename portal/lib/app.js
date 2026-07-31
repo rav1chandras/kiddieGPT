@@ -3728,14 +3728,13 @@ app.post("/api/admin/abuse-alerts/dismiss", requireAdmin, (req, res) => {
 });
 
 app.post("/api/admin/state", requireAdmin, (req, res) => {
-  const { families, pricing } = req.body || {};
-  const updated = mutateDb((db) => {
-    if (Array.isArray(families)) db.families = families.map(normaliseFamily);
-    if (pricing) db.pricing = pricing;
-    audit(db, "admin.state.save", { families: db.families.length });
-    return { families: db.families, pricing: db.pricing };
-  });
-  res.json(updated);
+  // Families are SERVER-AUTHORITATIVE — populated by signups, checkouts, the
+  // lifecycle sweep, and dedicated admin endpoints (trials, subscription-action,
+  // billing-exception, ...). A stale admin tab used to POST its whole cached
+  // families array here and silently overwrite/revert server data — including
+  // real customer accounts. This endpoint no longer accepts a families push.
+  const db = readDb();
+  res.json({ families: db.families, pricing: db.pricing });
 });
 
 app.get("/api/pricing", (req, res) => {
