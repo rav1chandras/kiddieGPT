@@ -6264,7 +6264,12 @@ function parseOpenAIJson(text) {
     : "prose, not JSON";
   console.warn("Unparseable AI response", { shape, length: sample.length, head: sample.slice(0, 300) });
   reportIssue("ai_unparseable", shape + " | len=" + sample.length + " | " + sample.slice(0, 300));
-  throw new Error("OpenAI returned text, but not a study-pack JSON object.");
+  // Student-facing: no vendor name, no "JSON". It must also NOT blame the photo
+  // — by the time we get here the tutor has usually read the page correctly and
+  // the reply was mangled on the way back, so "take a clearer picture" sends the
+  // student off to fix something that is not broken. The shape/length/sample
+  // needed to debug it goes to reportIssue above, not to the child.
+  throw new Error("KiddieGPT couldn't understand the reply that came back. Try again.");
 }
 
 function normalizeStudyPack(pack) {
