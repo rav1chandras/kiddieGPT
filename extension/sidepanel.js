@@ -828,6 +828,9 @@ function showPanel(name) {
   }
   if (panelName === "settings") { renderChildSelect(); renderVoiceSelect(); renderParentPinArea(); renderAuthButton(); }
   if (panelName === "dashboard") renderStars();
+  // Ask the tab what it is each time Explain opens, so the card matches the tab
+  // the student is actually looking at rather than the one they opened it on.
+  if (panelName === "screenshot") refreshExplainTabKind();
   if (panelName !== "math") stopPhoneCapture(); // don't keep polling off-screen
 
   currentView = panelName;
@@ -2741,6 +2744,10 @@ function activeTabIsBlocked() {
 function activeTabIssueMessage(reason) {
   if (reason === "blocked") return "KiddieGPT only helps with schoolwork, so it won't read this page. Open a learning page and try again.";
   if (reason === "noselection") return "Highlight some text on the page first, then press Explain — or tap the card to explain the whole page.";
+  // Two different PDFs, two different remedies. With a text layer the student
+  // can just highlight; without one nothing on the page is reachable, so the
+  // only honest answer is still download-and-upload.
+  if (reason === "pdfselect") return "Highlight the part of the PDF you want explained, then press Explain. Whole-page reading doesn't work on PDFs.";
   if (reason === "pdf") return "This tab is a PDF. Download it, then add it as a Local file so KiddieGPT can read it properly.";
   if (reason === "empty") return "KiddieGPT couldn't find readable text on this tab. Open a page with an article or story, or add a Local file.";
   return "KiddieGPT can't read this tab. Open a normal web page, or add a Local file.";
@@ -2769,9 +2776,15 @@ function getActiveTabContext(opts = {}) {
         resolve({ title: "", url: "", text: "", usable: false, reason: "blocked" });
         return;
       }
-      if (/\.pdf($|[?#])/i.test(url) || /^file:/i.test(url)) {
-        // Browser-rendered PDF or a local file page: the DOM has no readable text.
-        resolve({ title: tab.title || "PDF", url, text: "", usable: false, reason: /\.pdf($|[?#])/i.test(url) ? "pdf" : "restricted" });
+      // file: still returns early — injecting there needs "Allow access to file
+      // URLs", which is off by default, so it would fail anyway.
+      //
+      // .pdf no longer does. Refusing on the URL string meant never looking at
+      // the page, so a highlighted passage in a PDF was discarded unread. It was
+      // also inconsistent: the regex only matches URLs ENDING in .pdf, so a PDF
+      // served from /download?id=123 already skipped this and got injected.
+      if (/^file:/i.test(url)) {
+        resolve({ title: tab.title || "Local file", url, text: "", usable: false, reason: "restricted" });
         return;
       }
       extensionApi.scripting.executeScript({
@@ -2790,7 +2803,15 @@ function getActiveTabContext(opts = {}) {
             .replace(/[ \t]+/g, " ")
             .replace(/\n{2,}/g, "\n")
             .trim();
-          return { title: document.title, url: location.href, selection, text: text.slice(0, 40000), isPdf };
+          // "PDF" is two different things. A web viewer (PDF.js and similar) puts
+          // real text in the DOM, so getSelection() works. Chrome's built-in
+          // viewer renders inside a plugin whose text never reaches this
+          // document, so a student's highlight is invisible here however hard
+          // they select. Reporting the text layer lets the UI offer the
+          // selection path only where it can actually succeed, instead of
+          // showing a control that silently never works.
+          const hasTextLayer = text.length > 200;
+          return { title: document.title, url: location.href, selection, text: text.slice(0, 40000), isPdf, hasTextLayer };
         }
       }, results => {
         if (extensionApi.runtime.lastError || !results?.[0]?.result) {
@@ -2806,13 +2827,22 @@ function getActiveTabContext(opts = {}) {
         // sentence is not sliced mid-token.
         const best = trimToWords(raw, toolLimit("mission", "pageWords"));
         const minLen = opts.mode === "selection" ? 1 : 40;
-        const usable = !result.isPdf && best.trim().length >= minLen;
+        const hasSelection = (result.selection || "").trim().length > 0;
+        // A selection is readable text the student chose. It is worth explaining
+        // whether or not the page around it is a PDF -- the old rule threw it
+        // away purely because of the container it came from.
+        const usable = best.trim().length >= minLen && (!result.isPdf || hasSelection);
+        const pdfReason = result.hasTextLayer ? "pdfselect" : "pdf";
         resolve({
           title: result.title || tab.title || "Active tab",
           url: result.url || url,
           text: best,
           usable,
-          reason: result.isPdf ? "pdf" : (usable ? "" : (opts.mode === "selection" ? "noselection" : "empty"))
+          isPdf: !!result.isPdf,
+          hasTextLayer: !!result.hasTextLayer,
+          reason: usable ? ""
+            : result.isPdf ? pdfReason
+            : (opts.mode === "selection" ? "noselection" : "empty")
         });
       });
     });
@@ -5307,11 +5337,28 @@ function updateExplainSourceMode() {
 // the student highlights text on the tab and Explain reads only that highlight.
 let explainPageSelect = false;
 
+// What the active tab turned out to be, refreshed when the Explain tool opens.
+// Defaults are the "ordinary web page" case, so a probe that never runs or
+// fails leaves the card exactly as it behaved before.
+let explainTab = { isPdf: false, hasTextLayer: false };
+
 function renderExplainPageBox() {
   const box = document.getElementById("explainPageBox");
   if (!box) return;
+  // On a PDF there is no page text to read, so whole-page is not on offer and
+  // the card does not pretend otherwise. Selecting still works when the viewer
+  // exposes a text layer, which is the common case for web-based viewers.
+  const pdfSelectOnly = explainTab.isPdf && explainTab.hasTextLayer;
+  if (pdfSelectOnly) explainPageSelect = true;
   box.classList.toggle("selecting", explainPageSelect);
-  box.innerHTML = explainPageSelect
+  box.innerHTML = pdfSelectOnly
+    ? `<span class="math-capture-icon">✎</span>
+       <div>
+         <b class="explain-page-title">Highlight text to explain</b>
+         <small class="explain-page-sub">Select it in the PDF, then press Explain.</small>
+         <div class="explain-page-action"><span class="explain-page-hint">Whole-page reading isn't available on PDFs.</span></div>
+       </div>`
+    : explainPageSelect
     ? `<span class="math-capture-icon">✎</span>
        <div>
          <b class="explain-page-title">Highlight text to explain</b>
@@ -5324,6 +5371,15 @@ function renderExplainPageBox() {
          <small class="explain-page-sub">Reads the main text on this page.</small>
          <div class="explain-page-action"><span class="explain-page-hint">Just need a section?</span><button type="button" class="explain-select-btn" data-explain-select="on">Select text</button></div>
        </div>`;
+}
+
+
+async function refreshExplainTabKind() {
+  try {
+    const info = await readActiveTab({ mode: "page" });
+    explainTab = { isPdf: !!info.isPdf, hasTextLayer: !!info.hasTextLayer };
+  } catch { explainTab = { isPdf: false, hasTextLayer: false }; }
+  renderExplainPageBox();
 }
 
 function initMathTool() {
