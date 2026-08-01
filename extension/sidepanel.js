@@ -4526,7 +4526,16 @@ const MATH_TIPS_RETRY = [
   "If it keeps happening, try one problem at a time."
 ];
 
-function showMathNotice(title, message, tips = MATH_TIPS_UNREADABLE) {
+// An inactive plan is not a failed read. It has one remedy, a grown-up has to
+// perform it, and no amount of re-photographing helps — so it gets its own
+// notice with the action attached instead of three tips about picture quality.
+const MATH_TIPS_SUBSCRIBE = [
+  "Step-by-step help on every problem, at your grade level.",
+  "Photograph a worksheet and work through it one problem at a time.",
+  "Read-aloud lessons and study packs for any page."
+];
+
+function showMathNotice(title, message, tips = MATH_TIPS_UNREADABLE, options = {}) {
   const notice = document.getElementById("mathNotice");
   const top = document.querySelector("#mathPanel .math-solution-top");
   const layout = document.querySelector("#mathPanel .math-solution-layout");
@@ -4536,14 +4545,33 @@ function showMathNotice(title, message, tips = MATH_TIPS_UNREADABLE) {
   if (intro) { intro.hidden = true; intro.innerHTML = ""; }
   if (!notice) return;
   notice.hidden = false;
+  const action = options.action;
   notice.innerHTML = `
-    <div class="math-notice-icon">?</div>
+    <div class="math-notice-icon${options.iconTone ? " " + options.iconTone : ""}">${escapeHtml(options.icon || "?")}</div>
     <h3>${escapeHtml(title)}</h3>
     <p>${escapeHtml(message)}</p>
-    <ul class="math-notice-tips">
+    <ul class="math-notice-tips${options.tipsTone ? " " + options.tipsTone : ""}">
       ${tips.map(tip => `<li>${escapeHtml(tip)}</li>`).join("")}
     </ul>
+    ${action ? `<a class="math-notice-cta" href="${escapeHtml(action.href)}" target="_blank" rel="noopener">${escapeHtml(action.label)}</a>
+      ${action.note ? `<small class="math-notice-note">${escapeHtml(action.note)}</small>` : ""}` : ""}
   `;
+}
+
+// Reached from every math entry point, so the one screen a parent has to act on
+// reads the same however the student got there.
+function showMathSubscribeNotice() {
+  showMathNotice(
+    "Unlock the math tutor",
+    "This account doesn't have an active KiddieGPT plan yet. A grown-up can start one in the parent portal.",
+    MATH_TIPS_SUBSCRIBE,
+    {
+      icon: "★",
+      iconTone: "is-promo",
+      tipsTone: "is-promo",
+      action: { label: "Open parent portal", href: portalBaseUrl(), note: "Opens in a new tab" }
+    }
+  );
 }
 
 function hideMathNotice() {
@@ -4804,6 +4832,10 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
     }
   } catch (error) {
     console.warn("Solve problem failed", error);
+    // A plan that lapses mid-worksheet would otherwise land as "Couldn't solve
+    // this one" with a retry button that cannot possibly succeed. Send it to the
+    // one screen that carries the remedy instead.
+    if (error?.code === "subscription_inactive") { stopMathThinking(); showMathSubscribeNotice(); return; }
     placeholder.status = "error";
     placeholder.error = friendlyError(error);
   }
@@ -4922,6 +4954,7 @@ async function solveMathWithAI() {
     stopMathThinking();
     resetButton();
     // Surface the real reason (auth/key/network) instead of only "blurry image".
+    if (error?.code === "subscription_inactive") { showMathSubscribeNotice(); return; }
     const reason = friendlyError(error);
     const generic = "KiddieGPT had trouble reading the image. Try a clearer screenshot of just the problem, then press Give Me Nudge again.";
     // A mangled reply is not a bad photo, and it does not get the photo title

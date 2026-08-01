@@ -614,6 +614,19 @@ body{background:#f6f8f5}
     .math-notice h3{font-size:18px;color:#0b2d43}
     .math-notice p{font-size:13px;line-height:1.5;color:#60747d;max-width:340px;margin:0}
     .math-notice-tips{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:7px;text-align:left}
+    /* Subscription promo. Same notice skeleton, different intent: the icon reads
+       as an offer rather than a fault, the bullets say what the plan gives
+       instead of what went wrong, and the action a grown-up must take is a
+       button rather than a sentence telling them to go and find it. */
+    .math-notice-icon.is-promo{background:#004f48;color:#dce96a}
+    .math-notice-tips.is-promo li{position:relative;padding-left:20px;font-size:12.5px;line-height:1.45;color:#40535c}
+    .math-notice-tips.is-promo li::before{content:"\2713";position:absolute;left:0;top:0;color:#719900;font-weight:900;font-size:12px}
+    .math-notice-cta{display:inline-flex;align-items:center;justify-content:center;margin-top:14px;
+      padding:12px 22px;border-radius:999px;background:#004f48;color:#fff;text-decoration:none;
+      font-size:14px;font-weight:800;box-shadow:0 10px 22px rgba(0,79,72,.24)}
+    .math-notice-cta:hover{background:#00625a}
+    .math-notice-cta:focus-visible{outline:2px solid #004f48;outline-offset:3px}
+    .math-notice-note{margin-top:7px;font-size:11px;color:#8a918f}
     .math-notice-tips li{font-size:12px;line-height:1.4;color:#3c5365;padding-left:18px;position:relative}
     .math-notice-tips li:before{content:"•";position:absolute;left:5px;color:#8aab00;font-weight:900}
     .math-flag{position:relative;cursor:help}
