@@ -6,6 +6,11 @@ const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
 
 const app = express();
+// No ETags on app-generated responses. An ETag on /api/pricing or
+// /api/entitlements/me let the browser serve a stale 304 (old prices, old
+// cancel/renewal button state) until a hard refresh. Static assets set their
+// own no-store headers below, so nothing here needs an ETag.
+app.disable("etag");
 const port = process.env.PORT || 80;
 // This module lives in lib/, so the project root (which holds webapp/ and data/)
 // is one level up. It must stay out of the project root: Vercel auto-detects a
@@ -338,18 +343,22 @@ function normalisePricing(pricing = {}) {
     note: String(rawUpgrade.note || "")
   };
   const rawCancellationPromo = pricing.cancellationPromo || {};
-  // How many renewals the discount applies to (1-99). Legacy records used a
-  // "once"/"repeating" duration; map "repeating" to a small default so old
-  // configs still behave. duration is kept in sync for the Stripe coupon.
-  const rawRenewals = rawCancellationPromo.durationRenewals != null
-    ? Number(rawCancellationPromo.durationRenewals)
-    : (rawCancellationPromo.duration === "repeating" ? 3 : 1);
-  const durationRenewals = Math.min(99, Math.max(1, Math.round(rawRenewals) || 1));
+  // How many TIMES the offer can be redeemed over the account's life (1-99).
+  // Each redemption discounts only the next renewal (Stripe coupon duration is
+  // always "once"); a parent must attempt to cancel again to get it again, up to
+  // this cap. Legacy `durationRenewals` records are read as the redemption cap.
+  const rawMaxRedemptions = rawCancellationPromo.maxRedemptions != null
+    ? Number(rawCancellationPromo.maxRedemptions)
+    : (rawCancellationPromo.durationRenewals != null
+      ? Number(rawCancellationPromo.durationRenewals)
+      : (rawCancellationPromo.duration === "repeating" ? 3 : 1));
+  const maxRedemptions = Math.min(99, Math.max(1, Math.round(rawMaxRedemptions) || 1));
   const cancellationPromo = {
     enabled: rawCancellationPromo.enabled !== false,
     amountOff: Math.min(999, legacyAmountOff(rawCancellationPromo.amountOff, rawCancellationPromo.percentOff, monthly.amount)),
-    durationRenewals,
-    duration: durationRenewals > 1 ? "repeating" : "once",
+    maxRedemptions,
+    // Each redemption is a one-invoice discount.
+    duration: "once",
     description: String(rawCancellationPromo.description || defaults.cancellationPromo.description),
     stripeCouponId: String(rawCancellationPromo.stripeCouponId || ""),
     stripeCouponPercentOff: Number(rawCancellationPromo.stripeCouponPercentOff || 0)
@@ -1688,35 +1697,61 @@ async function retentionCouponId(stripe, db) {
   const pricing = normalisePricing(db.pricing);
   const promo = pricing.cancellationPromo || defaultPricing().cancellationPromo;
   const envConfigured = process.env.STRIPE_RETENTION_COUPON_ID || "";
-  const renewals = Math.min(99, Math.max(1, Number(promo.durationRenewals) || 1));
-  const configured = envConfigured || promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId;
-  const configuredAmount = Number(promo.stripeCouponAmountOff || 0);
-  const configuredRenewals = Number(promo.stripeCouponRenewals || 0);
-  // Reuse the stored coupon only when BOTH the amount and the renewal count still
-  // match — a changed duration must mint a new Stripe coupon.
-  if (envConfigured || (configured && configuredAmount === Number(promo.amountOff || 0) && configuredRenewals === renewals)) return configured;
+  if (envConfigured) return envConfigured;
+  const wantCents = Math.round(Number(promo.amountOff || 0) * 100);
+  const cached = promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId || "";
+  const cachedAmount = Number(promo.stripeCouponAmountOff || 0);
+  // Fast path: the cached coupon still matches the configured amount.
+  if (cached && cachedAmount === Number(promo.amountOff || 0)) return cached;
 
-  const coupon = await stripe.coupons.create({
-    amount_off: Math.round(Number(promo.amountOff || 0) * 100),
-    currency: "usd",
-    duration: renewals > 1 ? "repeating" : "once",
-    ...(renewals > 1 ? { duration_in_months: renewals } : {}),
-    name: "KiddieGPT cancellation save offer",
-    metadata: {
-      app: "KiddieGPT",
-      offer: "cancellation_promo",
-      amountOff: String(promo.amountOff || 0),
-      renewals: String(renewals)
+  // Reuse an existing Stripe coupon of the right shape before minting a new one,
+  // so repeated amount changes don't pile up orphaned coupons. Matched on our
+  // metadata tag + amount + duration (Stripe coupons are immutable, so a new
+  // amount genuinely needs a different coupon).
+  let coupon = null;
+  try {
+    const existing = await stripe.coupons.list({ limit: 100 });
+    coupon = (existing.data || []).find((c) =>
+      c.valid &&
+      c.metadata?.offer === "cancellation_promo" &&
+      c.duration === "once" &&
+      c.currency === "usd" &&
+      Number(c.amount_off) === wantCents
+    ) || null;
+  } catch (error) {
+    // Listing failed — fall through and create one.
+  }
+  const reused = Boolean(coupon);
+  if (!coupon) {
+    coupon = await stripe.coupons.create({
+      amount_off: wantCents,
+      currency: "usd",
+      // One invoice per redemption. Re-offered on the next cancel attempt, up to
+      // the admin's maxRedemptions cap — enforced in the app, not the coupon.
+      duration: "once",
+      name: "KiddieGPT cancellation save offer",
+      metadata: { app: "KiddieGPT", offer: "cancellation_promo", amountOff: String(promo.amountOff || 0) }
+    });
+  }
+
+  // Delete the previously cached coupon if the amount changed and it is ours —
+  // otherwise a changed amount leaves the old coupon dangling in Stripe. Deleting
+  // a coupon never affects discounts already applied to existing subscriptions.
+  if (cached && cached !== coupon.id) {
+    try {
+      const stale = await stripe.coupons.retrieve(cached);
+      if (stale?.metadata?.offer === "cancellation_promo") await stripe.coupons.del(cached);
+    } catch (error) {
+      // Already gone or not ours — ignore.
     }
-  });
+  }
 
   mutateDb((nextDb) => {
     nextDb.pricing = nextDb.pricing || defaultPricing();
     nextDb.pricing.cancellationPromo = nextDb.pricing.cancellationPromo || {};
     nextDb.pricing.cancellationPromo.stripeCouponId = coupon.id;
     nextDb.pricing.cancellationPromo.stripeCouponAmountOff = Number(promo.amountOff || 0);
-    nextDb.pricing.cancellationPromo.stripeCouponRenewals = renewals;
-    audit(nextDb, "stripe.cancellation_promo_coupon.create", { couponId: coupon.id, amountOff: Number(promo.amountOff || 0), renewals });
+    audit(nextDb, "stripe.cancellation_promo_coupon.ensure", { couponId: coupon.id, amountOff: Number(promo.amountOff || 0), reused });
   });
 
   return coupon.id;
@@ -1787,7 +1822,7 @@ function billingCooldownFor(family) {
     : null;
 }
 
-function recentBillingActions(family, action, windowMs = BILLING_COOLDOWN_HOURS * 3600000) {
+function recentBillingActions(family, action, windowMs = BILLING_COOLDOWN_MS) {
   const cutoff = Date.now() - windowMs;
   return (Array.isArray(family?.billingActionHistory) ? family.billingActionHistory : [])
     .filter((entry) => entry && entry.action === action && new Date(entry.at || 0).getTime() > cutoff);
@@ -1797,6 +1832,11 @@ function recordBillingAction(family, action) {
   if (!family) return family;
   const history = Array.isArray(family.billingActionHistory) ? family.billingActionHistory : [];
   family.billingActionHistory = [{ action, at: nowIso() }, ...history].slice(0, 20);
+  // Arm the short cooldown. It only gates the charge-creating actions (yearly
+  // upgrade, retention discount) — cancellation, a fresh checkout, and resume
+  // are never blocked by it — so a repeat cancellation or re-subscribe is always
+  // allowed while rapid duplicate charges are still throttled.
+  family.billingCooldownUntil = new Date(Date.now() + BILLING_COOLDOWN_MS).toISOString();
   return family;
 }
 
@@ -1804,7 +1844,7 @@ function billingCooldownPayload(family) {
   const cooldown = billingCooldownFor(family);
   return {
     code: "billing_cooldown",
-    error: `Billing changes are temporarily paused. Please wait ${BILLING_COOLDOWN_HOURS} hours before trying again.`,
+    error: `Billing changes are temporarily paused. Please wait ${BILLING_COOLDOWN_MINUTES} minutes before trying again.`,
     cooldownUntil: cooldown?.until || family?.billingCooldownUntil || ""
   };
 }
@@ -1817,15 +1857,33 @@ const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 
 // A parent could otherwise threaten to cancel every month and collect the
 // retention discount each time. Once accepted, the save offer is not shown or
 // applied again until this cooldown passes (default one year).
-const RETENTION_OFFER_COOLDOWN_DAYS = Math.max(0, Number(process.env.RETENTION_OFFER_COOLDOWN_DAYS || 365));
-function retentionOfferEligible(family) {
+// The save offer can be redeemed once per cancel attempt, up to the admin's
+// maxRedemptions cap over the account's life. Availability is a redemption count,
+// not a time cooldown: a parent who never attempts to cancel is simply never
+// offered (and pays full price), while one who does can take it again until the
+// cap is reached.
+function retentionOfferEligible(family, promo) {
   if (!family) return false;
-  const lastAt = family.retentionLastAcceptedAt || family.retentionOffer?.acceptedAt || "";
-  if (!lastAt) return true;
-  const days = (Date.now() - new Date(lastAt).getTime()) / 86400000;
-  return !Number.isFinite(days) || days >= RETENTION_OFFER_COOLDOWN_DAYS;
+  const max = Math.min(99, Math.max(1, Number(promo?.maxRedemptions) || 1));
+  return Number(family.retentionUsesCount || 0) < max;
 }
-const BILLING_COOLDOWN_HOURS = Math.max(1, Number(process.env.BILLING_COOLDOWN_HOURS || 24));
+// True while an accepted discount is still sitting on the upcoming invoice (no
+// renewal has been billed since it was accepted). Re-confirming in this state
+// must not burn another redemption or stack a second discount on one invoice.
+function retentionOfferPendingUnconsumed(family) {
+  const acceptedAt = family?.retentionLastAcceptedAt ? new Date(family.retentionLastAcceptedAt).getTime() : NaN;
+  if (!Number.isFinite(acceptedAt)) return false;
+  const paidAt = family?.lastPaymentAt ? new Date(family.lastPaymentAt).getTime() : NaN;
+  return !Number.isFinite(paidAt) || paidAt <= acceptedAt;
+}
+// Short anti-duplicate cooldown between charge-creating billing actions. 30
+// minutes by default (was 24h). BILLING_COOLDOWN_HOURS is still honoured for
+// backward compatibility and converted to minutes.
+const BILLING_COOLDOWN_MINUTES = Math.max(1, Number(
+  process.env.BILLING_COOLDOWN_MINUTES
+  || (process.env.BILLING_COOLDOWN_HOURS ? Number(process.env.BILLING_COOLDOWN_HOURS) * 60 : 30)
+));
+const BILLING_COOLDOWN_MS = BILLING_COOLDOWN_MINUTES * 60000;
 
 // ---- Stripe card-upfront free trial ----------------------------------------
 // Self-serve signups get a card-upfront trial: Stripe collects the card at
@@ -2624,6 +2682,16 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: AI_BODY_LIMIT_BYTES }));
+
+// Every API response is dynamic state (prices, entitlement, billing actions).
+// Force no-store so the browser always shows current amounts and the right
+// cancel/renewal buttons instead of a cached copy that needs a hard refresh.
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 
 async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
@@ -5524,6 +5592,7 @@ app.get("/api/entitlements/me", (req, res) => {
     return res.status(404).json({ active: false, reason: "family_not_found" });
   }
   const overrideActive = hasActiveOverride(family);
+  const cancellationPromo = normalisePricing(readDb().pricing).cancellationPromo;
   // Single source of truth — this used to re-implement the rule inline and drifted
   // (it missed free trials, so a trialling family reported active: false).
   const active = isFamilyEntitled(family);
@@ -5573,9 +5642,11 @@ app.get("/api/entitlements/me", (req, res) => {
     // the first-payment window above.
     renewalWindow: renewalRefundWindowFor(family),
     // Whether the cancellation save offer may still be shown to this parent
-    // (false once they've used it within the cooldown), so the portal doesn't
-    // dangle an offer they can no longer take.
-    retentionOfferAvailable: retentionOfferEligible(family) || family.retentionOffer?.status === "accepted",
+    // (false once they've hit the redemption cap), so the portal doesn't dangle
+    // an offer they can no longer take.
+    retentionOfferAvailable: retentionOfferEligible(family, cancellationPromo),
+    // How many redemptions remain, so the portal can say "usable N more times".
+    retentionOffersRemaining: Math.max(0, Math.min(99, Math.max(1, Number(cancellationPromo.maxRedemptions) || 1)) - Number(family.retentionUsesCount || 0)),
     // Card-upfront Stripe trial: the portal shows the end date and when billing
     // starts; the extension only needs `active`, which already covers trialing.
     trial: {
@@ -5625,12 +5696,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     return res.status(400).json({ error: parentEmailError(parentEmail) });
   }
   let checkoutFamilyId = familyId || "";
-  const preflightCheckoutFamily = parentEmail
-    ? readDb().families.find((item) => item.id === familyId || item.email === String(parentEmail).toLowerCase())
-    : null;
-  if (preflightCheckoutFamily && billingCooldownFor(preflightCheckoutFamily)) {
-    return res.status(429).json(billingCooldownPayload(preflightCheckoutFamily));
-  }
+  // Starting a (new) subscription is never blocked by the cooldown: a parent who
+  // just cancelled must be able to re-subscribe immediately. The cooldown only
+  // guards duplicate charge-modifying actions (upgrade, retention discount).
   if (parentEmail) {
     checkoutFamilyId = mutateDb((db) => {
       let family = db.families.find((item) => item.id === familyId || item.email === String(parentEmail).toLowerCase());
@@ -6061,14 +6129,16 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
   if (!trialing && existingFamily.subscriptionStatus !== "active") {
     return res.status(400).json({ error: "A cancellation save offer can only be applied to an active subscription or card-upfront trial." });
   }
-  // A discount already pending on the next invoice is fine to re-confirm (handled
-  // below), but a parent who already used the offer this cycle cannot collect it
-  // again until the cooldown passes.
-  if (existingFamily.retentionOffer?.status !== "accepted" && !retentionOfferEligible(existingFamily)) {
-    return res.status(400).json({ error: "retention_offer_used", message: "You've already used a save offer recently. It will be available again later." });
+  // A discount still sitting on the upcoming invoice is fine to re-confirm
+  // (pendingUnconsumed, handled below and never charged twice). Otherwise the
+  // parent may redeem again only while under the redemption cap.
+  const promoMaxRedemptions = Math.min(99, Math.max(1, Number(cancellationPromo.maxRedemptions) || 1));
+  const pendingUnconsumed = retentionOfferPendingUnconsumed(existingFamily);
+  if (!pendingUnconsumed && Number(existingFamily.retentionUsesCount || 0) >= promoMaxRedemptions) {
+    return res.status(400).json({ error: "retention_offer_used", message: `You've used this save offer the maximum of ${promoMaxRedemptions} time${promoMaxRedemptions === 1 ? "" : "s"}.` });
   }
   if (!process.env.STRIPE_SECRET_KEY || !existingFamily.stripeSubscriptionId || existingFamily.stripeSubscriptionId.startsWith("sub_mock")) {
-    if (existingFamily.retentionOffer?.status === "accepted") {
+    if (pendingUnconsumed && existingFamily.retentionOffer?.status === "accepted") {
       return res.json({
         mode: existingFamily.retentionOffer.mode || "stored",
         alreadyApplied: true,
@@ -6093,10 +6163,12 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
         reason,
         acceptedAt: nowIso()
       };
-      // Persistent markers that survive the retentionOffer being consumed/cleared,
-      // so the cooldown is enforced across cycles.
-      family.retentionLastAcceptedAt = nowIso();
-      family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
+      // Count only a fresh redemption toward the cap; re-confirming a pending
+      // discount does not burn another use.
+      if (!pendingUnconsumed) {
+        family.retentionLastAcceptedAt = nowIso();
+        family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
+      }
       audit(db, "retention.discount.mock", { familyId: family.id, email, reason });
       return family;
     });
@@ -6166,8 +6238,12 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
         duplicateSubscriptionIds,
         acceptedAt: nowIso()
       };
-      family.retentionLastAcceptedAt = nowIso();
-      family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
+      // Only count a fresh redemption. Re-confirming a discount that is still on
+      // the upcoming invoice (pendingUnconsumed) must not burn another use.
+      if (!pendingUnconsumed) {
+        family.retentionLastAcceptedAt = nowIso();
+        family.retentionUsesCount = Number(family.retentionUsesCount || 0) + 1;
+      }
       audit(db, "retention.discount.apply", {
         familyId: family.id,
         email,
@@ -6222,22 +6298,9 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       message: "Cancellation is already scheduled. Your current access and billing schedule are unchanged."
     });
   }
-  const activeCooldown = billingCooldownFor(existingFamily);
-  if (activeCooldown) return res.status(429).json(billingCooldownPayload(existingFamily));
-  if (recentBillingActions(existingFamily, "cancel").length >= 1) {
-    const cooldownUntil = new Date(Date.now() + BILLING_COOLDOWN_HOURS * 3600000).toISOString();
-    const updated = mutateDb((db) => {
-      const family = db.families.find((item) => item.email === email);
-      if (!family) return null;
-      family.billingCooldownUntil = cooldownUntil;
-      audit(db, "subscription.billing_cooldown", { familyId: family.id, email, reason: "repeat_cancellation" }, email);
-      return family;
-    });
-    return res.status(429).json({
-      ...billingCooldownPayload(updated || { billingCooldownUntil: cooldownUntil }),
-      cooldownUntil
-    });
-  }
+  // Cancellation is never rate-limited: a parent must always be able to cancel,
+  // including a second time, without waiting out a cooldown. The short cooldown
+  // only guards charge-creating actions (upgrade, retention discount).
   // past_due is deliberately included: a parent whose card is failing is exactly
   // who needs a clean exit, or a chargeback becomes their only option.
   if (!["active", "cancel_scheduled", "trialing", "trial", "past_due"].includes(existingFamily.subscriptionStatus)) {
@@ -6464,7 +6527,9 @@ app.post("/api/stripe/resume-subscription", requireParent, async (req, res) => {
   if (!email) return res.status(400).json({ error: "Missing parent email." });
   const existing = readDb().families.find((item) => item.email === email);
   if (!existing) return res.status(404).json({ error: "Family account not found." });
-  if (billingCooldownFor(existing)) return res.status(429).json(billingCooldownPayload(existing));
+  // Resume (undo a cancellation) is never blocked by the cooldown — it removes a
+  // charge risk rather than creating one, and a parent changing their mind should
+  // not have to wait.
   if (existing.subscriptionStatus !== "cancel_scheduled") {
     return res.status(400).json({ error: "This plan is not scheduled to cancel." });
   }
@@ -7543,20 +7608,27 @@ app.post("/api/dev/test-login", (req, res) => {
   });
 });
 
+// res.sendFile defaults to Cache-Control: public + ETag/Last-Modified, which let
+// the browser hold a stale index.html that still points at the OLD ?v= asset —
+// the "needs a couple of hard refreshes" symptom. Serve the HTML shells no-store
+// (etag/lastModified off) so a reload always gets the current markup and the
+// current asset version; the assets themselves are already no-store.
+const NO_STORE_HTML = { etag: false, lastModified: false, headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0" } };
+
 app.get(["/", "/index.html", "/onboarding"], (req, res) => {
-  res.sendFile(path.join(publicDir, "webapp", "index.html"));
+  res.sendFile(path.join(publicDir, "webapp", "index.html"), NO_STORE_HTML);
 });
 
 app.get(["/admin", "/admin.html"], (req, res) => {
-  res.sendFile(path.join(publicDir, "webapp", "admin.html"));
+  res.sendFile(path.join(publicDir, "webapp", "admin.html"), NO_STORE_HTML);
 });
 
 app.get("/parent-portal-mockup.html", (req, res) => {
-  res.sendFile(path.join(publicDir, "webapp", "parent-portal-mockup.html"));
+  res.sendFile(path.join(publicDir, "webapp", "parent-portal-mockup.html"), NO_STORE_HTML);
 });
 
 app.get("/login-animation-mockup.html", (req, res) => {
-  res.sendFile(path.join(publicDir, "webapp", "login-animation-mockup.html"));
+  res.sendFile(path.join(publicDir, "webapp", "login-animation-mockup.html"), NO_STORE_HTML);
 });
 
 app.use(express.static(publicDir, {

@@ -218,7 +218,10 @@
     cancellationPromo.enabled = cancellationPromo.enabled !== false;
     cancellationPromo.amountOff = Math.min(999, legacyAmountOff(cancellationPromo.amountOff, cancellationPromo.percentOff, monthly.amount));
     delete cancellationPromo.percentOff;
-    cancellationPromo.duration = cancellationPromo.duration === "repeating" ? "repeating" : "once";
+    // Each redemption is a single-invoice discount now; the repeatability is a
+    // redemption cap (maxRedemptions), not a multi-month coupon.
+    cancellationPromo.duration = "once";
+    cancellationPromo.maxRedemptions = Math.min(99, Math.max(1, Number(cancellationPromo.maxRedemptions != null ? cancellationPromo.maxRedemptions : cancellationPromo.durationRenewals) || 1));
     cancellationPromo.description = String(cancellationPromo.description || "");
     return { monthly: monthly, yearly: yearly, promotion: promotion, yearlyUpgrade: yearlyUpgrade, cancellationPromo: cancellationPromo };
   }
@@ -2063,18 +2066,26 @@
       return trial && trial.endsAt ? parentDate(trial.endsAt) : "";
     }
 
+    // "You can use this offer up to N times…" — only when it's genuinely
+    // repeatable and the parent has redemptions left.
+    function retentionRepeatNote() {
+      var remaining = parentEntitlement ? Number(parentEntitlement.retentionOffersRemaining || 0) : 0;
+      if (remaining > 1) return " You can use this offer up to " + remaining + " more times — once each time you go to cancel.";
+      return "";
+    }
+
     function cancellationPromoConfig() {
       var pricing = readPricing();
       var promo = pricing.cancellationPromo || {};
-      var renewals = Math.min(99, Math.max(1, Number(promo.durationRenewals) || (promo.duration === "repeating" ? 3 : 1)));
+      var maxRedemptions = Math.min(99, Math.max(1, Number(promo.maxRedemptions != null ? promo.maxRedemptions : promo.durationRenewals) || 1));
       return {
         enabled: promo.enabled !== false && Number(promo.amountOff || 0) > 0,
         amountOff: Math.max(0, Number(promo.amountOff || 0)),
-        durationRenewals: renewals,
-        // "renewal" or "N renewals" for the generated copy.
-        renewalsLabel: renewals > 1 ? ("next " + renewals + " renewals") : "next renewal",
-        duration: promo.duration === "repeating" ? "repeating" : "once",
-        description: String(promo.description || "Keep your plan and get a discount on the next renewal.")
+        maxRedemptions: maxRedemptions,
+        // Each redemption is one invoice, so the copy is always singular.
+        renewalsLabel: "next renewal",
+        duration: "once",
+        description: String(promo.description || "Keep your plan and get a discount on your next renewal.")
       };
     }
 
@@ -2158,7 +2169,7 @@
           : yearly
           ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."
           : promoAvailable
-          ? promo.description + " It will be applied automatically to the next invoice."
+          ? promo.description + " It applies automatically to your next renewal only." + retentionRepeatNote()
           : "Your renewal will be turned off. Your child keeps access through the paid plan end date.";
       }
       if (acceptDiscount) {
@@ -2302,7 +2313,11 @@
       }
       var returnedFromStripe = params.get("paid") === "1" || params.get("stripe") === "success" || params.has("session_id");
       if (!returnedFromStripe) return false;
-      setPaidPlan(localStorage.getItem(PENDING_CHECKOUT_PLAN_KEY) || activePlanKey || "monthly", "Payment complete", "Your package is active. Review child profiles, learning goals, and rewards, then save the family profile.");
+      // Do NOT mark the account subscribed just because the URL says success — a
+      // stale, bookmarked, or forged ?stripe=success must never show a paid
+      // subscription. Confirm the real Stripe session first; the entitlement
+      // refresh that follows is the source of truth.
+      if (paymentState) { paymentState.textContent = "Confirming with Stripe"; paymentState.className = "state-chip warning"; }
       var sessionId = params.get("session_id");
       if (sessionId) {
         try {
@@ -2323,32 +2338,10 @@
       return true;
     }
 
-    function syncSubscriptionFromBackend() {
-      var email = formValue("email").trim().toLowerCase();
-      if (!email) return false;
-      var family = readFamilies().find(function (item) {
-        return String(item.email || "").toLowerCase() === email &&
-          (item.subscriptionStatus === "active" || item.subscriptionStatus === "cancel_scheduled") &&
-          item.paymentStatus !== "failed";
-      });
-      if (!family) return false;
-      var key = String(family.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
-      retentionOfferAccepted = family.retentionOffer && family.retentionOffer.status === "accepted";
-      yearlyUpgradeInfo = family.yearlyUpgrade || null;
-      yearlyUpgradeScheduled = yearlyUpgradeInfo && yearlyUpgradeInfo.status === "scheduled";
-      cancellationScheduled = family.subscriptionStatus === "cancel_scheduled";
-      cancellationAccessUntil = family.cancelAccessUntil || family.cancellationAccessUntil || "";
-      setPaidPlan(
-        key,
-        cancellationScheduled ? "Cancellation scheduled" : yearlyUpgradeScheduled ? "Yearly upgrade confirmed" : "Subscription active",
-        cancellationScheduled
-          ? "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then."
-          : yearlyUpgradeScheduled
-          ? yearlyUpgradeDetailText(yearlyUpgradeInfo)
-          : family.plan + " is active for this family."
-      );
-      return true;
-    }
+    // (Removed syncSubscriptionFromBackend: it marked the account subscribed from
+    // the localStorage families cache without any server/Stripe check. It was
+    // already unused — subscription state comes only from /api/entitlements/me —
+    // and keeping it invited a client-trust bypass.)
 
     function daysSinceIso(value) {
       if (!value) return 0;
@@ -2956,10 +2949,13 @@
           window.location.href = result.url;
           return;
         }
-        paid = true;
-        setPaidPlan(plan.key, "Ready to save", plan.name + " is active. Review child profiles, learning goals, and rewards, then save the family profile.");
-        paymentState.textContent = result.mode === "mock" ? "Demo checkout active" : "Subscription active";
-        paymentState.className = "state-chip ok";
+        // A successful checkout ALWAYS returns a redirect URL — a real Stripe
+        // Checkout URL, or (in demo/no-key mode) the local return page. No URL
+        // means checkout could not be opened, so this must NOT mark the account
+        // subscribed: real subscription state only ever comes from Stripe via the
+        // entitlement after payment. Marking paid here was a silent bypass that
+        // "subscribed" a family without any Stripe flow or charge.
+        throw new Error("Checkout could not be opened. Please try again.");
       } catch (error) {
         localStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
         paymentState.textContent = error.message;
@@ -5858,9 +5854,9 @@
       var cancellationPromo = pricing.cancellationPromo || {};
       if (pricingForm.elements.cancellationPromoEnabled) pricingForm.elements.cancellationPromoEnabled.checked = cancellationPromo.enabled !== false;
       if (pricingForm.elements.cancellationPromoAmountOff) pricingForm.elements.cancellationPromoAmountOff.value = Number(cancellationPromo.amountOff || 0);
-      if (pricingForm.elements.cancellationPromoDurationRenewals) {
-        var renewals = Number(cancellationPromo.durationRenewals) || (cancellationPromo.duration === "repeating" ? 3 : 1);
-        pricingForm.elements.cancellationPromoDurationRenewals.value = Math.min(99, Math.max(1, renewals));
+      if (pricingForm.elements.cancellationPromoMaxRedemptions) {
+        var maxRedemptions = Number(cancellationPromo.maxRedemptions != null ? cancellationPromo.maxRedemptions : cancellationPromo.durationRenewals) || 1;
+        pricingForm.elements.cancellationPromoMaxRedemptions.value = Math.min(99, Math.max(1, maxRedemptions));
       }
       if (pricingForm.elements.cancellationPromoDescription) pricingForm.elements.cancellationPromoDescription.value = cancellationPromo.description || "";
       if (stripeTestForm && stripeTestForm.elements.priceId) {
@@ -7440,7 +7436,7 @@
         targetPlan.amount = Number(pricingForm.elements.planAmount.value) || Number(targetPlan.amount || 19);
         targetPlan.stripePriceId = pricingForm.elements.planStripePriceId.value.trim();
         targetPlan.familyMemberCount = Number(pricingForm.elements.planFamilyMemberCount.value) || Number(targetPlan.familyMemberCount || 3);
-        var cancellationRenewals = Math.min(99, Math.max(1, Math.round(Number(pricingForm.elements.cancellationPromoDurationRenewals ? pricingForm.elements.cancellationPromoDurationRenewals.value : 1)) || 1));
+        var cancellationMaxRedemptions = Math.min(99, Math.max(1, Math.round(Number(pricingForm.elements.cancellationPromoMaxRedemptions ? pricingForm.elements.cancellationPromoMaxRedemptions.value : 1)) || 1));
         await writePricing({
           monthly: monthlyPlan,
           yearly: yearlyPlan,
@@ -7467,8 +7463,8 @@
           cancellationPromo: {
             enabled: pricingForm.elements.cancellationPromoEnabled ? pricingForm.elements.cancellationPromoEnabled.checked : true,
             amountOff: Number(pricingForm.elements.cancellationPromoAmountOff ? pricingForm.elements.cancellationPromoAmountOff.value : 0) || 0,
-            durationRenewals: cancellationRenewals,
-            duration: cancellationRenewals > 1 ? "repeating" : "once",
+            maxRedemptions: cancellationMaxRedemptions,
+            duration: "once",
             description: pricingForm.elements.cancellationPromoDescription ? pricingForm.elements.cancellationPromoDescription.value.trim() : ""
           }
         });
