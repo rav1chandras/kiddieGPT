@@ -627,6 +627,10 @@ body{background:#f6f8f5}
     .math-notice-cta:hover{background:#00625a}
     .math-notice-cta:focus-visible{outline:2px solid #004f48;outline-offset:3px}
     .math-notice-note{margin-top:7px;font-size:11px;color:#8a918f}
+    /* Secondary weight: the retry costs a read, so it should not shout like the
+       subscription button does. */
+    .math-notice-cta.is-ghost{background:#eef6ec;color:#004f48;border:1.5px solid #cfe0d6;box-shadow:none}
+    .math-notice-cta.is-ghost:hover{background:#e2efe0}
     .math-notice-tips li{font-size:12px;line-height:1.4;color:#3c5365;padding-left:18px;position:relative}
     .math-notice-tips li:before{content:"•";position:absolute;left:5px;color:#8aab00;font-weight:900}
     .math-flag{position:relative;cursor:help}

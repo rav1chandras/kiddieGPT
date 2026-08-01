@@ -4529,6 +4529,14 @@ const MATH_TIPS_RETRY = [
 // An inactive plan is not a failed read. It has one remedy, a grown-up has to
 // perform it, and no amount of re-photographing helps — so it gets its own
 // notice with the action attached instead of three tips about picture quality.
+// Shown when the reader could read the source perfectly well and it simply
+// isn't schoolwork. Telling someone to improve a photo of their dog is useless.
+const MATH_TIPS_NOT_MATH = [
+  "Point it at a math question — an equation, a word problem, or a diagram.",
+  "A proof or a 'show that' question counts too.",
+  "If it really is math, try again — sometimes a second read gets it."
+];
+
 const MATH_TIPS_SUBSCRIBE = [
   "Step-by-step help on every problem, at your grade level.",
   "Photograph a worksheet and work through it one problem at a time.",
@@ -4555,6 +4563,8 @@ function showMathNotice(title, message, tips = MATH_TIPS_UNREADABLE, options = {
     </ul>
     ${action ? `<a class="math-notice-cta" href="${escapeHtml(action.href)}" target="_blank" rel="noopener">${escapeHtml(action.label)}</a>
       ${action.note ? `<small class="math-notice-note">${escapeHtml(action.note)}</small>` : ""}` : ""}
+    ${options.retry ? `<button type="button" id="mathNoticeRetry" class="math-notice-cta is-ghost">Try reading it again</button>
+      <small class="math-notice-note">Uses one more read of your picture</small>` : ""}
   `;
 }
 
@@ -4705,7 +4715,7 @@ async function transcribeMathProblems({ settings, parts, gradeBand, model }) {
     model,
     moderate: false,
     maxOutputTokens: MATH_TRANSCRIBE_MAX_TOKENS,
-    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. IMPORTANT: a worksheet usually contains SEVERAL separately numbered problems (1, 2, 3, …, sometimes 10+). You MUST transcribe EVERY numbered problem as its own item in the problems array, in reading order. Never merge two problems into one, and never stop after the first — scan the entire page top to bottom. Read EVERY number, label, and angle, and copy each number with its EXACT sign: coordinate points like P(-4, 3) or (-4,-3) have negative values — never drop a minus sign, and keep the order and sign of every coordinate. Copy any multiple-choice options verbatim. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. For circle geometry, explicitly identify every center, radius or diameter, point on each circle, chord, tangent line, intersection, arc, and whether a curve is a full circle, semicircle, quarter circle, or another arc. Preserve relationships stated by the problem, such as a segment being both a chord and a tangent. If the source has no readable math problem (blank, too blurry, or not math), return {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Return only valid JSON." + UNTRUSTED_CONTENT_GUARD,
+    instructions: "You are KiddieGPT's math reader. Your only job is to read the image or file exactly and write down each math problem as text — do NOT solve anything. IMPORTANT: a worksheet usually contains SEVERAL separately numbered problems (1, 2, 3, …, sometimes 10+). You MUST transcribe EVERY numbered problem as its own item in the problems array, in reading order. Never merge two problems into one, and never stop after the first — scan the entire page top to bottom. Read EVERY number, label, and angle, and copy each number with its EXACT sign: coordinate points like P(-4, 3) or (-4,-3) have negative values — never drop a minus sign, and keep the order and sign of every coordinate. Copy any multiple-choice options verbatim. If there is a diagram, describe it completely: every side length, every angle with its value and vertex, which side or label is the unknown, and where each label sits. For circle geometry, explicitly identify every center, radius or diameter, point on each circle, chord, tangent line, intersection, arc, and whether a curve is a full circle, semicircle, quarter circle, or another arc. Preserve relationships stated by the problem, such as a segment being both a chord and a tangent. A proof or a construction IS a math problem: \"show that\", \"prove that\", or a labelled geometry figure with a relation to establish all count, even when there are no numbers to compute and even if it looks harder than this grade band. Transcribe it like any other problem. Only return {\"noMath\": true, \"unreadable\": true, \"reason\": \"<one short kind sentence>\"} when you genuinely cannot READ the source — blank, too dark, too blurry, or cut off. If you can read it clearly but it is not mathematics at all (a photo of a pet, a shopping list, prose with no problem in it), return {\"noMath\": true, \"unreadable\": false, \"reason\": \"<one short kind sentence naming what you saw>\"}. Never use noMath for a math problem that is merely hard. Return only valid JSON." + UNTRUSTED_CONTENT_GUARD,
     text: `Read this source and list EVERY separately numbered problem (1, 2, 3, …) as its own array item, in reading order, up to 15. Do not stop after the first problem and do not merge problems. Grade band: ${gradeBand}. Return JSON with a problems array. Each item must have: statement (the full question in plain words, for example "Find b in a right triangle with hypotenuse 8, one leg 4, and a 30 degree angle"), choices (an array of objects with label and expression copied exactly from every visible multiple-choice option, or [] if none), meta (short topic like "Geometry · right triangle"), tags (array up to 4 short words), diagram (a complete text description of any figure so it can be solved without the image, or "" if there is no figure), and figure (ONLY for a right triangle: { type:"rightTriangle", hypotenuse, legVertical, legBase, angleTop, angleBase, unknown } using the exact labels shown; omit otherwise).`
   });
 }
@@ -4931,12 +4941,35 @@ async function solveMathWithAI() {
   // Phase 0: read the image ONCE into text problems. Everything after this is text-only (cheap).
   let transcript;
   try {
-    const read = await transcribeMathProblems({ settings, parts, gradeBand });
+    // One reroll on noMath, then stop. A borderline source — a proof, a dense
+    // construction — sits near the model's own decision boundary, so the same
+    // request can read fine on the second pass. Capped at two: a photo that
+    // really is not math must not cost an unbounded stream of vision calls.
+    let read = await transcribeMathProblems({ settings, parts, gradeBand });
     if (token !== mathSolveToken) return;
+    if (read && read.noMath && !read.unreadable) {
+      updateMathThinkingStage("Taking a second look…");
+      read = await transcribeMathProblems({ settings, parts, gradeBand });
+      if (token !== mathSolveToken) return;
+    }
     if (read && read.noMath) {
       stopMathThinking();
       resetButton();
-      showMathNotice("No math problem found", read.reason || "KiddieGPT couldn't find a math problem to solve here.");
+      // noMath used to mean two different things at once. A blank photo and a
+      // legible university proof produced the same screen, so a student was
+      // told to re-take a picture that was never the problem.
+      reportIssue("math_feedback", `Reader returned noMath (unreadable=${!!read.unreadable}) after ${read.unreadable ? 1 : 2} attempt(s). Reason: ${String(read.reason || "").slice(0, 200)}`);
+      if (read.unreadable) {
+        showMathNotice("Couldn't read that", read.reason || "KiddieGPT couldn't make out the problem in that image.",
+          MATH_TIPS_UNREADABLE, { retry: true });
+      } else {
+        showMathNotice(
+          "That doesn't look like schoolwork",
+          read.reason || "KiddieGPT couldn't find a math problem here.",
+          MATH_TIPS_NOT_MATH,
+          { retry: true }
+        );
+      }
       return;
     }
     transcript = (Array.isArray(read?.problems) ? read.problems : [])
@@ -5305,6 +5338,13 @@ function initMathTool() {
     captureMathProblemRegion();
   });
   document.getElementById("mathSolveButton")?.addEventListener("click", solveMathWithAI);
+  // Delegated, because showMathNotice rewrites the notice each time. Calls the
+  // same entry point as Give Me Nudge rather than a second copy of the flow, so
+  // the read, the caps and the error handling stay identical.
+  document.getElementById("mathNotice")?.addEventListener("click", (event) => {
+    if (!event.target.closest("#mathNoticeRetry")) return;
+    solveMathWithAI();
+  });
   document.getElementById("mathQrRefresh")?.addEventListener("click", startPhoneCapture);
   // Enter solves from the paste box; Shift+Enter makes a new line.
   document.getElementById("mathPasteInput")?.addEventListener("keydown", event => {
