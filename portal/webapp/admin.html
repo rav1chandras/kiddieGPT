@@ -6,7 +6,7 @@
   <title>KiddieGPT Admin Console</title>
   <link rel="stylesheet" href="/webapp/vendor/fonts/inter.css">
   <script src="/webapp/vendor/lucide-1.27.0.min.js"></script>
-  <link rel="stylesheet" href="/webapp/webapp.css?v=200">
+  <link rel="stylesheet" href="/webapp/webapp.css?v=203">
   <style>
     tr.family-row { cursor: pointer; }
     tr.family-row:hover > td { background: #f8fbfa; }
@@ -60,6 +60,7 @@
         <button type="button" data-admin-view="email-studio"><i data-lucide="send"></i>Emails</button>
         <button type="button" data-admin-view="support"><i data-lucide="messages-square"></i>Support<span class="nav-badge" id="support-nav-badge" hidden>0</span></button>
         <button type="button" data-admin-view="logs"><i data-lucide="list-checks"></i>Logs</button>
+        <button type="button" data-admin-view="ask"><i data-lucide="sparkles"></i>Ask AI<span class="nav-pill">beta</span></button>
       </nav>
       <a class="admin-nav-link" href="/index.html"><i data-lucide="user-plus"></i>Parent portal</a>
       <div class="admin-identity">
@@ -914,6 +915,51 @@
         </details>
 
       </section>
+
+      <section class="admin-view" data-admin-panel="ask">
+        <article class="admin-table-card ask-hero">
+          <div class="admin-card-head">
+            <div><p class="eyebrow">Ask AI · beta</p><h2>Ask your data in plain English</h2></div>
+            <span class="state-chip ok" id="ask-mode-chip">Live · read-only</span>
+          </div>
+          <div class="ask-body">
+            <div class="ask-input-row">
+              <textarea id="ask-input" rows="2" placeholder="e.g. Show me users who cancelled after their trial ended, within the 24-hour window. List name, email and dates."></textarea>
+              <button class="button primary" type="button" id="ask-run"><i data-lucide="sparkles"></i>Ask</button>
+            </div>
+            <div class="ask-examples">
+              <span class="ask-examples-label">Try:</span>
+              <button type="button" class="ask-chip" data-ask-example="cancel-24h">Cancelled after trial, within 24h window</button>
+              <button type="button" class="ask-chip" data-ask-example="top-usage">Top families by AI tokens this month</button>
+              <button type="button" class="ask-chip" data-ask-example="failed-payments">Failed payments, last 30 days</button>
+              <button type="button" class="ask-chip" data-ask-example="trials-ending">Trials ending in 3 days</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="admin-table-card ask-result-card" id="ask-result" hidden>
+          <div class="admin-card-head">
+            <div><p class="eyebrow" id="ask-result-eyebrow">Result</p><h2 id="ask-result-title">Answer</h2></div>
+            <div class="admin-filters">
+              <span class="state-chip" id="ask-result-count">0 rows</span>
+              <button class="table-action" type="button" id="ask-export"><i data-lucide="download"></i>Export CSV</button>
+            </div>
+          </div>
+          <div class="ask-interpreted" id="ask-interpreted"></div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead><tr id="ask-result-head"></tr></thead>
+              <tbody id="ask-result-body"></tbody>
+            </table>
+          </div>
+          <p class="ask-disclaimer"><i data-lucide="shield-check"></i><span>Read-only — the assistant turns your question into a safe query over your data and never changes anything. Only the schema (not your data) is sent to the model.</span></p>
+        </article>
+
+        <div class="ask-empty" id="ask-empty">
+          <i data-lucide="sparkles"></i>
+          <p>Ask a question above to see a table here.</p>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -926,6 +972,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=232"></script>
+  <script src="/webapp/webapp.js?v=235"></script>
 </body>
 </html>

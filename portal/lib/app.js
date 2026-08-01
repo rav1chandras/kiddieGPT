@@ -7041,6 +7041,197 @@ app.post("/api/dev/test-email", async (req, res) => {
   }
 });
 
+// ---- Ask AI: natural language -> READ-ONLY query over whitelisted datasets --
+// The model only ever sees the schema (field names + types) and the question; it
+// returns a JSON query spec, which the server validates against the whitelist and
+// executes locally. No family data or PII is ever sent to the API.
+const ASK_SCHEMA = {
+  families: {
+    desc: "One row per family account (a parent and their children).",
+    fields: {
+      name: { label: "Name", type: "text", desc: "parent name" },
+      email: { label: "Email", type: "text" },
+      plan: { label: "Plan", type: "text", desc: "Family Monthly | Family Yearly | Free Trial" },
+      status: { label: "Status", type: "text", desc: "active, trialing, trial, cancel_scheduled, cancelled, pending, past_due" },
+      paymentStatus: { label: "Payment", type: "text", desc: "paid, trial, refunded, pending, failed" },
+      students: { label: "Students", type: "number" },
+      hadTrial: { label: "Had trial", type: "bool", desc: "account ever used a free trial" },
+      trialing: { label: "On trial now", type: "bool" },
+      trialEndsAt: { label: "Trial ends", type: "date" },
+      createdAt: { label: "Created", type: "date" },
+      firstPaymentAt: { label: "First charge", type: "date" },
+      lastPaymentAt: { label: "Last charge", type: "date" },
+      lastPaymentAmount: { label: "Last charge", type: "money" },
+      currentSubTrialed: { label: "This sub was a trial", type: "bool" },
+      cancelledAt: { label: "Cancelled", type: "date" },
+      cancelReason: { label: "Cancel reason", type: "text" },
+      cancelSource: { label: "Cancel source", type: "text", desc: "auto | admin | other" },
+      cancelledAfterTrial: { label: "Cancelled after trial", type: "bool", desc: "had a trial and later cancelled" },
+      hoursChargeToCancel: { label: "Hrs charge to cancel", type: "number", desc: "hours between last charge and cancellation" },
+      cancelledWithin24h: { label: "Cancelled within 24h of charge", type: "bool" },
+      retentionUses: { label: "Save-offers used", type: "number" },
+      tokensThisMonth: { label: "AI tokens (month)", type: "number" },
+      renewalAt: { label: "Renews / access until", type: "date" }
+    }
+  },
+  payments: {
+    desc: "One row per real money movement (charge, refund, failure).",
+    fields: {
+      email: { label: "Email", type: "text" },
+      amount: { label: "Amount", type: "money" },
+      status: { label: "Status", type: "text", desc: "paid | refunded | failed" },
+      type: { label: "Type", type: "text", desc: "stripe event type" },
+      createdAt: { label: "Date", type: "date" }
+    }
+  }
+};
+const ASK_OPS = new Set(["eq", "ne", "gt", "gte", "lt", "lte", "contains", "is_true", "is_false", "is_empty", "is_not_empty", "in"]);
+
+function askDatasets(db) {
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const tokensByFamily = {};
+  (db.studentProgress || []).forEach((r) => {
+    if (r && r.date && new Date(r.date).getTime() >= monthStart.getTime()) {
+      tokensByFamily[r.familyId] = (tokensByFamily[r.familyId] || 0) + Number(r.tokens || 0);
+    }
+  });
+  const families = (db.families || []).map((f) => {
+    const lastMs = f.lastPaymentAt ? new Date(f.lastPaymentAt).getTime() : NaN;
+    const cancMs = f.cancelledAt ? new Date(f.cancelledAt).getTime() : NaN;
+    const hadTrial = Boolean(f.trialUsedAt || f.trialStartedAt || f.trialEndedAt);
+    const chargeToCancelH = Number.isFinite(cancMs) && Number.isFinite(lastMs) ? Math.round((cancMs - lastMs) / 3600000 * 10) / 10 : null;
+    return {
+      name: f.parentName || "", email: f.email || "", plan: f.plan || "",
+      status: f.subscriptionStatus || "", paymentStatus: f.paymentStatus || "",
+      students: Array.isArray(f.children) ? f.children.length : (f.studentName ? 1 : 0),
+      hadTrial, trialing: f.subscriptionStatus === "trialing" || f.subscriptionStatus === "trial",
+      trialEndsAt: f.trialEndsAt || "", createdAt: f.createdAt || "",
+      firstPaymentAt: f.firstPaymentAt || "", lastPaymentAt: f.lastPaymentAt || "",
+      lastPaymentAmount: Number(f.lastPaymentAmountCents || 0) / 100,
+      currentSubTrialed: Boolean(f.currentSubscriptionTrialed),
+      cancelledAt: f.cancelledAt || "", cancelReason: f.cancelReason || "", cancelSource: f.cancellationSource || "",
+      cancelledAfterTrial: hadTrial && Boolean(f.cancelledAt),
+      hoursChargeToCancel: chargeToCancelH,
+      cancelledWithin24h: chargeToCancelH != null && chargeToCancelH >= 0 && chargeToCancelH <= 24,
+      retentionUses: Number(f.retentionUsesCount || 0),
+      tokensThisMonth: Number(tokensByFamily[f.id] || 0),
+      renewalAt: f.currentPeriodEnd || f.cancelAccessUntil || f.trialEndsAt || ""
+    };
+  });
+  const payments = (db.payments || []).map((p) => ({
+    email: p.email || "", amount: Number(p.amountCents || 0) / 100,
+    status: p.status || "", type: p.type || "", createdAt: p.createdAt || ""
+  }));
+  return { families, payments };
+}
+
+function askSchemaText() {
+  return Object.entries(ASK_SCHEMA).map(([ds, meta]) => {
+    const fields = Object.entries(meta.fields).map(([f, m]) => `${f} (${m.type}${m.desc ? ": " + m.desc : ""})`).join(", ");
+    return `- ${ds}: ${meta.desc}\n  fields: ${fields}`;
+  }).join("\n");
+}
+
+function askMatchesFilter(row, filter) {
+  const v = row[filter.field];
+  const val = filter.value;
+  switch (filter.op) {
+    case "eq": return String(v).toLowerCase() === String(val).toLowerCase();
+    case "ne": return String(v).toLowerCase() !== String(val).toLowerCase();
+    case "gt": return Number(v) > Number(val);
+    case "gte": return Number(v) >= Number(val);
+    case "lt": return Number(v) < Number(val);
+    case "lte": return Number(v) <= Number(val);
+    case "contains": return String(v || "").toLowerCase().includes(String(val || "").toLowerCase());
+    case "is_true": return v === true;
+    case "is_false": return v === false;
+    case "is_empty": return v == null || v === "" || v === false;
+    case "is_not_empty": return !(v == null || v === "" || v === false);
+    case "in": return Array.isArray(val) && val.map((x) => String(x).toLowerCase()).includes(String(v).toLowerCase());
+    default: return true;
+  }
+}
+
+function askFormatCell(value, type) {
+  if (value == null || value === "") return "—";
+  if (type === "date") { const t = new Date(value).getTime(); return Number.isFinite(t) && t > 0 ? new Date(t).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—"; }
+  if (type === "money") return "$" + Number(value).toFixed(2);
+  if (type === "bool") return value ? "Yes" : "—";
+  if (type === "number") return typeof value === "number" ? value.toLocaleString("en-US") : String(value);
+  return String(value);
+}
+
+function runAskQuery(spec, datasets) {
+  const dsName = String(spec?.dataset || "");
+  const schema = ASK_SCHEMA[dsName];
+  if (!schema) return { error: `Unknown dataset. Available: ${Object.keys(ASK_SCHEMA).join(", ")}.` };
+  const fields = schema.fields;
+  let rows = (datasets[dsName] || []).slice();
+  (Array.isArray(spec.filters) ? spec.filters : []).forEach((f) => {
+    if (f && fields[f.field] && ASK_OPS.has(f.op)) rows = rows.filter((r) => askMatchesFilter(r, f));
+  });
+  if (spec.sort && fields[spec.sort.field]) {
+    const dir = spec.sort.dir === "asc" ? 1 : -1;
+    const type = fields[spec.sort.field].type;
+    rows.sort((a, b) => {
+      let av = a[spec.sort.field], bv = b[spec.sort.field];
+      if (type === "date") { av = new Date(av || 0).getTime(); bv = new Date(bv || 0).getTime(); }
+      else if (type === "number" || type === "money") { av = Number(av) || 0; bv = Number(bv) || 0; }
+      else { av = String(av || ""); bv = String(bv || ""); }
+      return av < bv ? -1 * dir : av > bv ? dir : 0;
+    });
+  }
+  rows = rows.slice(0, Math.min(500, Math.max(1, Number(spec.limit) || 100)));
+  let cols = (Array.isArray(spec.columns) ? spec.columns : []).filter((c) => fields[c]);
+  if (!cols.length) cols = Object.keys(fields).slice(0, 5);
+  return {
+    columns: cols.map((c) => fields[c].label),
+    rows: rows.map((r) => cols.map((c) => askFormatCell(r[c], fields[c].type)))
+  };
+}
+
+app.post("/api/admin/ask", requireAdmin, async (req, res) => {
+  const question = String(req.body?.question || "").trim().slice(0, 500);
+  if (!question) return res.status(400).json({ error: "Ask a question." });
+  const db = readDb();
+  const settings = normaliseAiSettings(db.aiSettings);
+  if (!settings.openaiApiKey) return res.status(503).json({ error: "AI isn't configured. Add an OpenAI key in AI & Usage." });
+  const datasets = askDatasets(db);
+  const instructions = [
+    "You convert an operator's plain-English question about a kids' learning SaaS admin console into a READ-ONLY query over fixed datasets.",
+    "Return ONLY compact JSON (no markdown, no prose) of this exact shape:",
+    '{"dataset":"families|payments","columns":["field",...],"filters":[{"field":"...","op":"...","value":...}],"sort":{"field":"...","dir":"asc|desc"},"limit":100,"title":"short title","explanation":"one sentence describing what you queried"}',
+    "Allowed ops: eq, ne, gt, gte, lt, lte, contains, is_true, is_false, is_empty, is_not_empty, in.",
+    "Use ONLY these datasets and fields:",
+    askSchemaText(),
+    "Pick the 3-6 most relevant columns. For booleans use is_true/is_false. Prefer the pre-computed derived booleans (e.g. cancelledWithin24h, cancelledAfterTrial) when they match the question. Never invent fields or datasets."
+  ].join("\n");
+  let spec = null, apiError = "";
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
+      body: JSON.stringify({ model: resolveOpenAiModel(settings, false), instructions, input: question, max_output_tokens: 600 })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      apiError = data?.error?.message || `OpenAI HTTP ${response.status}`;
+      mutateDb((store) => monitor(store, "error", "ai", "Ask AI query failed at OpenAI", { detail: apiError, status: response.status }, req.auth?.email));
+    } else {
+      spec = safeParseJson(extractOutputText(data));
+    }
+  } catch (error) {
+    apiError = String(error.message || error);
+    mutateDb((store) => monitor(store, "error", "ai", "Ask AI request error", { detail: apiError }, req.auth?.email));
+  }
+  if (apiError) return res.status(502).json({ error: "The assistant is unavailable right now. Please try again." });
+  if (!spec || !spec.dataset) return res.status(422).json({ error: "I couldn't turn that into a query. Try rephrasing — mention families, trials, payments, or cancellations." });
+  const result = runAskQuery(spec, datasets);
+  if (result.error) return res.status(400).json({ error: result.error });
+  mutateDb((store) => audit(store, "admin.ask", { question, dataset: spec.dataset, rows: result.rows.length }, req.auth?.email));
+  return res.json({ title: spec.title || "Result", interpreted: spec.explanation || "", dataset: spec.dataset, columns: result.columns, rows: result.rows });
+});
+
 app.post("/api/dev/stripe/bootstrap-prices", requireAdmin, async (req, res) => {
   if (!process.env.STRIPE_SECRET_KEY) {
     return res.status(400).json({ error: "Stripe secret key is not configured." });

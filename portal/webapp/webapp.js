@@ -4085,7 +4085,8 @@
         emails: "Lifecycle",
         "email-studio": "Emails",
         support: "Support",
-        logs: "Logs"
+        logs: "Logs",
+        ask: "Ask AI"
       };
       navButtons.forEach(function (button) {
         button.classList.toggle("active", button.dataset.adminView === name);
@@ -7070,6 +7071,87 @@
         setAdminView(button.dataset.adminView);
       });
     });
+
+    // ----- Ask AI: real NL -> read-only query -> table ----------------------
+    var askLastResult = null;
+    function renderAskResult(result) {
+      askLastResult = result;
+      var resultCard = document.getElementById("ask-result");
+      var empty = document.getElementById("ask-empty");
+      if (empty) empty.hidden = true;
+      if (resultCard) resultCard.hidden = false;
+      setMetric("ask-result-title", result.title || "Result");
+      var rows = result.rows || [];
+      setMetric("ask-result-count", rows.length + (rows.length === 1 ? " row" : " rows"));
+      var interp = document.getElementById("ask-interpreted");
+      if (interp) interp.innerHTML = "<i data-lucide='wand-2'></i><span><b>Interpreted as:</b> " + text(result.interpreted || "") + "</span>";
+      renderMarkup("ask-result-head", (result.columns || []).map(function (c) { return "<th>" + text(c) + "</th>"; }).join(""));
+      renderRows("ask-result-body", rows.length
+        ? rows.map(function (row) { return "<tr>" + row.map(function (cell) { return "<td>" + text(cell) + "</td>"; }).join("") + "</tr>"; })
+        : ["<tr><td colspan='" + Math.max(1, (result.columns || []).length) + "' class='empty-state'>No rows matched that question.</td></tr>"]);
+      renderIcons();
+    }
+
+    function renderAskError(message) {
+      askLastResult = null;
+      var resultCard = document.getElementById("ask-result");
+      var empty = document.getElementById("ask-empty");
+      if (resultCard) resultCard.hidden = true;
+      if (empty) {
+        empty.hidden = false;
+        empty.innerHTML = "<i data-lucide='triangle-alert'></i><p>" + text(message) + "</p>";
+        renderIcons();
+      }
+    }
+
+    function runAskQuery() {
+      var input = document.getElementById("ask-input");
+      var runBtn = document.getElementById("ask-run");
+      var question = input ? input.value.trim() : "";
+      if (!question) { if (input) input.focus(); return; }
+      if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Thinking…"; }
+      apiFetch("/api/admin/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: question })
+      }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+      }).then(function (res) {
+        if (!res.ok) { renderAskError(res.data.error || "Could not run that query."); return; }
+        renderAskResult(res.data);
+      }).catch(function () {
+        renderAskError("Network error. Please try again.");
+      }).then(function () {
+        if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = "<i data-lucide='sparkles'></i>Ask"; renderIcons(); }
+      });
+    }
+
+    (function wireAskAi() {
+      var runBtn = document.getElementById("ask-run");
+      var input = document.getElementById("ask-input");
+      if (runBtn) runBtn.addEventListener("click", function () { runAskQuery(); });
+      if (input) input.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runAskQuery(); }
+      });
+      // Pills only PREFILL the prompt so the operator can edit before submitting.
+      Array.prototype.forEach.call(document.querySelectorAll("[data-ask-example]"), function (chip) {
+        chip.addEventListener("click", function () {
+          var box = document.getElementById("ask-input");
+          if (box) { box.value = chip.textContent.trim(); box.focus(); }
+        });
+      });
+      var exportBtn = document.getElementById("ask-export");
+      if (exportBtn) exportBtn.addEventListener("click", function () {
+        if (!askLastResult) return;
+        var csv = [askLastResult.columns].concat(askLastResult.rows).map(function (row) {
+          return row.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(",");
+        }).join("\n");
+        var a = document.createElement("a");
+        a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+        a.download = "ask-ai-result.csv";
+        a.click();
+      });
+    })();
     // Restore the last screen so a refresh keeps you where you were.
     try {
       var savedAdminView = localStorage.getItem("kiddiegptAdminView");
