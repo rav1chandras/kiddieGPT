@@ -1964,15 +1964,21 @@
       // offering another cancellation tile invites a second, confusing flow.
       if (cancelSubscription) {
         cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled);
-        // During a trial there is no renewal to cancel yet — the action ends the
-        // plan outright — so the button reads "Cancel plan". A paying subscriber
-        // is cancelling the upcoming renewal.
+        // The action ends the PLAN (not just the renewal) whenever cancelling
+        // gives a full refund and ends access now — i.e. during a trial, or
+        // inside the refund window (24h of a charge, or 7 days of a brand-new
+        // first payment). Outside the window it only stops the upcoming renewal.
+        // Keep this entry button in step with the cancel-flow screen.
         var onTrialForCancelLabel = onStripeTrial() || onNoCardTrial();
+        var refundableNow = inRefundWindow();
+        var endsPlanNow = onTrialForCancelLabel || refundableNow;
         var cancelLabelStrong = cancelSubscription.querySelector("strong");
         var cancelLabelSmall = cancelSubscription.querySelector("small");
-        if (cancelLabelStrong) cancelLabelStrong.textContent = onTrialForCancelLabel ? "Cancel plan" : "Cancel renewal";
+        if (cancelLabelStrong) cancelLabelStrong.textContent = endsPlanNow ? "Cancel plan" : "Cancel renewal";
         if (cancelLabelSmall) cancelLabelSmall.textContent = onTrialForCancelLabel
           ? "End your free trial — you won't be charged"
+          : refundableNow
+          ? "Cancel now for a full refund"
           : "Review access dates and available offers";
       }
       // One-click undo while the paid period is still running — the cheapest
@@ -2109,6 +2115,17 @@
       return (parentEntitlement && parentEntitlement.renewalWindow) || null;
     }
 
+    // Human phrase for whichever window actually makes this cancellation
+    // refundable: the 7-day first-payment window, or the 24h renewal/resubscribe
+    // grace. Keeps the pre-cancel copy honest instead of always saying "7 days".
+    function refundWindowPhrase() {
+      var w = refundWindow();
+      if (w && w.eligible) return w.windowDays + (Number(w.windowDays) === 1 ? " day" : " days");
+      var r = renewalRefundWindow();
+      if (r && r.eligible) { var h = Number(r.hours) || 24; return h + (h === 1 ? " hour" : " hours"); }
+      return (w && w.windowDays ? w.windowDays : 7) + " days";
+    }
+
     function inRefundWindow() {
       var w = refundWindow();
       var r = renewalRefundWindow();
@@ -2164,7 +2181,7 @@
         cancelFlowCopy.textContent = keepsMonthlyUntil
           ? "You are still within " + rw.windowDays + " days of the upgrade, so we refund it in full. You go back to your monthly plan, which you have already paid for — your child keeps access until " + parentDate(keepsMonthlyUntil) + ", then it ends."
           : refundable
-          ? "You are still within " + rw.windowDays + " days of your payment, so cancelling now refunds it in full. Extension access ends straight away and your child's profiles and progress are kept." +
+          ? "You are still within the " + refundWindowPhrase() + " refund window, so cancelling now refunds your latest payment in full. Extension access ends straight away and your child's profiles and progress are kept." +
             (promoAvailable ? " Or keep your plan and take $" + promo.amountOff + " off the next renewal — the full refund stays available for the rest of the window." : "")
           : yearly
           ? "We will turn off auto-renewal. Your child keeps access through the end of the paid yearly plan. This payment is not refundable."

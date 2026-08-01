@@ -1822,12 +1822,6 @@ function billingCooldownFor(family) {
     : null;
 }
 
-function recentBillingActions(family, action, windowMs = BILLING_COOLDOWN_MS) {
-  const cutoff = Date.now() - windowMs;
-  return (Array.isArray(family?.billingActionHistory) ? family.billingActionHistory : [])
-    .filter((entry) => entry && entry.action === action && new Date(entry.at || 0).getTime() > cutoff);
-}
-
 function recordBillingAction(family, action) {
   if (!family) return family;
   const history = Array.isArray(family.billingActionHistory) ? family.billingActionHistory : [];
@@ -1975,16 +1969,22 @@ function refundWindowFor(family) {
 // first charge — firstPaymentAt marks the first, lastPaymentAt the most recent.
 const RENEWAL_REFUND_WINDOW_HOURS = Math.max(0, Number(process.env.RENEWAL_REFUND_WINDOW_HOURS || 24));
 function renewalRefundWindowFor(family) {
-  const empty = { eligible: false, hours: RENEWAL_REFUND_WINDOW_HOURS, chargedAt: "", endsAt: "", amountCents: 0, isRenewal: false };
+  const empty = { eligible: false, hours: RENEWAL_REFUND_WINDOW_HOURS, chargedAt: "", endsAt: "", amountCents: 0, isRenewal: false, paidResubscribe: false };
   const lastAt = family?.lastPaymentAt || "";
   const firstAt = family?.firstPaymentAt || "";
   const lastMs = lastAt ? new Date(lastAt).getTime() : NaN;
   const firstMs = firstAt ? new Date(firstAt).getTime() : NaN;
   if (!Number.isFinite(lastMs)) return empty;
-  // Only a charge meaningfully later than the first one is a renewal; the first
-  // charge is governed by the 7-day window (or the trial that preceded it).
+  // A renewal is a charge meaningfully later than the subscription's first one.
   const isRenewal = Number.isFinite(firstMs) ? lastMs > firstMs + 60000 : false;
-  if (!isRenewal) return { ...empty, chargedAt: lastAt };
+  // The 24h grace applies to EVERY charge except a brand-new subscriber's first
+  // one (that gets the longer 7-day window). So besides renewals, the first
+  // charge of any subscription for an account that has trialed before is covered:
+  // a trial that just converted, OR a paid resubscribe. Consistent rule: cancel
+  // within 24h of any charge and it is refunded in full.
+  const hadTrial = Boolean(family?.trialUsedAt || family?.trialStartedAt || family?.trialEndedAt);
+  const firstChargeAfterTrial = !isRenewal && hadTrial;
+  if (!isRenewal && !firstChargeAfterTrial) return { ...empty, chargedAt: lastAt };
   const endsMs = lastMs + RENEWAL_REFUND_WINDOW_HOURS * 3600000;
   const msLeft = endsMs - Date.now();
   return {
@@ -1993,7 +1993,10 @@ function renewalRefundWindowFor(family) {
     chargedAt: lastAt,
     endsAt: new Date(endsMs).toISOString(),
     amountCents: Number(family?.lastPaymentAmountCents || 0),
-    isRenewal: true
+    isRenewal,
+    // Distinguish the two first-charge-after-trial cases for messaging/labels.
+    paidResubscribe: firstChargeAfterTrial && family?.currentSubscriptionTrialed === false,
+    trialConversion: firstChargeAfterTrial && family?.currentSubscriptionTrialed !== false
   };
 }
 
@@ -5897,6 +5900,7 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       const paymentId = trialing ? "" : "pi_mock_" + crypto.randomBytes(6).toString("hex");
       family.subscriptionStatus = trialing ? "trialing" : "active";
       family.paymentStatus = trialing ? "trial" : "paid";
+      family.currentSubscriptionTrialed = Boolean(trialing);
       family.plan = pending?.planName || family.pendingPlanName || family.plan;
       delete family.pendingPlanName;
       family.stripeCustomerId = family.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
@@ -6000,6 +6004,7 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
           plan: metadata.planName || "Family Monthly",
           subscriptionStatus: isTrialing ? "trialing" : "active",
           paymentStatus: isTrialing ? "trial" : "paid",
+          currentSubscriptionTrialed: Boolean(isTrialing),
           trialEndsAt: isTrialing ? trialEnd : "",
           trialUsedAt: isTrialing ? nowIso() : "",
           stripeCustomerId: stripeId(session.customer) || "",
@@ -6019,6 +6024,11 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       }
       if (!next) return null;
       next.subscriptionStatus = isTrialing ? "trialing" : "active";
+      // Records whether THIS subscription began as a trial or an immediate paid
+      // charge. A trial conversion already had its risk-free week, but a paid
+      // RESUBSCRIBE after a prior trial is a fresh charge that earns a 24h refund
+      // grace (see refundWindowFor / renewalRefundWindowFor).
+      next.currentSubscriptionTrialed = Boolean(isTrialing);
       // Upgrading is an explicit renewal, so any pending cancellation is off.
       next.cancellationRequested = false;
       next.cancellationStatus = "";
@@ -6373,7 +6383,15 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
   // the renewal; the first-payment window refunds the opening charge. Both refund
   // the most recent PaymentIntent (stripePaymentId) and end access now.
   const refundEligible = refundWindow.eligible || renewalWindow.eligible;
-  const refundKind = renewalWindow.eligible ? "renewal" : "first_payment";
+  // "renewal" = a renewal charge, "resubscribe" = a fresh paid start after a
+  // prior trial, "first_payment" = the 7-day new-subscriber window. The first two
+  // share the 24h grace window.
+  const refundKind = renewalWindow.eligible
+    ? (renewalWindow.isRenewal ? "renewal"
+      : renewalWindow.paidResubscribe ? "resubscribe"
+      : "trial_conversion")
+    : "first_payment";
+  const isShortWindow = refundKind === "renewal" || refundKind === "resubscribe" || refundKind === "trial_conversion";
   if (refundEligible && existingFamily.subscriptionStatus === "active") {
     const mockRefund = !process.env.STRIPE_SECRET_KEY
       || !existingFamily.stripePaymentId
@@ -6400,7 +6418,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       family.paymentStatus = "refunded";
       family.refundedAt = nowIso();
       family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
-      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: refundKind === "renewal" ? "renewal_window" : "refund_window", createdAt: nowIso() });
+      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: isShortWindow ? (refundKind + "_window") : "refund_window", createdAt: nowIso() });
       // Refunding a yearly UPGRADE only undoes the upgrade — the monthly period
       // underneath it was paid for separately and earlier, so ending access now
       // would confiscate time the parent already owns. Fall back to the monthly
@@ -6424,12 +6442,12 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
         markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "auto");
       }
       recordBillingAction(family, "cancel");
-      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, refundKind, windowDays: refundWindow.windowDays, renewalWindowHours: renewalWindow.hours, paidAt: refundKind === "renewal" ? renewalWindow.chargedAt : refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
-      monitor(db, "info", "billing", refundKind === "renewal" ? "Cancelled within renewal refund window — renewal refunded" : "Cancelled inside refund window — full refund issued", { email, refundId, refundKind }, email);
+      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, refundKind, windowDays: refundWindow.windowDays, renewalWindowHours: renewalWindow.hours, paidAt: isShortWindow ? renewalWindow.chargedAt : refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
+      monitor(db, "info", "billing", isShortWindow ? `Cancelled within ${renewalWindow.hours}h refund window (${refundKind}) — refunded` : "Cancelled inside refund window — full refund issued", { email, refundId, refundKind }, email);
       return family;
     });
-    const refundWindowLabel = refundKind === "renewal"
-      ? `${renewalWindow.hours}-hour renewal refund window`
+    const refundWindowLabel = isShortWindow
+      ? `${renewalWindow.hours}-hour refund window`
       : `${refundWindow.windowDays}-day refund window`;
     return res.json({
       mode: mockRefund ? "mock" : "stripe",
