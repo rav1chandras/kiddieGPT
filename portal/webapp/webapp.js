@@ -1959,7 +1959,19 @@
       // A cancellation request is already complete from the parent's point of
       // view. Keep the paid-through access and show only the restore action;
       // offering another cancellation tile invites a second, confusing flow.
-      if (cancelSubscription) cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled);
+      if (cancelSubscription) {
+        cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled);
+        // During a trial there is no renewal to cancel yet — the action ends the
+        // plan outright — so the button reads "Cancel plan". A paying subscriber
+        // is cancelling the upcoming renewal.
+        var onTrialForCancelLabel = onStripeTrial() || onNoCardTrial();
+        var cancelLabelStrong = cancelSubscription.querySelector("strong");
+        var cancelLabelSmall = cancelSubscription.querySelector("small");
+        if (cancelLabelStrong) cancelLabelStrong.textContent = onTrialForCancelLabel ? "Cancel plan" : "Cancel renewal";
+        if (cancelLabelSmall) cancelLabelSmall.textContent = onTrialForCancelLabel
+          ? "End your free trial — you won't be charged"
+          : "Review access dates and available offers";
+      }
       // One-click undo while the paid period is still running — the cheapest
       // revenue there is, and the moment a parent is most likely to reconsider.
       if (resumeSubscription) {
@@ -2082,9 +2094,16 @@
       return (parentEntitlement && parentEntitlement.refundWindow) || null;
     }
 
+    function renewalRefundWindow() {
+      return (parentEntitlement && parentEntitlement.renewalWindow) || null;
+    }
+
     function inRefundWindow() {
       var w = refundWindow();
-      return Boolean(w && w.eligible);
+      var r = renewalRefundWindow();
+      // Either the first-payment window (7 days) or a renewal's own window (24h)
+      // makes this cancellation a full refund.
+      return Boolean((w && w.eligible) || (r && r.eligible));
     }
 
     function prepareCancellationFlow() {

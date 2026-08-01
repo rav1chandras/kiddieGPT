@@ -1909,6 +1909,36 @@ function refundWindowFor(family) {
   };
 }
 
+// Every RENEWAL gets its own short refund window: cancelling within
+// RENEWAL_REFUND_WINDOW_HOURS of a renewal charge refunds that renewal in full
+// and ends access. This is separate from the first-payment window above and
+// applies to renewals of trial-converted subscriptions too (which have no
+// first-payment window). A renewal is any charge later than the subscription's
+// first charge — firstPaymentAt marks the first, lastPaymentAt the most recent.
+const RENEWAL_REFUND_WINDOW_HOURS = Math.max(0, Number(process.env.RENEWAL_REFUND_WINDOW_HOURS || 24));
+function renewalRefundWindowFor(family) {
+  const empty = { eligible: false, hours: RENEWAL_REFUND_WINDOW_HOURS, chargedAt: "", endsAt: "", amountCents: 0, isRenewal: false };
+  const lastAt = family?.lastPaymentAt || "";
+  const firstAt = family?.firstPaymentAt || "";
+  const lastMs = lastAt ? new Date(lastAt).getTime() : NaN;
+  const firstMs = firstAt ? new Date(firstAt).getTime() : NaN;
+  if (!Number.isFinite(lastMs)) return empty;
+  // Only a charge meaningfully later than the first one is a renewal; the first
+  // charge is governed by the 7-day window (or the trial that preceded it).
+  const isRenewal = Number.isFinite(firstMs) ? lastMs > firstMs + 60000 : false;
+  if (!isRenewal) return { ...empty, chargedAt: lastAt };
+  const endsMs = lastMs + RENEWAL_REFUND_WINDOW_HOURS * 3600000;
+  const msLeft = endsMs - Date.now();
+  return {
+    eligible: msLeft > 0,
+    hours: RENEWAL_REFUND_WINDOW_HOURS,
+    chargedAt: lastAt,
+    endsAt: new Date(endsMs).toISOString(),
+    amountCents: Number(family?.lastPaymentAmountCents || 0),
+    isRenewal: true
+  };
+}
+
 function markCancellationScheduled(family, subscription, reason = "", source = "") {
   if (!family) return family;
   // Recorded at schedule time and carried through when the sweep finalises it.
@@ -5539,6 +5569,9 @@ app.get("/api/entitlements/me", (req, res) => {
     // Lets the portal tell the parent what cancelling will actually do before
     // they confirm: full refund + access ends now, or access to the period end.
     refundWindow: refundWindowFor(family),
+    // A renewal charge opens its own 24-hour full-refund window, independent of
+    // the first-payment window above.
+    renewalWindow: renewalRefundWindowFor(family),
     // Whether the cancellation save offer may still be shown to this parent
     // (false once they've used it within the cooldown), so the portal doesn't
     // dangle an offer they can no longer take.
@@ -6218,6 +6251,11 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
   const refundWindow = existingFamily.subscriptionStatus === "trialing"
     ? { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 }
     : refundWindowFor(existingFamily);
+  // A renewal charge opens its own 24-hour refund window, independent of the
+  // first-payment window (and of whether a trial preceded the subscription).
+  const renewalWindow = existingFamily.subscriptionStatus === "trialing"
+    ? { eligible: false, hours: RENEWAL_REFUND_WINDOW_HOURS, amountCents: 0, isRenewal: false }
+    : renewalRefundWindowFor(existingFamily);
 
   // Cancelling DURING a trial ends access immediately. No charge has happened
   // yet, so there is nothing to keep access for — and we cancel the Stripe
@@ -6268,7 +6306,12 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     });
   }
 
-  if (refundWindow.eligible && existingFamily.subscriptionStatus === "active") {
+  // Either window makes the latest charge refundable. The renewal window refunds
+  // the renewal; the first-payment window refunds the opening charge. Both refund
+  // the most recent PaymentIntent (stripePaymentId) and end access now.
+  const refundEligible = refundWindow.eligible || renewalWindow.eligible;
+  const refundKind = renewalWindow.eligible ? "renewal" : "first_payment";
+  if (refundEligible && existingFamily.subscriptionStatus === "active") {
     const mockRefund = !process.env.STRIPE_SECRET_KEY
       || !existingFamily.stripePaymentId
       || String(existingFamily.stripePaymentId).startsWith("pi_mock");
@@ -6294,7 +6337,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
       family.paymentStatus = "refunded";
       family.refundedAt = nowIso();
       family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
-      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: "refund_window", createdAt: nowIso() });
+      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: refundKind === "renewal" ? "renewal_window" : "refund_window", createdAt: nowIso() });
       // Refunding a yearly UPGRADE only undoes the upgrade — the monthly period
       // underneath it was paid for separately and earlier, so ending access now
       // would confiscate time the parent already owns. Fall back to the monthly
@@ -6318,21 +6361,26 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
         markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "auto");
       }
       recordBillingAction(family, "cancel");
-      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, windowDays: refundWindow.windowDays, paidAt: refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
-      monitor(db, "info", "billing", "Cancelled inside refund window — full refund issued", { email, refundId, windowDays: refundWindow.windowDays }, email);
+      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, refundKind, windowDays: refundWindow.windowDays, renewalWindowHours: renewalWindow.hours, paidAt: refundKind === "renewal" ? renewalWindow.chargedAt : refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
+      monitor(db, "info", "billing", refundKind === "renewal" ? "Cancelled within renewal refund window — renewal refunded" : "Cancelled inside refund window — full refund issued", { email, refundId, refundKind }, email);
       return family;
     });
+    const refundWindowLabel = refundKind === "renewal"
+      ? `${renewalWindow.hours}-hour renewal refund window`
+      : `${refundWindow.windowDays}-day refund window`;
     return res.json({
       mode: mockRefund ? "mock" : "stripe",
       refunded: true,
       refundId,
+      refundKind,
       familyId: updated?.id || existingFamily.id,
       status: updated?.subscriptionStatus || "cancelled",
       cancelAccessUntil: updated?.cancelAccessUntil || "",
       refundWindow,
+      renewalWindow,
       message: updated?.subscriptionStatus === "cancel_scheduled"
         ? `Your yearly upgrade was refunded in full. Your monthly plan continues until ${updated.cancelAccessUntil ? new Date(updated.cancelAccessUntil).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "the end of the paid period"}, then access ends.`
-        : `Cancelled within the ${refundWindow.windowDays}-day refund window. Your payment has been refunded in full and access has ended.`
+        : `Cancelled within the ${refundWindowLabel}. Your ${refundKind === "renewal" ? "renewal" : "payment"} has been refunded in full and access has ended.`
     });
   }
 
@@ -6918,39 +6966,54 @@ app.post("/api/dev/stripe/bootstrap-prices", requireAdmin, async (req, res) => {
     const dbSnapshot = readDb();
     const pricing = dbSnapshot.pricing || defaultPricing();
     const stripe = stripeClient();
-    const product = await stripe.products.create({
-      name: "KiddieGPT Family Plan",
-      metadata: { app: "KiddieGPT", environment: stripeMode() }
-    });
     const monthlyAmount = Math.round(Number(pricing.monthly?.amount || 19) * 100);
     const yearlyAmount = Math.round(Number(pricing.yearly?.amount || 149) * 100);
-    const monthly = await stripe.prices.create({
-      product: product.id,
-      currency: "usd",
-      unit_amount: monthlyAmount,
-      recurring: { interval: "month" },
-      nickname: "KiddieGPT monthly",
-      metadata: { app: "KiddieGPT", plan: "monthly" }
-    });
-    const yearly = await stripe.prices.create({
-      product: product.id,
-      currency: "usd",
-      unit_amount: yearlyAmount,
-      recurring: { interval: "year" },
-      nickname: "KiddieGPT yearly",
-      metadata: { app: "KiddieGPT", plan: "yearly" }
-    });
+
+    // Idempotent: reuse the existing KiddieGPT product rather than creating a
+    // new one on every call. The old version orphaned a product + 2 prices each
+    // run, so re-running to repair prices quietly piled up duplicates.
+    const PRODUCT_NAME = "KiddieGPT Family Plan";
+    const existingProducts = (await stripe.products.list({ active: true, limit: 100 })).data;
+    let product = existingProducts.find((p) => p.metadata?.app === "KiddieGPT" || p.name === PRODUCT_NAME);
+    const reusedProduct = Boolean(product);
+    if (!product) {
+      product = await stripe.products.create({
+        name: PRODUCT_NAME,
+        metadata: { app: "KiddieGPT", environment: stripeMode() }
+      });
+    }
+
+    // Reuse an active price that already matches currency + interval + amount;
+    // only create one when nothing matches. Stripe prices are immutable, so a
+    // changed amount legitimately needs a new price — but an unchanged one does
+    // not, which is what stops the duplication.
+    const activePrices = (await stripe.prices.list({ product: product.id, active: true, limit: 100 })).data;
+    const findOrCreatePrice = (interval, unitAmount, nickname, planKey) => {
+      const match = activePrices.find((pr) => pr.currency === "usd" && pr.unit_amount === unitAmount && pr.recurring?.interval === interval);
+      if (match) return match;
+      return stripe.prices.create({
+        product: product.id,
+        currency: "usd",
+        unit_amount: unitAmount,
+        recurring: { interval },
+        nickname,
+        metadata: { app: "KiddieGPT", plan: planKey }
+      });
+    };
+    const monthly = await findOrCreatePrice("month", monthlyAmount, "KiddieGPT monthly", "monthly");
+    const yearly = await findOrCreatePrice("year", yearlyAmount, "KiddieGPT yearly", "yearly");
     const updated = mutateDb((db) => {
       db.pricing = db.pricing || defaultPricing();
       db.pricing.monthly = { ...(db.pricing.monthly || defaultPricing().monthly), stripePriceId: monthly.id };
       db.pricing.yearly = { ...(db.pricing.yearly || defaultPricing().yearly), stripePriceId: yearly.id };
-      audit(db, "stripe.prices.bootstrap", { productId: product.id, monthlyPriceId: monthly.id, yearlyPriceId: yearly.id }, req.auth?.email || "admin");
-      monitor(db, "info", "stripe", "Stripe test prices created", { productId: product.id, monthlyPriceId: monthly.id, yearlyPriceId: yearly.id }, req.auth?.email || "admin");
+      audit(db, "stripe.prices.bootstrap", { productId: product.id, monthlyPriceId: monthly.id, yearlyPriceId: yearly.id, reusedProduct }, req.auth?.email || "admin");
+      monitor(db, "info", "stripe", reusedProduct ? "Stripe prices reconciled (reused product)" : "Stripe test prices created", { productId: product.id, monthlyPriceId: monthly.id, yearlyPriceId: yearly.id }, req.auth?.email || "admin");
       return db.pricing;
     });
     res.json({
       ok: true,
       mode: stripeMode(),
+      reusedProduct,
       productId: product.id,
       monthlyPriceId: monthly.id,
       yearlyPriceId: yearly.id,
