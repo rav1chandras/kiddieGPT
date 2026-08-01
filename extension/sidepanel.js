@@ -3865,8 +3865,11 @@ function renderDerivationLine(line, blur = false) {
   // Each step is one .tb-row (equation + explanation). The Solution panel places
   // the explanation to the right on wide widths and stacks it below when narrow;
   // Help keeps it stacked. See the .tb-row rules in styles.css.
+  // A prose step spans both columns only when nothing has to sit beside it.
+  // With an explanation present it stays in column 1, or the explanation is
+  // pushed out of the row and the whole grid falls out of phase below it.
   const eq = isProseMathLine(line.math)
-    ? `<div class="tb-prose${cls}">${renderMathHtml(line.math)}</div>`
+    ? `<div class="tb-prose${why ? "" : " tb-prose-wide"}${cls}">${renderMathHtml(line.math)}</div>`
     : `<div class="tb-eq${cls}">${renderTextbookMath(line.math, cls)}</div>`;
   return `<div class="tb-row">${eq}${why}</div>`;
 }

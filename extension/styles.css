@@ -489,7 +489,16 @@ body{background:#f6f8f5}
     @media (min-width:560px){
       .math-full-solution .tb-derivation{grid-template-columns:auto minmax(0,1fr);column-gap:20px;row-gap:11px;align-items:baseline}
       .math-full-solution .tb-row{display:contents}
-      .math-full-solution .tb-prose{grid-column:1 / -1}
+      /* Place every cell explicitly. Auto-placement was the bug: .tb-prose spans
+         the full row, so its explanation flowed into the NEXT row's column 1 and
+         every row after it stayed one cell out of phase -- equations landing on
+         the right, explanations on the left, alternating down the panel. */
+      .math-full-solution .tb-eq,
+      .math-full-solution .tb-prose,
+      .math-full-solution .tb-eq-spacer{grid-column:1}
+      .math-full-solution .tb-why{grid-column:2}
+      /* Full width only when there is no explanation to sit beside it. */
+      .math-full-solution .tb-prose-wide{grid-column:1 / -1}
       .math-full-solution .tb-eq-spacer{display:block}
     }
     .tb-check{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;margin-top:11px;padding-top:11px;border-top:1px dashed rgba(0,79,72,.22)}
