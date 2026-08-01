@@ -5877,6 +5877,11 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
     }
     const paymentIntentId = await checkoutSessionPaymentIntentId(stripe, session);
     if (paymentIntentId) session.payment_intent = paymentIntentId;
+    // Already expanded on the session retrieve above. Used to record the charge
+    // synchronously below so Billing does not depend on the invoice.paid webhook.
+    const latestInvoice = subscription?.latest_invoice && typeof subscription.latest_invoice === "object"
+      ? subscription.latest_invoice
+      : null;
 
     const metadata = session.metadata || {};
     const email = stripeObjectEmail(session);
@@ -5933,7 +5938,19 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       next.stripeCheckoutSessionId = session.id;
       next.lastLoginAt = next.lastLoginAt || nowIso();
       delete next.pendingPlanName;
-      recordStripePayment(db, { id: `confirm_${session.id}`, type: "checkout.session.completed" }, session, next);
+      // Record the charge synchronously so the ledger does not depend on the
+      // invoice.paid webhook arriving. checkout.session.completed is skipped in
+      // live mode (recordStripePayment), so passing the session here was a
+      // no-op — an initial monthly charge could sit in Stripe but never reach
+      // Billing if its webhook was missed. The subscription's latest_invoice
+      // carries the real amount; recording it (keyed by invoice id) dedups
+      // against the webhook if that also lands. A $0 trial invoice self-filters
+      // in recordStripePayment, so trials still record nothing here.
+      if (latestInvoice) {
+        recordStripePayment(db, { id: `confirm_${session.id}`, type: "invoice.paid" }, latestInvoice, next);
+      } else {
+        recordStripePayment(db, { id: `confirm_${session.id}`, type: "checkout.session.completed" }, session, next);
+      }
       audit(db, "stripe.checkout.confirm", { sessionId: session.id, familyId: next.id, email: next.email });
       return next;
     });
@@ -6201,6 +6218,56 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
   const refundWindow = existingFamily.subscriptionStatus === "trialing"
     ? { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 }
     : refundWindowFor(existingFamily);
+
+  // Cancelling DURING a trial ends access immediately. No charge has happened
+  // yet, so there is nothing to keep access for — and we cancel the Stripe
+  // subscription now (not at period end) so the card is never billed at
+  // trial_end. The trial is marked spent, so a later resubscribe starts a
+  // charged plan with no second free week (see eligibleForTrial).
+  const onTrialNow = ["trialing", "trial"].includes(existingFamily.subscriptionStatus)
+    || trialStillActive(existingFamily)
+    || stripeTrialActive(existingFamily);
+  if (onTrialNow) {
+    const subId = existingFamily.stripeSubscriptionId || "";
+    const liveStripeSub = Boolean(process.env.STRIPE_SECRET_KEY) && subId && !subId.startsWith("sub_mock");
+    if (liveStripeSub) {
+      try {
+        await stripeClient().subscriptions.cancel(subId);
+      } catch (error) {
+        // Already gone at Stripe is fine — proceed to end access locally.
+        if (error?.code !== "resource_missing") {
+          mutateDb((db) => monitor(db, "error", "stripe", "Trial cancellation failed at Stripe", { email, subscriptionId: subId, detail: error.message }, email));
+          return res.status(502).json({ error: "Could not cancel your trial just now. Please try again." });
+        }
+      }
+    }
+    const updated = mutateDb((db) => {
+      const family = db.families.find((item) => item.email === email);
+      if (!family) return null;
+      markSubscriptionEndedNow(family, reason || "Cancelled during free trial", subId || effectiveFamilySubscriptionId(family) || "", "auto");
+      // Trial is now spent: block any future self-serve free week and stop the
+      // portal showing "trial ends on X".
+      family.trialEndedAt = family.trialEndedAt || nowIso();
+      family.trialUsedAt = family.trialUsedAt || nowIso();
+      delete family.trialEndsAt;
+      recordBillingAction(family, "cancel");
+      audit(db, "subscription.trial_cancelled", { familyId: family.id, email, subscriptionId: subId, reason }, email);
+      monitor(db, "info", "billing", "Trial cancelled — access ended immediately, no charge", { email, subscriptionId: subId }, email);
+      return family;
+    });
+    return res.json({
+      mode: liveStripeSub ? "stripe" : "mock",
+      familyId: updated?.id || existingFamily.id,
+      status: updated?.subscriptionStatus || "cancelled",
+      cancelAccessUntil: updated?.cancelAccessUntil || nowIso(),
+      endedImmediately: true,
+      trialing: true,
+      refunded: false,
+      refundWindow,
+      message: "Your free trial has been cancelled and access has ended. You were not charged. You can subscribe anytime — plans start right away and are billed immediately, with no additional free trial."
+    });
+  }
+
   if (refundWindow.eligible && existingFamily.subscriptionStatus === "active") {
     const mockRefund = !process.env.STRIPE_SECRET_KEY
       || !existingFamily.stripePaymentId

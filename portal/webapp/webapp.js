@@ -2107,14 +2107,14 @@
         if (cancelFlowTitle) cancelFlowTitle.textContent = promoAvailable ? "$" + promo.amountOff + " off your " + promo.renewalsLabel : "End your free trial";
         if (cancelFlowCopy) {
           cancelFlowCopy.textContent = promoAvailable
-            ? "Your current plan cancels on " + trialEndsText() + " if you continue. Keep it instead and get $" + promo.amountOff + " off when billing starts on " + trialEndsText() + ". No code is needed."
-            : "Your trial ends on " + trialEndsText() + " and you will not be charged. Your child keeps access until then, and all profiles and progress are saved.";
+            ? "Keep your plan and get $" + promo.amountOff + " off when billing starts on " + trialEndsText() + " — no code needed. If you cancel, your free trial and access end right away and you won't be charged."
+            : "Cancelling ends your free trial and access right away. You have not been charged and won't be. Your profiles and progress are saved, and you can subscribe again anytime (billed immediately, with no new free trial).";
         }
         if (acceptDiscount) {
           acceptDiscount.classList.toggle("hidden", !promoAvailable);
           acceptDiscount.textContent = promoAvailable ? "Keep plan with $" + promo.amountOff + " off" : "Keep my plan";
         }
-        if (confirmCancel) confirmCancel.textContent = "Cancel renewal";
+        if (confirmCancel) confirmCancel.textContent = "End trial now";
         if (saveOffer) saveOffer.classList.toggle("yearly-cancel", !promoAvailable);
         return;
       }
@@ -3420,17 +3420,19 @@
           return;
         }
         if (result.trialing) {
+          // Cancelling during a trial ends access immediately — no charge ever
+          // happened, so there is nothing to keep access for. A later
+          // resubscribe is billed right away with no second free week.
           invalidateEntitlementSync();
-          cancellationScheduled = true;
-          cancellationAccessUntil = result.cancelAccessUntil || result.trialEndsAt || "";
           cancelFlow.classList.add("hidden");
           subscriptionMain.classList.remove("hidden");
-          paymentState.textContent = "Trial ends " + parentDate(cancellationAccessUntil);
-          paymentState.className = "state-chip warning";
-          completionTitle.textContent = "Trial ending";
-          completionText.textContent = "Your trial is scheduled to end on " + parentDate(cancellationAccessUntil) + ". Access continues until then, and you will not be charged.";
+          setUnpaidSubscription(
+            "Trial cancelled",
+            result.message || "Your free trial has been cancelled and access has ended. You were not charged. Subscribe anytime — plans start right away and are billed immediately, with no additional free trial.",
+            "Trial cancelled"
+          );
           if (currentPackageNote) {
-            currentPackageNote.textContent = "Trial ends " + parentDate(cancellationAccessUntil) + " — no charge.";
+            currentPackageNote.textContent = "Free trial cancelled — access ended, no charge.";
           }
           await syncSubscriptionFromEntitlement().catch(function () {});
           preview();
