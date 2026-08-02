@@ -1673,16 +1673,18 @@ const TOOL_LIMIT_CEILINGS = {
   mission: { fileBytes: maxStudyFileBytes, pdfPages: maxStudyPdfPages, pageWords: maxTabWords, quizCount: 15, cardCount: 12 },
   math:    { pasteChars: 2000, fileBytes: maxStudyFileBytes, pdfPages: 10, problems: 20, reconsiderAttempts: 5 },
   write:   { inputChars: 10000 },
-  explain: { pageWords: maxTabWords, followupChars: 500, followupsPerSession: 25 },
-  tutor:   { readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars }
+  explain: { fileBytes: maxStudyFileBytes, pdfPages: 20, pageWords: maxTabWords, followupChars: 500, followupsPerSession: 25 },
+  tutor:   { fileBytes: maxStudyFileBytes, pdfPages: 20, readChars: maxTutorReadChars, sourceChars: maxTutorExplainSourceChars }
 };
 // Used until the portal answers, and whenever it cannot be reached.
 const TOOL_LIMIT_FALLBACKS = {
   mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10 },
   math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3 },
   write:   { inputChars: 4000 },
-  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
-  tutor:   { readChars: 30000, sourceChars: 24000 }
+  explain: { fileBytes: 4 * 1024 * 1024, pdfPages: 10, pageWords: 5000, followupChars: 200, followupsPerSession: 10 },
+  // 5 pages: a chapter to be read ALOUD is a different intent from one to be
+  // quizzed on, and voice is metered by the minute.
+  tutor:   { fileBytes: 4 * 1024 * 1024, pdfPages: 5, readChars: 30000, sourceChars: 24000 }
 };
 let portalToolLimits = null;
 
@@ -2941,19 +2943,28 @@ async function handleStudyFile(file, tool = "pdf") {
     setToolUploadStatus(tool, "Use a PDF, TXT, JPG, or PNG file.", "warn");
     return;
   }
-  if (file.size > toolLimit("mission", "fileBytes")) {
+  // Every limit below is looked up with the tool that was passed in. It used to
+  // read toolLimit("mission", ...) regardless, so Math and Tutor advertised
+  // their own caps in the admin console and silently enforced Mission's.
+  const byteCap = toolLimit(tool, "fileBytes");
+  if (file.size > byteCap) {
     selectedPdfFile = null;
-    setToolUploadStatus(tool, `File is too large. Please use a file under ${formatBytes(maxStudyFileBytes)}.`, "warn");
+    setToolUploadStatus(tool, `File is too large. Please use a file under ${formatBytes(byteCap)}.`, "warn");
     return;
   }
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
     const { pages, scanned, reliable } = await inspectPdf(file);
-    const cap = scanned ? maxScannedPdfPages : maxStudyPdfPages;
+    const pageCap = toolLimit(tool, "pdfPages");
+    // A scanned page is an image to the model, so it costs far more than a text
+    // page. Keep the tighter of the two rather than the scanned default alone.
+    const cap = scanned ? Math.min(maxScannedPdfPages, pageCap) : pageCap;
     if (reliable && pages > cap) {
       selectedPdfFile = null;
       setToolUploadStatus(tool, scanned
-        ? `This looks like a scanned PDF with ${pages} pages. Scanned pages are slower and cost more to read, so please use up to ${maxScannedPdfPages} pages at a time.`
-        : `That PDF has ${pages} pages. Please use up to ${maxStudyPdfPages} pages (one chapter or section) at a time.`, "warn");
+        // Quote the cap actually applied, not Mission's constant -- being told
+        // "use up to 20 pages" by a tool that refuses at 5 is worse than silence.
+        ? `This looks like a scanned PDF with ${pages} pages. Scanned pages are slower and cost more to read, so please use up to ${cap} ${cap === 1 ? "page" : "pages"} at a time.`
+        : `That PDF has ${pages} pages. Please use up to ${cap} ${cap === 1 ? "page" : "pages"} (one chapter or section) at a time.`, "warn");
       return;
     }
     // Page count was unknowable (compressed page tree). Fall back to size, which

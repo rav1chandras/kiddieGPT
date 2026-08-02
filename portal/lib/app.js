@@ -129,8 +129,8 @@ const TOOL_LIMIT_CEILINGS = {
   mission: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, quizCount: 15, cardCount: 12, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
   math:    { pasteChars: 2000, fileBytes: AI_MAX_FILE_BYTES, pdfPages: 10, problems: 20, reconsiderAttempts: 5, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
   write:   { inputChars: 10000, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
-  explain: { pageWords: 15000, followupChars: 500, followupsPerSession: 25, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
-  tutor:   { readChars: 30000, sourceChars: 24000, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS }
+  explain: { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, pageWords: 15000, followupChars: 500, followupsPerSession: 25, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS },
+  tutor:   { fileBytes: AI_MAX_FILE_BYTES, pdfPages: 20, readChars: 30000, sourceChars: 24000, maxOutputTokens: HARD_MAX_OUTPUT_TOKENS }
 };
 // Shipped defaults: today's behaviour, except where it was plainly wrong.
 // `write.inputChars` moves 900 -> 4000 because 900 characters is roughly 150
@@ -139,8 +139,10 @@ const TOOL_LIMIT_DEFAULTS = {
   mission: { fileBytes: 4 * 1024 * 1024, pdfPages: 20, pageWords: 5000, quizCount: 12, cardCount: 10, maxOutputTokens: 5000 },
   math:    { pasteChars: 900, fileBytes: 4 * 1024 * 1024, pdfPages: 1, problems: 15, reconsiderAttempts: 3, maxOutputTokens: 5000 },
   write:   { inputChars: 4000, maxOutputTokens: 5000 },
-  explain: { pageWords: 5000, followupChars: 200, followupsPerSession: 10, maxOutputTokens: 5000 },
-  tutor:   { readChars: 30000, sourceChars: 24000, maxOutputTokens: 5000 }
+  explain: { fileBytes: 4 * 1024 * 1024, pdfPages: 10, pageWords: 5000, followupChars: 200, followupsPerSession: 10, maxOutputTokens: 5000 },
+  // 5 pages, not Mission's 20: a chapter to be READ ALOUD is a different
+  // intent from a chapter to be quizzed on, and voice is metered by the minute.
+  tutor:   { fileBytes: 4 * 1024 * 1024, pdfPages: 5, readChars: 30000, sourceChars: 24000, maxOutputTokens: 5000 }
 };
 // Below these a tool stops working rather than merely being strict, so they are
 // floors rather than advisory minimums.
@@ -148,8 +150,8 @@ const TOOL_LIMIT_FLOORS = {
   mission: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, quizCount: 3, cardCount: 3, maxOutputTokens: 500 },
   math:    { pasteChars: 80, fileBytes: 64 * 1024, pdfPages: 1, problems: 1, reconsiderAttempts: 0, maxOutputTokens: 500 },
   write:   { inputChars: 100, maxOutputTokens: 500 },
-  explain: { pageWords: 200, followupChars: 40, followupsPerSession: 0, maxOutputTokens: 500 },
-  tutor:   { readChars: 500, sourceChars: 500, maxOutputTokens: 500 }
+  explain: { fileBytes: 64 * 1024, pdfPages: 1, pageWords: 200, followupChars: 40, followupsPerSession: 0, maxOutputTokens: 500 },
+  tutor:   { fileBytes: 64 * 1024, pdfPages: 1, readChars: 500, sourceChars: 500, maxOutputTokens: 500 }
 };
 
 function normaliseToolLimits(input = {}) {
