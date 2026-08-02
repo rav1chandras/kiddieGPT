@@ -1701,8 +1701,19 @@ async function retentionCouponId(stripe, db) {
   const wantCents = Math.round(Number(promo.amountOff || 0) * 100);
   const cached = promo.stripeCouponId || db.pricing?.promotion?.retentionCouponId || "";
   const cachedAmount = Number(promo.stripeCouponAmountOff || 0);
-  // Fast path: the cached coupon still matches the configured amount.
-  if (cached && cachedAmount === Number(promo.amountOff || 0)) return cached;
+  // Fast path: the cached coupon still matches the configured amount AND still
+  // exists in Stripe. Verifying existence matters — a "Delete all test data" (or
+  // an orphan cleanup) can leave a dead coupon id cached, and blindly returning
+  // it made applying the discount fail with "No such coupon". If it's gone, fall
+  // through to reuse-or-create a valid one.
+  if (cached && cachedAmount === Number(promo.amountOff || 0)) {
+    try {
+      const existingCoupon = await stripe.coupons.retrieve(cached);
+      if (existingCoupon && existingCoupon.valid) return cached;
+    } catch (error) {
+      // Deleted or invalid — fall through to reuse-or-create below.
+    }
+  }
 
   // Reuse an existing Stripe coupon of the right shape before minting a new one,
   // so repeated amount changes don't pile up orphaned coupons. Matched on our
@@ -2999,6 +3010,11 @@ function demoLoginsEnabled() {
 // Seeded fixtures covering each subscription state, surfaced as login tiles so
 // they can be switched between without retyping credentials.
 const DEMO_LOGIN_ACCOUNTS = [
+  // Clean, trial-eligible test accounts for running through scenarios end to end.
+  { email: "dummy.one@gmail.com", label: "Dummy 1", note: "Clean test account", icon: "user-round" },
+  { email: "dummy.two@gmail.com", label: "Dummy 2", note: "Clean test account", icon: "user-round" },
+  { email: "dummy.three@gmail.com", label: "Dummy 3", note: "Clean test account", icon: "user-round" },
+  { email: "dummy.four@gmail.com", label: "Dummy 4", note: "Clean test account", icon: "user-round" },
   { email: "parent.kiddiegpt@gmail.com", label: "Parent demo", note: "Monthly card trial", icon: "user-round" },
   // Fresh and trial-eligible — use these to run a real Stripe Checkout with the
   // 7-day card-upfront trial.
@@ -6186,7 +6202,9 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
       mode: "mock",
       familyId: updated?.id || existingFamily.id,
       amountOff: cancellationPromo.amountOff,
-      message: `The $${cancellationPromo.amountOff} save offer was recorded for the next renewal. Stripe discount application was simulated.`
+      message: trialing
+        ? `The $${cancellationPromo.amountOff} save offer is set — it applies to your first charge when the trial ends.`
+        : `The $${cancellationPromo.amountOff} save offer was recorded for the next renewal.`
     });
   }
 
@@ -6278,7 +6296,9 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
       message: duplicateSubscriptionIds.length
           ? `The $${cancellationPromo.amountOff} save offer was applied, but multiple active Stripe subscriptions exist for this parent email.`
           : toUpdate.length
-          ? `The $${cancellationPromo.amountOff} save offer was applied to the next Stripe invoice.`
+          ? (trialing
+            ? `The $${cancellationPromo.amountOff} save offer was applied — it comes off your first charge when the trial ends.`
+            : `The $${cancellationPromo.amountOff} save offer was applied to the next Stripe invoice.`)
           : `The $${cancellationPromo.amountOff} save offer is already applied to the next invoice.`
     });
   } catch (error) {
