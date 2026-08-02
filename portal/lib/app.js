@@ -68,8 +68,20 @@ const HARD_MAX_OUTPUT_TOKENS = 10000;
 // lists up to 15 problems in one reply — so it ships at 8000, not the 5000 a
 // chat turn needs. Carded tools (mission/math/write/explain/tutor) override this.
 const AI_DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.AI_MAX_OUTPUT_TOKENS_LONG || process.env.AI_DEFAULT_MAX_OUTPUT_TOKENS || 8000);
-function maxOutputTokensForTool(tool, settings) {
+// The extension sends the name of the VIEW a student is in ("pdf", "read",
+// "screenshot"); toolLimits is keyed by the tool ("mission", "tutor"). Without
+// this, toolLimits[key] was undefined for Mission and Tutor and both silently
+// fell back to the global default -- their per-tool reply caps were set in the
+// admin console and never applied. "screenshot" resolves to tutor because
+// Explain and Tutor are one tool now.
+const TOOL_ALIASES = { pdf: "mission", read: "tutor", screenshot: "tutor", explain: "tutor", deepdive: "tutor", "deep-dive": "tutor" };
+function canonicalTool(tool) {
   const key = String(tool || "").trim().toLowerCase();
+  return TOOL_ALIASES[key] || key;
+}
+
+function maxOutputTokensForTool(tool, settings) {
+  const key = canonicalTool(tool);
   // Per-tool is the source of truth: each tool that has a limit card carries its
   // own reply-length cap in toolLimits. A study-pack tool can run longer than a
   // chat turn without raising the ceiling for every other tool.

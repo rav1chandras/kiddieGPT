@@ -425,7 +425,10 @@ if (typeof window !== "undefined") {
 
 // Map the active tool view to a metering label the portal understands.
 function toolForCurrentView() {
-  const map = { math: "math", pdf: "pdf", read: "read", write: "write", screenshot: "math" };
+  // "screenshot" is the Explain view. It reported as "math", so every Explain
+  // request drew on the child's daily math-problem quota and was capped by
+  // Math's reply limit. It reports as Tutor mode now -- the tool it belongs to.
+  const map = { math: "math", pdf: "pdf", read: "read", write: "write", screenshot: "read" };
   return map[currentView] || "";
 }
 
