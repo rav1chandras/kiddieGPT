@@ -430,6 +430,11 @@ function toolForCurrentView() {
 }
 
 let selectedPdfFile = null;
+// Explain keeps its own file. Mission and Tutor deliberately share one so a
+// source is never read twice; Explain is a different question about a possibly
+// different document, so sharing would mean picking a file in one tool and
+// silently explaining it in another.
+let selectedExplainFile = null;
 let currentStudyPack = null;
 let selectedMathCapture = null;
 let selectedMathFile = null;
@@ -502,6 +507,20 @@ const sourceState = {
   math: "paste",
   explain: "page"
 };
+// Which input sources each tool offers. Declared here rather than left implicit
+// in the markup so the answer to "does this tool take a file?" exists in code,
+// and so a tool cannot quietly acquire a source nothing has wired up. Not every
+// tool wants every source -- Writing Studio has no use for phone capture -- so
+// this is an allowlist, not a shared superset.
+const TOOL_SOURCES = {
+  pdf:     ["browser", "file"],
+  read:    ["browser", "file"],
+  math:    ["paste", "screenshot", "file", "qr"],
+  explain: ["page", "screenshot", "file"]
+};
+function toolAcceptsSource(tool, source) {
+  return (TOOL_SOURCES[tool] || []).includes(source);
+}
 // Mission and Tutor share one source + one extracted text so nothing is read twice.
 let currentSourceText = "";
 let currentSourceLabel = "";
@@ -917,6 +936,9 @@ function setPreferenceTab(button) {
 
 function setToolSource(tool, source) {
   if (!sourceState[tool]) return;
+  // Refuse a source this tool does not offer, rather than half-switching into a
+  // pane that does not exist.
+  if (!toolAcceptsSource(tool, source)) return;
   // Mission (pdf) and Tutor (read) share one source: setting one sets both.
   const shared = tool === "pdf" || tool === "read";
   if (shared && !["file", "browser"].includes(source)) source = "file";
@@ -2058,9 +2080,12 @@ function studyPackKey({ useFileSource, file, url, challenge, gradeBand }) {
 }
 
 // Read a file's text once, cache it, and reuse it for Tutor + Mission (no double read).
-async function getSharedFileText(file, settings) {
+// shared=false for a tool that has its own file. Mission and Tutor deliberately
+// share one source so nothing is read twice; Explain must not join that, or
+// picking a file in Explain would silently replace the file Tutor is reading.
+async function getSharedFileText(file, settings, { shared = true } = {}) {
   const key = studyFileKey(file);
-  if (currentSourceKey === key && currentSourceText) {
+  if (shared && currentSourceKey === key && currentSourceText) {
     return { label: currentSourceLabel || file.name, text: currentSourceText };
   }
   const fileData = await readStudySourceDataUrl(file);
@@ -2071,10 +2096,14 @@ async function getSharedFileText(file, settings) {
     instructions: "You are KiddieGPT. Read the study source and return its readable text so a student can hear it. Return only valid JSON." + UNTRUSTED_CONTENT_GUARD,
     text: `Return JSON with a title string and a text string. text is the main readable passage or notes in the original words, cleaned of page numbers and clutter, up to about 1500 words. Filename: ${file.name}`
   });
-  currentSourceKey = key;
-  currentSourceLabel = result.title || file.name;
-  currentSourceText = result.text || "";
-  return { label: currentSourceLabel, text: currentSourceText };
+  const label = result.title || file.name;
+  const text = result.text || "";
+  if (shared) {
+    currentSourceKey = key;
+    currentSourceLabel = label;
+    currentSourceText = text;
+  }
+  return { label, text };
 }
 
 async function getTutorReadAloudText() {
@@ -2929,6 +2958,33 @@ function choosePdfFile() {
 function handlePdfFileChange(event) {
   const file = event.target.files?.[0];
   handleStudyFile(file, "pdf");
+}
+
+// Shared file validator: the same HEIC, type, size and page checks
+// handleStudyFile runs, but returning the file instead of assigning it to
+// Mission's slot. Every caller passes its own tool, so the limits enforced are
+// that tool's own -- which is the whole point of per-tool upload budgets.
+async function acceptToolFile(file, tool) {
+  if (!file) return null;
+  if (isHeicFile(file)) { setToolUploadStatus(tool, HEIC_ADVICE, "warn"); return null; }
+  const acceptedType = acceptedStudyTypes.includes(file.type) || /\.(pdf|txt|jpe?g|png)$/i.test(file.name);
+  if (!acceptedType) { setToolUploadStatus(tool, "Use a PDF, TXT, JPG, or PNG file.", "warn"); return null; }
+  const byteCap = toolLimit(tool, "fileBytes");
+  if (file.size > byteCap) {
+    setToolUploadStatus(tool, `File is too large. Please use a file under ${formatBytes(byteCap)}.`, "warn");
+    return null;
+  }
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    const { pages, scanned, reliable } = await inspectPdf(file);
+    const pageCap = toolLimit(tool, "pdfPages");
+    const cap = scanned ? Math.min(maxScannedPdfPages, pageCap) : pageCap;
+    if (reliable && pages > cap) {
+      setToolUploadStatus(tool, `That PDF has ${pages} pages. Please use up to ${cap} ${cap === 1 ? "page" : "pages"} at a time.`, "warn");
+      return null;
+    }
+  }
+  setToolUploadStatus(tool, "", "");
+  return file;
 }
 
 async function handleStudyFile(file, tool = "pdf") {
@@ -5336,6 +5392,19 @@ function updateMathSourceMode() {
   else stopPhoneCapture();
 }
 
+function renderExplainFilePill() {
+  const copy = document.querySelector("#explainUploadZone .math-upload-copy b");
+  const hint = document.getElementById("explainFileHint");
+  const clear = document.getElementById("explainClearButton");
+  const zone = document.getElementById("explainUploadZone");
+  if (copy) copy.textContent = selectedExplainFile ? selectedExplainFile.name : "Choose a file to explain";
+  if (hint) hint.textContent = selectedExplainFile
+    ? `${formatBytes(selectedExplainFile.size)} · ready to explain`
+    : `PDF up to ${toolLimit("explain", "pdfPages")} pages, TXT, JPG, or PNG \u00b7 up to ${formatBytes(toolLimit("explain", "fileBytes"))}`;
+  if (clear) clear.hidden = !selectedExplainFile;
+  if (zone) zone.classList.toggle("has-file", !!selectedExplainFile);
+}
+
 function updateExplainSourceMode() {
   const mode = sourceState.explain || "page";
   document.querySelectorAll("[data-explain-source-mode]").forEach(panel => {
@@ -5517,6 +5586,25 @@ function initExplainTool() {
       input.focus();
     }
   });
+  document.getElementById("explainBrowseButton")?.addEventListener("click", () => {
+    document.getElementById("explainFileInput")?.click();
+  });
+  document.getElementById("explainFileInput")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    // Same shared validator as Mission and Math, told which tool it is acting
+    // for, so Explain's own fileBytes and pdfPages are what get enforced.
+    const accepted = await acceptToolFile(file, "explain");
+    selectedExplainFile = accepted || null;
+    renderExplainFilePill();
+  });
+  document.getElementById("explainClearButton")?.addEventListener("click", () => {
+    selectedExplainFile = null;
+    const input = document.getElementById("explainFileInput");
+    if (input) input.value = "";
+    setToolUploadStatus("explain", "", "");
+    renderExplainFilePill();
+  });
   const pageBox = document.getElementById("explainPageBox");
   if (pageBox) {
     pageBox.addEventListener("click", event => {
@@ -5626,6 +5714,17 @@ async function explainCurrentSource() {
     if (sourceState.explain === "screenshot" && selectedExplainCapture) {
       parts.push({ type: "input_image", image_url: selectedExplainCapture });
       sourceText = "Explain the attached screenshot or visual.";
+    } else if (sourceState.explain === "file") {
+      if (!selectedExplainFile) {
+        setScreenshotStatus("Choose a file", "warn");
+        if (observation) observation.textContent = "Pick a PDF, TXT, JPG, or PNG to explain, then press Explain.";
+        return;
+      }
+      // Same extraction Mission and Tutor use, so a PDF is read once and the
+      // text is trimmed by this tool's own pageWords rather than Mission's.
+      const source = await getSharedFileText(selectedExplainFile, settings, { shared: false });
+      const text = trimToWords(source.text || "", toolLimit("explain", "pageWords"));
+      sourceText = `Explain this file in grade-safe language.\nFile: ${selectedExplainFile.name}${text ? `\nText: ${text}` : ""}`;
     } else {
       const mode = explainPageSelect ? "selection" : "page";
       const context = await getActiveTabContext({ mode });

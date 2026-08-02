@@ -468,7 +468,7 @@
           <section class="panel panel-pad explain-source-panel">
             <div class="math-source-head">
               <div>
-                <div class="source-pills math-source-pills hdr-pill" data-source-group="explain"><button class="active" data-source-option="page">Active page</button><button data-source-option="screenshot">Screenshot</button></div>
+                <div class="source-pills math-source-pills hdr-pill" data-source-group="explain"><button class="active" data-source-option="page">Active page</button><button data-source-option="screenshot">Screenshot</button><button data-source-option="file">Local file</button></div>
                 <span class="mission-eyebrow">Explain This</span>
                 <h3>Pick what to explain</h3>
                 <p>Use the page you are viewing, selected text, or a screenshot of a diagram, worksheet, or chart.</p>
@@ -491,6 +491,17 @@
                     <b>Screenshot part of the page</b>
                     <small>Click, then drag a box around what to explain.</small>
                   </div>
+                </div>
+              </div>
+              <div class="explain-source-mode" data-explain-source-mode="file" hidden>
+                <div class="upload-zone explain-upload-zone" id="explainUploadZone">
+                  <button class="upload-clear" id="explainClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                  <input id="explainFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
+                  <div class="math-upload-copy">
+                    <b>Choose a file to explain</b>
+                    <small id="explainFileHint">PDF, TXT, JPG, or PNG</small>
+                  </div>
+                  <button class="browse-button" id="explainBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
                 </div>
               </div>
               <button class="small-button primary-action" id="explainButton" type="button">Explain</button>
