@@ -248,11 +248,20 @@
           <section class="panel panel-pad tutor-source-panel">
             <div class="tutor-source-head">
               <span class="mission-eyebrow">Tutor source</span>
-              <div class="source-pills" data-source-group="read"><button data-source-option="browser">Active tab</button><button class="active" data-source-option="file">Local file</button></div>
+              <div class="source-pills" data-source-group="read"><button data-source-option="browser">Active tab</button><button data-source-option="screenshot">Screenshot</button><button class="active" data-source-option="file">Local file</button></div>
             </div>
             <h3 id="tutorSourceTitle">Read from the active tab</h3>
             <p class="tutor-source-copy" id="tutorSourceCopy">Great for articles, stories, and reading passages.</p>
             <div class="tutor-source-card" id="tutorSourceSummary"></div>
+            <div class="tutor-source-mode" id="tutorShotSourceBody" hidden>
+              <div class="math-capture-box explain-input-box" id="tutorShotPreview" data-action="capture-tutor-screenshot" role="button" tabindex="0">
+                <span class="math-capture-icon">&#9639;</span>
+                <div>
+                  <b>Screenshot part of the page</b>
+                  <small>Click, then drag a box around what to read or teach.</small>
+                </div>
+              </div>
+            </div>
             <div class="tutor-source-mode" id="tutorFileSourceBody" hidden>
               <div class="upload-zone" id="readUploadZone">
                 <button class="upload-clear" id="readClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>

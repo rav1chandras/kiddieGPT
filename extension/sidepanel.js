@@ -464,6 +464,9 @@ async function hashPin(pin) {
 let selectedExplainCapture = null;
 // Which tool the drag-select region capture routes back to ("math" | "explain").
 let regionCaptureTarget = "math";
+// Tutor's own capture, kept separate from Explain's so switching tools does not
+// silently hand one tool the other's screenshot.
+let selectedTutorCapture = null;
 let tutorAudioUrl = "";
 let tutorMode = "read";
 let tutorExplainDepth = "standard"; // "standard" | "deep" (Deep Dive; eligible bands only)
@@ -517,7 +520,7 @@ const sourceState = {
 // this is an allowlist, not a shared superset.
 const TOOL_SOURCES = {
   pdf:     ["browser", "file"],
-  read:    ["browser", "file"],
+  read:    ["browser", "screenshot", "file"],
   math:    ["paste", "screenshot", "file", "qr"],
   explain: ["page", "screenshot", "file"]
 };
@@ -942,9 +945,13 @@ function setToolSource(tool, source) {
   // Refuse a source this tool does not offer, rather than half-switching into a
   // pane that does not exist.
   if (!toolAcceptsSource(tool, source)) return;
-  // Mission (pdf) and Tutor (read) share one source: setting one sets both.
-  const shared = tool === "pdf" || tool === "read";
-  if (shared && !["file", "browser"].includes(source)) source = "file";
+  // Mission (pdf) and Tutor (read) share a source so a file is never read twice
+  // -- but only the two sources they BOTH have. Screenshot is Tutor-only:
+  // Mission has no screenshot pane, so propagating it there would select a mode
+  // with nothing behind it. The old code coerced anything outside file/browser
+  // to "file", which would have silently swallowed this whole mode.
+  const shareable = source === "file" || source === "browser";
+  const shared = (tool === "pdf" || tool === "read") && shareable;
   const groups = shared ? ["pdf", "read"] : [tool];
   groups.forEach(group => {
     sourceState[group] = source;
@@ -966,6 +973,11 @@ function setToolSource(tool, source) {
     // Source changed — cancel any in-flight Tutor request and clear the player.
     if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
     return;
+  }
+  if (tool === "read") {
+    // Same housekeeping as the shared branch, minus anything touching Mission.
+    updateTutorSourceSummary();
+    if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
   }
   if (tool === "math") updateMathSourceMode();
   if (tool === "explain") updateExplainSourceMode();
@@ -1338,6 +1350,14 @@ function setScreenshotStatus(text, tone = "") {
 }
 
 function renderScreenshot(src) {
+  // Tutor captures land in Tutor's own slot and its own preview box. Sharing
+  // one slot would mean a screenshot taken in one tool quietly becoming the
+  // source of the other.
+  if (regionCaptureTarget === "read") {
+    selectedTutorCapture = src;
+    renderTutorCapture(src);
+    return;
+  }
   const preview = document.getElementById("screenshotPreview");
   const observation = document.getElementById("screenshotObservation");
   if (!preview || !observation) return;
@@ -2014,11 +2034,23 @@ async function updateTutorSourceSummary() {
   const summary = document.getElementById("tutorSourceSummary");
   const mode = tutorSourceMode();
   renderTutorFilePill();
-  if (title) title.textContent = mode === "file" ? "Read your study file" : "Read from the active tab";
+  const shotBody = document.getElementById("tutorShotSourceBody");
+  if (shotBody) shotBody.hidden = mode !== "screenshot";
+  if (title) title.textContent = mode === "file" ? "Read your study file"
+    : mode === "screenshot" ? "Read part of the page"
+    : "Read from the active tab";
   if (copy) copy.textContent = mode === "file"
     ? "Uses the same file as your Study Mission — pick it once, use it in both."
-    : "Great for articles, stories, and reading passages.";
+    : mode === "screenshot"
+      ? "Grab a diagram, a paragraph, or a worksheet section from the page."
+      : "Great for articles, stories, and reading passages.";
   if (!summary) return;
+  if (mode === "screenshot") {
+    summary.innerHTML = selectedTutorCapture
+      ? `<i class="tutor-src-icon">\u25A6</i><div><b>Screenshot ready</b><small>Ready to read aloud or teach.</small></div>`
+      : `<i class="tutor-src-icon">\u25A6</i><div><b>No screenshot yet</b><small>Click the box above, then drag around what you want.</small></div>`;
+    return;
+  }
   if (mode === "file") {
     summary.innerHTML = selectedPdfFile
       ? `<i class="tutor-src-icon">▤</i><div><b>${escapeHtml(selectedPdfFile.name)}</b><small>${currentStudyPack ? "Study mission built — reused here, no extra tokens." : "Ready to read aloud or explain."}</small></div>`
@@ -2175,6 +2207,11 @@ async function getSharedFileText(file, settings, { shared = true } = {}) {
 }
 
 async function getTutorReadAloudText() {
+  if (tutorSourceMode() === "screenshot") {
+    const shot = await getTutorCaptureText();
+    return { label: shot.label, text: (shot.text || "").slice(0, toolLimit("tutor", "readChars")),
+             issue: shot.text ? "" : "empty" };
+  }
   if (tutorSourceMode() === "file") {
     if (!selectedPdfFile) return { label: "Local file", text: "" };
     const settings = await getOpenAISettings();
@@ -2190,7 +2227,29 @@ async function getTutorReadAloudText() {
   return { label: currentSourceLabel, text: (context.text || "").slice(0, toolLimit("tutor", "readChars")) };
 }
 
+// A screenshot is pixels; both Tutor modes need words. Read along has to speak
+// the actual text, and Teach me writes its lesson from it, so the image is
+// transcribed once here and the result feeds whichever mode is active.
+async function getTutorCaptureText() {
+  if (!selectedTutorCapture) return { label: "Screenshot", text: "" };
+  const settings = await getOpenAISettings();
+  if (!settings) return { label: "Screenshot", text: "" };
+  const result = await callOpenAIJson({
+    settings,
+    tool: "read",
+    parts: [{ type: "input_image", image_url: selectedTutorCapture }],
+    instructions: "You are KiddieGPT. Read the text in this image exactly as written and return it. Do not summarise, explain, or add anything. Return only valid JSON." + UNTRUSTED_CONTENT_GUARD,
+    text: "Return JSON with a title string and a text string. text is the readable text in the image, in reading order, in its original words."
+  });
+  return { label: result.title || "Screenshot", text: result.text || "" };
+}
+
 async function getTutorExplainSource() {
+  if (tutorSourceMode() === "screenshot") {
+    const shot = await getTutorCaptureText();
+    return { label: shot.label, text: (shot.text || "").slice(0, toolLimit("tutor", "sourceChars")),
+             issue: shot.text ? "" : "empty" };
+  }
   if (tutorSourceMode() === "file") {
     if (currentStudyPack) return { label: "Study mission", text: getCurrentStudyPackText() };
     if (!selectedPdfFile) return { label: "Local file", text: "" };
@@ -7080,9 +7139,35 @@ function showExplainBlocked() {
   setScreenshotStatus("Blocked", "warn");
 }
 
+// Mirrors Explain's captured card: icon, wording, thumbnail.
+function renderTutorCapture(src) {
+  const box = document.getElementById("tutorShotPreview");
+  if (!box) return;
+  box.classList.add("captured");
+  box.innerHTML = src
+    ? `<span class="math-capture-icon">\u25A6</span>
+       <div><b>Screenshot ready</b><small>Tap to grab a different part of the page.</small></div>
+       <img class="math-capture-thumb" src="${src}" alt="">`
+    : `<span class="math-capture-icon">\u25A6</span>
+       <div><b>Screenshot part of the page</b><small>Click, then drag a box around what to read or teach.</small></div>`;
+  updateTutorSourceSummary();
+}
+
+function captureTutorRegion() {
+  setToolSource("read", "screenshot");
+  regionCaptureTarget = "read";
+  captureExplainRegionCore();
+}
+
 function captureExplainRegion() {
   setToolSource("explain", "screenshot");
   regionCaptureTarget = "explain";
+  captureExplainRegionCore();
+}
+
+// Shared by Explain and Tutor: identical overlay, crop and permission handling.
+// Only the target and the destination differ, and those are set by the caller.
+function captureExplainRegionCore() {
   if (!extensionApi?.tabs?.query || !extensionApi?.scripting?.executeScript) {
     captureVisibleTab(); // dev/preview or restricted: fall back to full-tab capture
     return;
@@ -7227,6 +7312,7 @@ document.addEventListener("click", event => {
   const action = event.target.closest("[data-action]");
   if (action?.dataset.action === "math-capture-region") captureMathProblemRegion();
   if (action?.dataset.action === "capture-screenshot") captureExplainRegion();
+  if (action?.dataset.action === "capture-tutor-screenshot") captureTutorRegion();
   if (action?.dataset.action === "mock-screenshot") useSampleScreenshot();
 
   if (event.target.closest("#pdfBrowseButton")) event.preventDefault();
@@ -7240,7 +7326,7 @@ document.addEventListener("click", event => {
 
 extensionApi?.runtime?.onMessage?.addListener((message) => {
   if (message?.type === "KIDDIEGPT_MATH_REGION_SELECTED" && message.rect) {
-    if (regionCaptureTarget === "explain") finishExplainRegionCapture(message.rect);
+    if (regionCaptureTarget === "explain" || regionCaptureTarget === "read") finishExplainRegionCapture(message.rect);
     else finishMathRegionCapture(message.rect);
   }
 });
