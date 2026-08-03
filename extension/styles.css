@@ -8,7 +8,7 @@ body{background:#f6f8f5}
     .enterprise-shell{width:100vw;height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 72px;background:#f6f8f5;color:var(--ink);overflow:hidden}
     .side-nav{background:#fff;border-left:1px solid var(--line);padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:7px;overflow:auto}
     .side-brand{display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#083e52;padding:0 0 10px;border-bottom:1px solid var(--line);width:100%}
-    .side-brand img{width:34px;height:34px;border-radius:9px}
+    .side-brand img{width:auto;height:34px;object-fit:contain}
     .side-brand span,.school-pill,.nav-label,.admin-card{display:none}
     .school-pill{background:#f2f6ef;border:1px solid #dfe8d8;border-radius:12px;padding:12px}
     .school-pill b{display:block;font-size:12px}
@@ -29,7 +29,7 @@ body{background:#f6f8f5}
     .mockup-kicker{display:inline-flex;align-items:center;gap:6px;background:#eef6b5;color:#496200;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:900;margin-bottom:12px}
     .enterprise-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;border:1px solid #dfe8df;border-radius:18px;background:linear-gradient(135deg,#fff 0%,#f2f6ef 78%,#eef6b5 100%);padding:12px;box-shadow:0 12px 30px rgba(12,42,60,.055)}
     .app-mark{display:flex;align-items:center;gap:10px;min-width:0}
-    .app-mark img{width:40px;height:40px;border-radius:12px;box-shadow:0 10px 22px rgba(12,42,60,.08)}
+    .app-mark img{width:40px;height:40px;object-fit:contain}
     .brand-copy{min-width:0}
     .brand-copy b{display:block;font-size:16px;color:#083e52;line-height:1.1}
     .brand-copy small{display:block;font-size:10px;color:#60747d;font-weight:850;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -1879,7 +1879,7 @@ function ensureGateStyles() {
     #kg-portal-gate .kg-gate-close{position:absolute;top:10px;right:12px;width:30px;height:30px;border:none;
       background:none;color:#6b8079;font-size:24px;line-height:1;cursor:pointer;border-radius:8px;padding:0;}
     #kg-portal-gate .kg-gate-close:hover{background:#eef4f2;color:#004f48;}
-    #kg-portal-gate .kg-gate-logo{width:52px;height:52px;margin:0 auto;}
+    #kg-portal-gate .kg-gate-logo{width:52px;height:52px;margin:0 auto;object-fit:contain;}
     #kg-portal-gate h2{margin:0;color:#004f48;font-size:20px;font-weight:800;}
     #kg-portal-gate p{margin:0;color:#3f5a56;font-size:13px;line-height:1.4;}
     #kg-portal-gate label{display:flex;flex-direction:column;gap:4px;text-align:left;font-size:12px;
@@ -1925,7 +1925,7 @@ function renderPortalGate(mode, message) {
     <div class="kg-gate-backdrop">
       <form class="kg-gate-card" id="kg-gate-form">
         <button type="button" class="kg-gate-close" id="kg-gate-close" aria-label="Close and go to Home">×</button>
-        <img src="icons/logo-mascot.png" alt="" class="kg-gate-logo">
+        <img src="icons/kiddiegpt_logo.svg" alt="" class="kg-gate-logo">
         <h2>${inactive ? "Subscription needed" : "Account sign in"}</h2>
         <p>${inactive
           ? "This account doesn't have an active KiddieGPT plan yet."
