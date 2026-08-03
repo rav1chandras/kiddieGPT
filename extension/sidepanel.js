@@ -940,6 +940,40 @@ function setPreferenceTab(button) {
   saveSettings({ [group.dataset.preferenceGroup]: button.dataset.preferenceValue || button.textContent.trim() });
 }
 
+// Panel titles are the tool's name and stay put; the blurb underneath carries
+// the source. Keeping the title constant means a student always knows which
+// tool they are in, and the one line that changes is the one describing what
+// the chosen source actually does.
+const SOURCE_BLURBS = {
+  pdf: {
+    browser: "Builds a pack from the page you're on.",
+    file:    "Builds a pack from a worksheet, notes, or an image."
+  },
+  math: {
+    paste:      "Type or paste a problem \u2014 hints first, answer last.",
+    screenshot: "Drag a box around one problem on the page.",
+    file:       "Upload a worksheet page and work through it.",
+    qr:         "Photograph a problem from a book with your phone."
+  },
+  read: {
+    browser:    "Reads or teaches the page you're on.",
+    screenshot: "Grab a paragraph or diagram from the page.",
+    file:       "Uses the same file as your Study Mission."
+  },
+  explain: {
+    page:       "Explains the page you're viewing, in simpler words.",
+    screenshot: "Drag a box around a diagram, chart, or worksheet.",
+    file:       "Explains a PDF, note, or picture you upload."
+  }
+};
+
+function setSourceBlurb(elementId, tool, source) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = (SOURCE_BLURBS[tool] || {})[source];
+  if (text) el.textContent = text;
+}
+
 function setToolSource(tool, source) {
   if (!sourceState[tool]) return;
   // Refuse a source this tool does not offer, rather than half-switching into a
@@ -981,6 +1015,10 @@ function setToolSource(tool, source) {
   }
   if (tool === "math") updateMathSourceMode();
   if (tool === "explain") updateExplainSourceMode();
+  // Math and Explain hold their blurb in the markup rather than a renderer, so
+  // set it here where the source actually changes.
+  setSourceBlurb("mathSourceCopy", "math", sourceState.math);
+  setSourceBlurb("explainSourceCopy", "explain", sourceState.explain);
   saveSettings({ [`${tool}Source`]: source });
 }
 
@@ -2039,14 +2077,10 @@ async function updateTutorSourceSummary() {
   renderTutorFilePill();
   const shotBody = document.getElementById("tutorShotSourceBody");
   if (shotBody) shotBody.hidden = mode !== "screenshot";
-  if (title) title.textContent = mode === "file" ? "Read your study file"
-    : mode === "screenshot" ? "Read part of the page"
-    : "Read from the active tab";
-  if (copy) copy.textContent = mode === "file"
-    ? "Uses the same file as your Study Mission — pick it once, use it in both."
-    : mode === "screenshot"
-      ? "Grab a diagram, a paragraph, or a worksheet section from the page."
-      : "Great for articles, stories, and reading passages.";
+  // Title is "Tutor Mode" and does not move. This blurb says where the words
+  // come from; the one under the Read along / Teach me toggle says what happens
+  // to them, so the two do not repeat each other.
+  setSourceBlurb("tutorSourceCopy", "read", mode);
   if (!summary) return;
   // Screenshot and Local file each have an input pane that already states its
   // own condition -- the drop zone shows the filename, the capture box shows
@@ -3065,14 +3099,9 @@ function updatePdfSourceMode() {
   const isFileMode = sourceState.pdf === "file";
   fileBody.hidden = !isFileMode;
   if (browserBody) browserBody.hidden = true;
-  if (isFileMode) {
-    title.textContent = "Build from a local file";
-    copy.textContent = "Drop in a worksheet, notes page, or image and KiddieGPT turns it into one focused study pack.";
-  } else {
-    title.textContent = "Build from the active tab";
-    copy.textContent = "Use the lesson page you are viewing now, then generate the same quiz, cards, and read-aloud aids.";
-    setUploadCollapsed(false);
-  }
+  // The title is "Study Mission" in the markup and stays that way.
+  setSourceBlurb("pdfBuilderCopy", "pdf", isFileMode ? "file" : "browser");
+  if (!isFileMode) setUploadCollapsed(false);
 }
 
 function choosePdfFile() {
@@ -6038,7 +6067,6 @@ async function answerMissionFollowup() {
 
 const writingActions = {
   assignment: {
-    modeTitle: "Understand the assignment",
     copy: "Paste the assignment question and KiddieGPT helps you plan before you write.",
     hint: "Start with the assignment directions or question.",
     placeholder: "Paste the assignment or question here…",
@@ -6047,7 +6075,6 @@ const writingActions = {
     emptyCopy: "Paste the assignment and press Help me plan for a plan you fill in yourself."
   },
   draft: {
-    modeTitle: "Check my draft",
     copy: "Paste your own writing and KiddieGPT points out what to add or fix.",
     hint: "Paste your draft. KiddieGPT will coach, not rewrite.",
     placeholder: "Paste your draft here…",
@@ -6056,7 +6083,6 @@ const writingActions = {
     emptyCopy: "Paste your draft and press Check my draft to see what to add next."
   },
   grammar: {
-    modeTitle: "Check my writing",
     copy: "KiddieGPT underlines things to look at. Tap each one to see why — you choose whether to change it.",
     hint: "Paste a sentence or paragraph you want to make clearer.",
     placeholder: "Paste a sentence or paragraph here…",
@@ -6109,7 +6135,8 @@ function setWritingAction(action) {
   document.querySelectorAll("[data-writing-action]").forEach(button => {
     button.classList.toggle("active", button.dataset.writingAction === action);
   });
-  document.getElementById("writingModeTitle").textContent = config.modeTitle;
+  // Title stays "Writing Studio"; the mode is carried by this line and by the
+  // action button's label, which already changes with it.
   document.getElementById("writingModeCopy").textContent = config.copy;
   document.getElementById("writingInputHint").textContent = config.hint;
   document.getElementById("writingRunButton").textContent = config.button;
