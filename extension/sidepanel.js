@@ -7508,6 +7508,18 @@ document.addEventListener("click", event => {
 });
 
 extensionApi?.runtime?.onMessage?.addListener((message) => {
+  // The portal handed us a session while the panel was open: pick it up and
+  // drop the gate, rather than leaving a sign-in screen over a signed-in state.
+  if (message?.type === "KIDDIEGPT_SESSION_ADOPTED") {
+    storageGet([PORTAL_TOKEN_KEY]).then(async (stored) => {
+      portalToken = stored[PORTAL_TOKEN_KEY] || "";
+      if (!portalToken) return;
+      await refreshEntitlement();
+      hidePortalGate();
+      renderPortalState();
+    });
+    return;
+  }
   if (message?.type === "KIDDIEGPT_MATH_REGION_SELECTED" && message.rect) {
     if (regionCaptureTarget === "explain" || regionCaptureTarget === "read") finishExplainRegionCapture(message.rect);
     else finishMathRegionCapture(message.rect);

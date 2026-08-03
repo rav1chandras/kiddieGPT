@@ -26,6 +26,45 @@
   var ACTIVE_PLAN_KEY = "kiddiegptActivePlan";
   var PENDING_CHECKOUT_PLAN_KEY = "kiddiegptPendingCheckoutPlan";
   var PARENT_TOKEN_KEY = "kiddiegptParentToken";
+
+  // ---- Extension sign-in hand-off -------------------------------------------
+  // The extension keeps its own credential and cannot read this page's storage,
+  // so a parent who signs in here was still asked to sign in there. This hands
+  // the token over on an explicit click. The id is fixed by the "key" in the
+  // extension manifest, so it is the same in development and production.
+  var KG_EXTENSION_ID = "bbgpdgnmolfnkahjbbkjfpfcplnhggkk";
+
+  function extensionReachable() {
+    // chrome.runtime is only injected on origins the extension lists in
+    // externally_connectable, so its absence is the answer, not an error.
+    return typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage;
+  }
+
+  function initExtensionHandoff() {
+    var connect = document.getElementById("connect-ext-cta");
+    var install = document.getElementById("get-ext-cta");
+    if (!connect || !extensionReachable()) return;
+    // Only offer the swap once the extension actually answers a ping.
+    chrome.runtime.sendMessage(KG_EXTENSION_ID, { type: "KIDDIEGPT_PING" }, function () {
+      if (chrome.runtime.lastError) return;      // not installed
+      connect.hidden = false;
+      if (install) install.hidden = true;
+    });
+    connect.addEventListener("click", function () {
+      var token = localStorage.getItem(PARENT_TOKEN_KEY);
+      var note = document.getElementById("connect-ext-note");
+      if (!token) { if (note) note.textContent = "Sign in here first"; return; }
+      if (note) note.textContent = "Signing in…";
+      chrome.runtime.sendMessage(KG_EXTENSION_ID, { type: "KIDDIEGPT_SIGN_IN", token: token }, function (reply) {
+        if (chrome.runtime.lastError || !reply || !reply.ok) {
+          if (note) note.textContent = "Could not reach the extension";
+          return;
+        }
+        if (note) note.textContent = "Signed in — open the side panel";
+      });
+    });
+  }
+
   var allowedParentEmailDomains = ["gmail.com", "yahoo.com", "aol.com", "outlook.com", "hotmail.com"];
   var googleClientId = "";
   var selectedFamilyId = null;
@@ -8154,6 +8193,7 @@
   }
 
   setupLoginPromiseRotation();
+  initExtensionHandoff();
   setupLoginFlowAnimation();
   setupParentPortal();
   setupAdminConsole();

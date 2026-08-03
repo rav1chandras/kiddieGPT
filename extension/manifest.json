@@ -4,8 +4,18 @@
   "version": "1.4.0",
   "description": "Smart help. Clear answers. Better learning for kids.",
   "minimum_chrome_version": "114",
-  "permissions": ["activeTab", "storage", "scripting", "sidePanel"],
-  "host_permissions": ["<all_urls>", "https://kiddiegpt1.vercel.app/*", "https://app.kiddiegpt.com/*", "https://api.openai.com/*"],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://kiddiegpt1.vercel.app/*",
+    "https://app.kiddiegpt.com/*",
+    "https://api.openai.com/*"
+  ],
   "action": {
     "default_title": "Open KiddieGPT",
     "default_icon": {
@@ -21,6 +31,17 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "background": { "service_worker": "background.js" },
-  "side_panel": { "default_path": "sidepanel.html" }
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAohbS0Cd7uArN2/MzJK0lDO8wLq0Fz8/QDLN21kuUgkFf766C+NfgP9IvGSUZiv7yhCMf+/nSImTc/idlfaeFRRF0/Pzv8CBjapRy3qu47PURwYblGhkjLHz/PKXYmxTv9cL15y+PQ68oiiKrT5QKAbY88iR2MOFw2UryqpehvYe7XdK98IQ1t6twutlgDAPT2l2vNkNzf3nBKAQM1vzBLNg4RioqjFFT95i2bWbAvbhOdPTT57nGyR4PvYYx2AwzB3U3VWGSrXZIpQGHFeEdr3HUrn91Qr3N+pHBBcyb/ZEgcWkAPwC+hQwMtDgKb4yQUgEmxoCs9zrYr+gCYl7beQIDAQAB",
+  "externally_connectable": {
+    "matches": [
+      "https://app.kiddiegpt.com/*",
+      "https://kiddiegpt1.vercel.app/*"
+    ]
+  }
 }
