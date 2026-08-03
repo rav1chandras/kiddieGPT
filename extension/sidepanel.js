@@ -2039,6 +2039,25 @@ async function updateTutorSourceSummary() {
   }
 }
 
+// The Start button holds an icon beside its text, so nothing may assign
+// button.textContent -- that would delete the icon. Every caller goes through
+// here, and it falls back to textContent for safety if the span is missing.
+function setTutorButtonLabel(text) {
+  const button = document.getElementById("tutorGenerateButton");
+  if (!button) return;
+  const label = button.querySelector(".tutor-start-label");
+  if (label) label.textContent = text;
+  else button.textContent = text;
+}
+
+// One line about the chosen option. The toggle now carries only the two names,
+// so this is where a student finds out what each actually does -- and it
+// changes with the selection rather than describing both at once.
+const TUTOR_MODE_BLURBS = {
+  read: "Plays the page's own words out loud, highlighting each line as it goes.",
+  explain: "Writes a simpler lesson from the same source, at your grade level."
+};
+
 function setTutorMode(mode) {
   // The internal names stay "read" and "explain". Only what a student reads
   // changed -- renaming the mode would reach the portal's explainDepth
@@ -2055,8 +2074,12 @@ function setTutorMode(mode) {
     card.disabled = isRead && !voiceOn;
     card.title = (isRead && !voiceOn) ? "Tutor voice is turned off for this account." : "";
   });
+  const blurb = document.getElementById("tutorModeBlurb");
+  if (blurb) blurb.textContent = TUTOR_MODE_BLURBS[tutorMode] || "";
   const button = document.getElementById("tutorGenerateButton");
-  if (button && !button.disabled) button.textContent = tutorMode === "read" ? "Read it along" : "Teach me";
+  // "Start" rather than the option's name: the name is already on the selected
+  // toggle directly above, so repeating it said nothing twice.
+  if (button && !button.disabled) setTutorButtonLabel("Start");
   updateTutorDepthUi(); // depth applies to Teach me only
   saveSettings({ tutorMode });
 }
@@ -2305,7 +2328,7 @@ async function generateTutorVoiceLegacy() {
   const setBusy = (busy, label) => {
     if (!button) return;
     button.disabled = busy;
-    button.textContent = label;
+    setTutorButtonLabel(label);
   };
   setBusy(true, tutorMode === "read" ? "Getting text…" : "Writing lesson…");
   setTutorStatus(tutorMode === "read" ? "Getting the passage ready…" : "Writing the lesson…", "blue");
@@ -2692,7 +2715,7 @@ function generateTutorVoice() {
 
 async function generateTutorVoiceV2() {
   const button = document.getElementById("tutorGenerateButton");
-  const setBusy = (busy, label) => { if (!button) return; button.disabled = busy; button.textContent = label; };
+  const setBusy = (busy, label) => { if (!button) return; button.disabled = busy; setTutorButtonLabel(label); };
   const mode = tutorMode;
   const t0 = performance.now();
   const telemetry = {

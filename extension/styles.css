@@ -988,6 +988,15 @@ body{background:#f6f8f5}
        off. Teach me still can, as text -- losing voice costs narration, not
        the whole tool. */
     .tutor-mode-card[disabled]{opacity:.4;cursor:not-allowed}
+    /* One line describing the SELECTED option. The toggle carries only the two
+       names now, so this is where a student learns what each one does. */
+    .tutor-mode-blurb{margin:9px 2px 0;font-size:11.5px;line-height:1.4;color:#8a918f}
+    /* Play icon sits inside the button, so the label is its own span -- writing
+       button.textContent anywhere would delete the icon. */
+    .tutor-start{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+    .tutor-start-icon{display:inline-flex;width:13px;height:13px;flex:0 0 auto}
+    .tutor-start-icon svg{width:100%;height:100%;fill:currentColor}
+    .tutor-start:disabled .tutor-start-icon{opacity:.5}
     .tutor-actions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin-top:12px}
     .tutor-actions .small-button{height:40px;min-width:150px;border-radius:11px}
     #tutorStatus{font-size:11px;line-height:1.35;color:#60747d;font-weight:700}
