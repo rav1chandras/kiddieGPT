@@ -1900,6 +1900,15 @@ function ensureGateStyles() {
     #kg-portal-gate .kg-gate-note{margin:0;font-size:10.5px;color:#8a918f}
     /* Account setup lives in the portal, so it is a link under a divider rather
        than a peer of the sign-in button -- it leaves the panel, and says so. */
+    /* Collapsed by default: it is reassurance for the minority who need it, not
+       something to put in front of everyone signing in normally. */
+    #kg-portal-gate .kg-gate-help{text-align:left;font-size:11px;color:#60747d}
+    #kg-portal-gate .kg-gate-help summary{cursor:pointer;color:#4f6b67;font-weight:800;font-size:11.5px;
+      list-style:none;padding:2px 0}
+    #kg-portal-gate .kg-gate-help summary::-webkit-details-marker{display:none}
+    #kg-portal-gate .kg-gate-help summary::before{content:"? ";color:#9aa8a4}
+    #kg-portal-gate .kg-gate-help p{margin:6px 0 0;line-height:1.45}
+    #kg-portal-gate .kg-gate-help a{color:#008778;font-weight:800}
     #kg-portal-gate .kg-gate-newacct{margin-top:2px;padding-top:11px;border-top:1px solid #eef2ee;
       font-size:11.5px;color:#60747d}
     #kg-portal-gate .kg-gate-newacct a{color:#008778;font-weight:800;text-decoration:none}
@@ -1987,7 +1996,11 @@ function renderPortalGate(mode, message) {
         <label>Verification code<input type="text" id="kg-gate-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="1234" required></label>
         <button type="submit" class="kg-gate-primary">Verify code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-resend">Resend code</button>
-        <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>` : `
+        <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>
+        <details class="kg-gate-help">
+          <summary>Code didn&rsquo;t arrive?</summary>
+          <p>Sign in on the <a href="${base}" target="_blank" rel="noopener">parent portal</a> instead, then press <b>Sign in the extension</b> there. No email needed.</p>
+        </details>` : `
         ${authConfig?.googleConfigured ? `
         <button type="button" class="kg-gate-google" id="kg-gate-google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16.4z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.4s.3-3 .8-4.4l-7.8-6.1C1 16.9 0 20.3 0 24s1 7.1 2.6 10.2l7.8-5.5z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.3 0-11.7-3.7-13.6-9.3l-7.8 5.5C6.5 42.6 14.6 48 24 48z"/></svg>Continue with Google</button>
         <div class="kg-gate-or">or</div>` : ""}
@@ -1996,6 +2009,11 @@ function renderPortalGate(mode, message) {
         <button type="submit" class="kg-gate-primary">${usePassword ? "Sign in" : "Email me a code"}</button>
         <button type="button" class="kg-gate-link" id="kg-gate-method">${usePassword ? "Email me a code instead" : "Use a password instead"}</button>
         ${usePassword ? "" : `<p class="kg-gate-note">We&rsquo;ll send a 6-digit code. No password to remember.</p>`}
+        <details class="kg-gate-help">
+          <summary>Code didn&rsquo;t arrive?</summary>
+          <p>Sign in on the <a href="${base}" target="_blank" rel="noopener">parent portal</a> instead &mdash; with Google or a password &mdash; then press <b>Sign in the extension</b> there. That route needs no email at all.</p>
+          <p>It is also the only way in for an account created with Google, which has no password of its own.</p>
+        </details>
         <div class="kg-gate-newacct">New to KiddieGPT? <a href="${base}/?signup=1" target="_blank" rel="noopener">Set up an account &rarr;</a>
           <small>Opens the parent portal in a new tab &mdash; a grown-up finishes there.</small></div>`}
         ${inactive ? `
