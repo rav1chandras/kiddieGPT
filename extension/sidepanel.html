@@ -272,10 +272,11 @@
                 <button class="browse-button" id="readBrowseButton" type="button">Browse file</button>
               </div>
             </div>
+            <p class="tutor-q" id="tutorModeHeading">How should I help?</p>
             <div class="tutor-do-row">
-              <!-- No visible heading in this layout, so this aria-label is the only
-                   thing naming the choice for a screen reader. -->
-              <div class="tutor-mode-row" role="group" aria-label="What should the tutor do with this source?">
+              <!-- Labelled by the heading above, so a screen reader announces the
+                   same question a sighted student reads. -->
+              <div class="tutor-mode-row" role="group" aria-labelledby="tutorModeHeading">
                 <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read along</b></button>
                 <button class="tutor-mode-card" data-tutor-mode="explain" type="button"><b>Teach me</b></button>
               </div>
