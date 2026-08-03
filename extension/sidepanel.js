@@ -1906,7 +1906,9 @@ function ensureGateStyles() {
     #kg-portal-gate .kg-gate-help summary{cursor:pointer;color:#4f6b67;font-weight:800;font-size:11.5px;
       list-style:none;padding:2px 0}
     #kg-portal-gate .kg-gate-help summary::-webkit-details-marker{display:none}
-    #kg-portal-gate .kg-gate-help summary::before{content:"? ";color:#9aa8a4}
+    #kg-portal-gate .kg-gate-help summary::before{content:"\\25B8";color:#9aa8a4;display:inline-block;
+      margin-right:6px;transition:transform .15s ease}
+    #kg-portal-gate .kg-gate-help[open] summary::before{transform:rotate(90deg)}
     #kg-portal-gate .kg-gate-help p{margin:6px 0 0;line-height:1.45}
     #kg-portal-gate .kg-gate-help a{color:#008778;font-weight:800}
     #kg-portal-gate .kg-gate-newacct{margin-top:2px;padding-top:11px;border-top:1px solid #eef2ee;
@@ -2021,7 +2023,7 @@ function renderPortalGate(mode, message) {
         <button type="button" class="kg-gate-link" id="kg-gate-resend" disabled>Resend code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>
         <details class="kg-gate-help">
-          <summary>Still nothing?</summary>
+          <summary>Other ways to sign in</summary>
           <p>Sign in on the <a href="${base}" target="_blank" rel="noopener">parent portal</a> instead, then press <b>Sign in the extension</b> there. No email needed &mdash; and it is the only way in for an account created with Google, which has no password of its own.</p>
         </details>` : `
         ${authConfig?.googleConfigured ? `
