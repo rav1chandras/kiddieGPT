@@ -5616,7 +5616,7 @@ function initMathTool() {
   });
   document.getElementById("mathFileInput")?.addEventListener("change", handleMathFileChange);
   document.getElementById("mathClearButton")?.addEventListener("click", clearMathFile);
-  document.querySelector(".math-capture-box")?.addEventListener("keydown", event => {
+  document.querySelector("#mathPanel .math-capture-box")?.addEventListener("keydown", event => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     captureMathProblemRegion();
@@ -6893,7 +6893,11 @@ function useSampleScreenshot() {
 }
 
 function updateMathCaptureCard(state, detail = "") {
-  const card = document.querySelector(".math-capture-box");
+  // Scoped to #mathPanel. This was document-wide, and Tutor's capture pane --
+  // added later but EARLIER in the document -- also carries .math-capture-box,
+  // so querySelector started returning Tutor's box and Math's card silently
+  // stopped updating: no thumbnail, no state, no error.
+  const card = document.querySelector("#mathPanel .math-capture-box");
   if (!card) return;
   const isCaptured = state === "captured" || state === "full";
   card.classList.toggle("captured", isCaptured);
@@ -7114,19 +7118,28 @@ function finishMathRegionCapture(rect) {
 // Explain screenshot uses the SAME drag-select-a-region flow as Math (rather than
 // grabbing the whole tab): click the card, drag a box around the diagram/worksheet,
 // and only that crop is sent to Explain.
+// Explain and Tutor share the capture machinery, so these two renderers have to
+// follow the target. Without this a Tutor capture put its "drag a box" state
+// into Explain's card and left Tutor's untouched.
+function captureTargetPreview() {
+  return document.getElementById(regionCaptureTarget === "read" ? "tutorShotPreview" : "screenshotPreview");
+}
+
 function setExplainCaptureSelecting() {
-  const preview = document.getElementById("screenshotPreview");
+  const preview = captureTargetPreview();
   if (!preview) return;
+  const forTutor = regionCaptureTarget === "read";
   preview.classList.remove("captured");
   preview.classList.add("selecting");
-  preview.innerHTML = `<span class="math-capture-icon">▧</span><div><b>Drag around what to explain</b><small>A box is open on the page. Press Esc to cancel.</small></div>`;
-  setScreenshotStatus("Selecting", "blue");
+  preview.innerHTML = `<span class="math-capture-icon">▧</span><div><b>Drag around what to ${forTutor ? "read or teach" : "explain"}</b><small>A box is open on the page. Press Esc to cancel.</small></div>`;
+  if (!forTutor) setScreenshotStatus("Selecting", "blue");
 }
 
 // Off-limits page: refuse without capturing, and make sure nothing stale is kept.
 function showExplainBlocked() {
-  selectedExplainCapture = null;
-  const preview = document.getElementById("screenshotPreview");
+  if (regionCaptureTarget === "read") selectedTutorCapture = null;
+  else selectedExplainCapture = null;
+  const preview = captureTargetPreview();
   if (preview) {
     preview.classList.remove("selecting", "captured");
     preview.innerHTML = `<span class="math-capture-icon">!</span><div><b>Not a schoolwork page</b><small>${escapeHtml(activeTabIssueMessage("blocked"))}</small></div>`;
