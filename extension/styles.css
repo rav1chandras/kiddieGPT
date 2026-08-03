@@ -1492,3 +1492,17 @@ body{background:#f6f8f5}
   .plan-banner{flex-wrap:wrap}
   .plan-banner-cta{width:100%;text-align:center}
 }
+
+
+/* ---- Output panel headers ---------------------------------------------------
+   One shape for every tool's result section: title left, status right, and the
+   status disappears when it has nothing to say. "Ready" was a pill that sat
+   there permanently announcing the absence of news; the states worth showing
+   are the transient ones -- Capturing, Explaining, Checking, Try again.
+
+   :empty is doing the work, so any status anywhere gets this for free and no
+   caller has to remember to hide it. */
+.section-title .status:empty{display:none}
+/* Title alone should not shift when the pill comes and goes. */
+.section-title{min-height:26px}
+.section-title h3{margin:0;line-height:1.25}

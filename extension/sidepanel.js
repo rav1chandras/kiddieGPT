@@ -5976,7 +5976,7 @@ async function explainCurrentSource() {
       const vocab = Array.isArray(result.vocabulary) && result.vocabulary.length ? ` Key words: ${result.vocabulary.join(", ")}.` : "";
       observation.textContent = `${result.explanation || "Here is the main idea in simpler words."} ${result.remember || ""}${vocab}`.trim();
     }
-    setScreenshotStatus("Ready");
+    setScreenshotStatus("");
     bumpActivity("explains", 1);
     awardStars(2);
   } catch (error) {
@@ -6194,7 +6194,7 @@ function renderWritingEmpty() {
   const status = document.getElementById("writingOutputStatus");
   const grid = document.getElementById("writingOutputGrid");
   if (title) title.textContent = config.modeTitle;
-  if (status) status.textContent = "Ready";
+  if (status) status.textContent = "";   // resting state: the pill hides itself
   if (!grid) return;
   grid.innerHTML = `
     <div class="wr-empty-head"><b>${escapeHtml(config.emptyTitle)}</b><p>${escapeHtml(config.emptyCopy)}</p></div>
