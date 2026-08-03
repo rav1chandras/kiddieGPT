@@ -2085,7 +2085,7 @@ function setTutorButtonLabel(text) {
 // changes with the selection rather than describing both at once.
 const TUTOR_MODE_BLURBS = {
   read: "Plays the page's own words out loud, highlighting each line as it goes.",
-  explain: "Writes a simpler lesson from the same source, at your grade level."
+  explain: "Turns it into a lesson that fits your grade."
 };
 
 function setTutorMode(mode) {

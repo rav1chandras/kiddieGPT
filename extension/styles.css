@@ -997,6 +997,19 @@ body{background:#f6f8f5}
     .tutor-start-icon{display:inline-flex;width:13px;height:13px;flex:0 0 auto}
     .tutor-start-icon svg{width:100%;height:100%;fill:currentColor}
     .tutor-start:disabled .tutor-start-icon{opacity:.5}
+    /* Layout D: two rows instead of five. Row 1 is the choice and the action;
+       row 2 is the supporting detail -- what the choice means, and how deep. */
+    .tutor-do-row{display:flex;align-items:center;gap:10px;margin-top:2px}
+    .tutor-do-row .tutor-mode-row{flex:1;min-width:0;margin-top:0}
+    .tutor-do-row .tutor-start{flex:0 0 auto;margin:0}
+    .tutor-meta-row{display:flex;align-items:center;gap:10px;margin-top:9px;min-height:26px}
+    .tutor-meta-row .tutor-mode-blurb{flex:1;min-width:0;margin:0}
+    /* Depth is a SETTING, not a third action. With a green Start button and a
+       green selected toggle already on screen, a third green pill made the eye
+       stop at all three equally -- lime separates the register. */
+    .tutor-meta-row .tutor-depth{flex:0 0 auto;margin:0}
+    .tutor-meta-row .source-pills{margin:0}
+    .tutor-meta-row .source-pills button.active{background:#dce96a;color:#20321d;border-color:#cbdc4f}
     .tutor-actions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin-top:12px}
     .tutor-actions .small-button{height:40px;min-width:150px;border-radius:11px}
     #tutorStatus{font-size:11px;line-height:1.35;color:#60747d;font-weight:700}

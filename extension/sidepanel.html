@@ -272,21 +272,25 @@
                 <button class="browse-button" id="readBrowseButton" type="button">Browse file</button>
               </div>
             </div>
-            <p class="tutor-q">What should I do with it?</p>
-            <div class="tutor-mode-row" role="group" aria-label="What should the tutor do?">
-              <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read along</b></button>
-              <button class="tutor-mode-card" data-tutor-mode="explain" type="button"><b>Teach me</b></button>
+            <div class="tutor-do-row">
+              <!-- No visible heading in this layout, so this aria-label is the only
+                   thing naming the choice for a screen reader. -->
+              <div class="tutor-mode-row" role="group" aria-label="What should the tutor do with this source?">
+                <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read along</b></button>
+                <button class="tutor-mode-card" data-tutor-mode="explain" type="button"><b>Teach me</b></button>
+              </div>
+              <button class="small-button primary-action tutor-start" id="tutorGenerateButton" type="button"><span class="tutor-start-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span class="tutor-start-label">Start</span></button>
             </div>
-            <p class="tutor-mode-blurb" id="tutorModeBlurb"></p>
-            <div class="tutor-depth" id="tutorDepth" role="group" aria-label="Explain depth" hidden>
-              <span class="tutor-depth-label">Lesson depth</span>
-              <div class="source-pills" id="tutorDepthPills">
-                <button type="button" class="active" data-depth="standard">Standard</button>
-                <button type="button" data-depth="deep">Deep Dive</button>
+            <div class="tutor-meta-row">
+              <p class="tutor-mode-blurb" id="tutorModeBlurb"></p>
+              <div class="tutor-depth" id="tutorDepth" role="group" aria-label="Lesson depth" hidden>
+                <div class="source-pills" id="tutorDepthPills">
+                  <button type="button" class="active" data-depth="standard">Standard</button>
+                  <button type="button" data-depth="deep">Deep Dive</button>
+                </div>
               </div>
             </div>
             <div class="tutor-actions">
-              <button class="small-button primary-action tutor-start" id="tutorGenerateButton" type="button"><span class="tutor-start-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span class="tutor-start-label">Start</span></button>
               <small id="tutorStatus"></small>
             </div>
           </section>
