@@ -1407,3 +1407,63 @@ body{background:#f6f8f5}
 .math-full-solution.hide-why .tb-derivation{grid-template-columns:minmax(0,1fr);row-gap:9px}
 .math-full-solution.hide-why .tb-row{display:grid;grid-template-columns:minmax(0,1fr)}
 .math-full-solution.hide-why .tb-check small{display:none}
+
+
+/* ---- Tool panel headers: title beside the pills -----------------------------
+   The pills used to float right with clear:right on the h3, which forced the
+   title onto its own line below them and left the top-left of every panel
+   empty. Grid puts the title and the pills on one row and gives the copy the
+   row beneath, so the header costs one line instead of two.
+
+   Below 520px there is not room for both, so it stacks in reading order:
+   title, then the control, then the description. Explicit grid-row on each
+   child means that order does not depend on where they sit in the markup --
+   the pills come first in the HTML of every one of these panels. */
+.math-source-head > div,
+.writing-work-head > div,
+.tutor-source-head > div,
+.mission-builder-head > div,
+.mission-followup-head > div,
+.mission-quiz-hero > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.math-source-head h3, .writing-work-head h3, .tutor-source-head h3,
+.mission-builder-head h3, .mission-followup-head h3, .mission-quiz-hero h3 {
+  grid-column: 1; grid-row: 1; clear: none; margin-top: 0;
+}
+.math-source-head > div > .source-pills, .writing-work-head > div > .source-pills,
+.tutor-source-head > div > .source-pills, .mission-builder-head > div > .source-pills,
+.mission-followup-head > div > .source-pills, .mission-quiz-hero > div > .source-pills,
+.math-source-head > div > .hdr-pill, .writing-work-head > div > .hdr-pill,
+.tutor-source-head > div > .hdr-pill, .mission-builder-head > div > .hdr-pill,
+.mission-followup-head > div > .hdr-pill, .mission-quiz-hero > div > .hdr-pill {
+  grid-column: 2; grid-row: 1; float: none; margin: 0; justify-self: end;
+}
+.math-source-head p, .writing-work-head p, .tutor-source-head p,
+.mission-builder-head p, .mission-followup-head p, .mission-quiz-hero p {
+  grid-column: 1 / -1; grid-row: 2;
+}
+
+@media (max-width: 520px) {
+  .math-source-head > div, .writing-work-head > div, .tutor-source-head > div,
+  .mission-builder-head > div, .mission-followup-head > div, .mission-quiz-hero > div {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+  .math-source-head > div > .source-pills, .writing-work-head > div > .source-pills,
+  .tutor-source-head > div > .source-pills, .mission-builder-head > div > .source-pills,
+  .mission-followup-head > div > .source-pills, .mission-quiz-hero > div > .source-pills,
+  .math-source-head > div > .hdr-pill, .writing-work-head > div > .hdr-pill,
+  .tutor-source-head > div > .hdr-pill, .mission-builder-head > div > .hdr-pill,
+  .mission-followup-head > div > .hdr-pill, .mission-quiz-hero > div > .hdr-pill {
+    grid-column: 1; grid-row: 2; justify-self: start;
+  }
+  .math-source-head p, .writing-work-head p, .tutor-source-head p,
+  .mission-builder-head p, .mission-followup-head p, .mission-quiz-hero p {
+    grid-row: 3;
+  }
+}
