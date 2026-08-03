@@ -323,21 +323,7 @@ body{background:#f6f8f5}
     .math-paste-hint code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;font-weight:700;color:#215c1e;background:#eef6b5;border-radius:4px;padding:1px 3px}
     .math-input-card>#mathSolveButton{height:auto;min-height:52px;align-self:stretch;border-radius:13px;min-width:118px}
     /* Compact horizontal upload row: copy on the left, browse (with icon) on the right */
-    .upload-zone.math-upload-zone{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:12px 14px;background:#f2f6ef;transition:border-color .15s ease,background .15s ease}
-    .math-upload-copy{display:grid;gap:3px;min-width:0}
-    .math-upload-copy b{font-size:14px;color:#0b2d43;font-weight:700;overflow-wrap:anywhere}
-    .math-upload-copy small{font-size:11px;color:#60747d;line-height:1.35}
-    .math-upload-zone .browse-button{flex-shrink:0;height:40px;min-width:0}
-    .math-upload-zone .browse-button .drop-icon{width:16px;height:16px}
-    .math-upload-zone .browse-button .drop-icon svg{width:16px;height:16px;stroke-width:2}
-    .math-upload-zone.uploaded{border-style:solid;border-color:#2f8f2e;background:#eef8e6}
-    .math-upload-zone.uploaded .browse-button{border-color:#2f8f2e;color:#215c1e}
-    .math-upload-zone.uploaded .drop-icon svg{stroke-width:2.6}
-    .math-upload-zone.uploaded b{color:#215c1e}
-    .math-upload-zone.upload-error{border-style:solid;border-color:#e3b34e;background:#fdf6e3}
-    .math-upload-zone.upload-error small{color:#8a5a00;font-weight:700}
     /* Pin all three input modes to one height so the card and Solve button never jump */
-    .math-capture-box,.math-paste-box,.math-upload-zone,.math-qr-box{height:118px;min-height:118px;box-sizing:border-box}
     .math-qr-box{display:grid;grid-template-columns:100px minmax(0,1fr);gap:14px;align-items:center;border:1.5px dashed #cfe0b6;border-radius:14px;background:#f8fbf5;padding:12px}
     .math-qr-code{width:100px;height:100px;background:#fff;border-radius:10px;display:grid;place-items:center;overflow:hidden}
     .math-qr-code svg{width:96px;height:96px;display:block}

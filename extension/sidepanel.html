@@ -125,7 +125,7 @@
                   </div>
                   <b id="pdfFileName">Choose a file or drag & drop it here</b>
                   <small id="pdfFileMeta">PDF up to 20 pages (5 if scanned), TXT, JPG, or PNG · up to 4 MB</small>
-                  <button class="browse-button" id="pdfChooseButton" type="button">Browse file</button>
+                  <button class="browse-button" id="pdfBrowseButton" type="button">Browse file</button>
                 </div>
               </div>
               <div class="mission-source-mode" id="pdfBrowserSourceBody" hidden></div>
@@ -253,6 +253,16 @@
             <h3 id="tutorSourceTitle">Read from the active tab</h3>
             <p class="tutor-source-copy" id="tutorSourceCopy">Great for articles, stories, and reading passages.</p>
             <div class="tutor-source-card" id="tutorSourceSummary"></div>
+            <div class="tutor-source-mode" id="tutorFileSourceBody" hidden>
+              <div class="upload-zone" id="readUploadZone">
+                <button class="upload-clear" id="readClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <input id="readFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
+                <div class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></div>
+                <b id="readFileName">Choose a file or drag &amp; drop it here</b>
+                <small id="readFileHint">PDF up to 5 pages, TXT, JPG, or PNG &middot; up to 4 MB</small>
+                <button class="browse-button" id="readBrowseButton" type="button">Browse file</button>
+              </div>
+            </div>
             <p class="tutor-q">What should I do with it?</p>
             <div class="tutor-mode-row" role="group" aria-label="What should the tutor do?">
               <button class="tutor-mode-card active" data-tutor-mode="read" type="button"><b>Read along</b><small>the real words</small></button>
@@ -356,14 +366,13 @@
                 </div>
               </div>
               <div class="math-source-mode" data-math-source-mode="file" hidden>
-                <div class="upload-zone math-upload-zone">
-                    <button class="upload-clear" id="mathClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <div class="upload-zone" id="mathUploadZone">
+                  <button class="upload-clear" id="mathClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                   <input id="mathFileInput" type="file" accept="application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
-                  <div class="math-upload-copy">
-                    <b>Choose a math file</b>
-                    <small id="mathFileHint">One page · PDF, JPG, or PNG · up to 4 MB</small>
-                  </div>
-                  <button class="browse-button" id="mathBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
+                  <div class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></div>
+                  <b id="mathFileName">Choose a file or drag &amp; drop it here</b>
+                  <small id="mathFileHint">PDF (1 page), JPG, or PNG &middot; up to 4 MB</small>
+                  <button class="browse-button" id="mathBrowseButton" type="button">Browse file</button>
                 </div>
               </div>
               <div class="math-source-mode" data-math-source-mode="qr" hidden>
@@ -495,14 +504,13 @@
                 </div>
               </div>
               <div class="explain-source-mode" data-explain-source-mode="file" hidden>
-                <div class="upload-zone explain-upload-zone" id="explainUploadZone">
+                <div class="upload-zone" id="explainUploadZone">
                   <button class="upload-clear" id="explainClearButton" type="button" aria-label="Remove the selected file" title="Remove file" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                   <input id="explainFileInput" type="file" accept="application/pdf,.pdf,text/plain,.txt,image/jpeg,image/png,.jpg,.jpeg,.png" hidden />
-                  <div class="math-upload-copy">
-                    <b>Choose a file to explain</b>
-                    <small id="explainFileHint">PDF, TXT, JPG, or PNG</small>
-                  </div>
-                  <button class="browse-button" id="explainBrowseButton" type="button"><span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></span><span class="browse-label">Browse file</span></button>
+                  <div class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg></div>
+                  <b id="explainFileName">Choose a file or drag &amp; drop it here</b>
+                  <small id="explainFileHint">PDF up to 10 pages, TXT, JPG, or PNG &middot; up to 4 MB</small>
+                  <button class="browse-button" id="explainBrowseButton" type="button">Browse file</button>
                 </div>
               </div>
               <button class="small-button primary-action" id="explainButton" type="button">Explain</button>

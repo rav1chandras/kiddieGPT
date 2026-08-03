@@ -1992,11 +1992,28 @@ function splitTutorSentences(text) {
   return parts.map(part => part.trim()).filter(Boolean);
 }
 
+// Mirrors Mission's zone. Tutor had no file input at all -- picking a file
+// meant going to Study Mission first, which is not something a student would
+// guess from a panel headed "Local file".
+function renderTutorFilePill() {
+  const body = document.getElementById("tutorFileSourceBody");
+  if (body) body.hidden = tutorSourceMode() !== "file";
+  const name = document.getElementById("readFileName");
+  const hint = document.getElementById("readFileHint");
+  const clear = document.getElementById("readClearButton");
+  if (name) name.textContent = selectedPdfFile ? selectedPdfFile.name : "Choose a file or drag & drop it here";
+  if (hint) hint.textContent = selectedPdfFile
+    ? `${formatBytes(selectedPdfFile.size)} \u00b7 ready to read`
+    : `PDF up to ${toolLimit("tutor", "pdfPages")} pages, TXT, JPG, or PNG \u00b7 up to ${formatBytes(toolLimit("tutor", "fileBytes"))}`;
+  if (clear) clear.hidden = !selectedPdfFile;
+}
+
 async function updateTutorSourceSummary() {
   const title = document.getElementById("tutorSourceTitle");
   const copy = document.getElementById("tutorSourceCopy");
   const summary = document.getElementById("tutorSourceSummary");
   const mode = tutorSourceMode();
+  renderTutorFilePill();
   if (title) title.textContent = mode === "file" ? "Read your study file" : "Read from the active tab";
   if (copy) copy.textContent = mode === "file"
     ? "Uses the same file as your Study Mission — pick it once, use it in both."
@@ -3136,8 +3153,18 @@ function initUploadDropZone(tool = "pdf") {
       zone.classList.remove("dragging");
     });
   });
-  zone.addEventListener("drop", event => {
-    handleStudyFile(event.dataTransfer?.files?.[0], tool);
+  zone.addEventListener("drop", async event => {
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    // Mission and Tutor share one source, so a drop on either fills both.
+    // Math and Explain keep their own file and their own limits.
+    if (tool === "math") { await handleMathFile(file); return; }
+    if (tool === "explain") {
+      selectedExplainFile = (await acceptToolFile(file, "explain")) || null;
+      renderExplainFilePill();
+      return;
+    }
+    handleStudyFile(file, tool);
   });
 }
 
@@ -3335,7 +3362,7 @@ async function buildPdfStudyPack() {
 }
 
 function initPdfTool() {
-  document.getElementById("pdfChooseButton")?.addEventListener("click", choosePdfFile);
+  document.getElementById("pdfBrowseButton")?.addEventListener("click", choosePdfFile);
   document.getElementById("pdfBuildButton")?.addEventListener("click", buildPdfStudyPack);
   document.getElementById("missionChallengeSlider")?.addEventListener("input", updateMissionChallengeLabel);
   document.getElementById("missionReadToggleButton")?.addEventListener("click", () => {
@@ -3350,7 +3377,9 @@ function initPdfTool() {
     setUploadCollapsed(!panel?.classList.contains("collapsed"));
   });
   document.getElementById("pdfFileInput")?.addEventListener("change", handlePdfFileChange);
-  initUploadDropZone("pdf");
+  // Every zone now says "drag & drop it here", so every zone has to accept one.
+  // Math's had said it for a while without a listener behind it.
+  ["pdf", "read", "math", "explain"].forEach(initUploadDropZone);
   document.getElementById("pdfClearButton")?.addEventListener("click", () => clearStudyFile("pdf"));
   updateMissionChallengeLabel();
   updatePdfSourceMode();
@@ -4253,12 +4282,15 @@ function updateStudyClearButton(tool = "pdf") {
 }
 
 function setMathUploadState(file, error = "") {
-  const zone = document.querySelector("#mathPanel .math-upload-zone");
+  // Retargeted for the Mission-style zone: the compact .math-upload-copy row and
+  // the icon-inside-the-button are gone, replaced by a stacked zone whose title,
+  // meta and icon are addressed by id.
+  const zone = document.getElementById("mathUploadZone");
   if (!zone) return;
-  const title = zone.querySelector(".math-upload-copy b");
-  const meta = zone.querySelector(".math-upload-copy small");
-  const icon = zone.querySelector(".browse-button .drop-icon");
-  const browseLabel = zone.querySelector(".browse-label");
+  const title = document.getElementById("mathFileName");
+  const meta = document.getElementById("mathFileHint");
+  const icon = zone.querySelector(".drop-icon");
+  const browseLabel = document.getElementById("mathBrowseButton");
   const uploaded = Boolean(file) && !error;
   zone.classList.toggle("uploaded", uploaded);
   zone.classList.toggle("upload-error", Boolean(error));
@@ -4267,7 +4299,7 @@ function setMathUploadState(file, error = "") {
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.4 4.5L19 7"></path></svg>`
       : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 18 17h-2"></path><path d="M12 12v8"></path><path d="m9 15 3-3 3 3"></path></svg>`;
   }
-  if (title) title.textContent = uploaded ? `${file.name}` : "Choose a math file";
+  if (title) title.textContent = uploaded ? `${file.name}` : "Choose a file or drag & drop it here";
   if (meta) meta.textContent = error || (uploaded ? `${formatBytes(file.size)} · ready to solve` : `${mathPageHint()} · PDF, JPG, or PNG · up to ${formatBytes(toolLimit("math", "fileBytes"))}`);
   if (browseLabel) browseLabel.textContent = uploaded ? "Change" : "Browse file";
   updateMathClearButton();
@@ -4383,6 +4415,14 @@ function mathPageHint() {
 
 async function handleMathFileChange(event) {
   const file = event.target.files?.[0];
+  if (!file) return;
+  await handleMathFile(file);
+}
+
+// Split out so a drag-and-drop reaches exactly the same checks as Browse --
+// two paths to the same slot with different validation is how a tool ends up
+// accepting by drop what it refuses by button.
+async function handleMathFile(file) {
   if (!file) return;
   if (isHeicFile(file)) {
     // Clear the selection to match what the panel now shows. The size branch
@@ -5421,11 +5461,11 @@ function updateMathSourceMode() {
 }
 
 function renderExplainFilePill() {
-  const copy = document.querySelector("#explainUploadZone .math-upload-copy b");
+  const copy = document.getElementById("explainFileName");
   const hint = document.getElementById("explainFileHint");
   const clear = document.getElementById("explainClearButton");
   const zone = document.getElementById("explainUploadZone");
-  if (copy) copy.textContent = selectedExplainFile ? selectedExplainFile.name : "Choose a file to explain";
+  if (copy) copy.textContent = selectedExplainFile ? selectedExplainFile.name : "Choose a file or drag & drop it here";
   if (hint) hint.textContent = selectedExplainFile
     ? `${formatBytes(selectedExplainFile.size)} · ready to explain`
     : `PDF up to ${toolLimit("explain", "pdfPages")} pages, TXT, JPG, or PNG \u00b7 up to ${formatBytes(toolLimit("explain", "fileBytes"))}`;
@@ -5613,6 +5653,22 @@ function initExplainTool() {
       input.value = chip.dataset.followupPrompt;
       input.focus();
     }
+  });
+  document.getElementById("readBrowseButton")?.addEventListener("click", () => {
+    document.getElementById("readFileInput")?.click();
+  });
+  document.getElementById("readFileInput")?.addEventListener("change", (event) => {
+    // Tutor writes to the SAME slot as Mission on purpose: the two share one
+    // source so a file is never read twice. Picking here fills Mission too.
+    handleStudyFile(event.target.files?.[0], "read");
+  });
+  document.getElementById("readClearButton")?.addEventListener("click", () => {
+    selectedPdfFile = null;
+    const input = document.getElementById("readFileInput");
+    if (input) input.value = "";
+    setToolUploadStatus("read", "", "");
+    updateTutorSourceSummary();
+    renderTutorFilePill();
   });
   document.getElementById("explainBrowseButton")?.addEventListener("click", () => {
     document.getElementById("explainFileInput")?.click();
@@ -7150,7 +7206,7 @@ document.addEventListener("click", event => {
   if (action?.dataset.action === "capture-screenshot") captureExplainRegion();
   if (action?.dataset.action === "mock-screenshot") useSampleScreenshot();
 
-  if (event.target.closest("#pdfChooseButton")) event.preventDefault();
+  if (event.target.closest("#pdfBrowseButton")) event.preventDefault();
   if (event.target.closest("#pdfBuildButton")) event.preventDefault();
   if (event.target.closest("#saveSettingsButton")) event.preventDefault();
   if (event.target.closest("#clearOpenAIButton")) event.preventDefault();
