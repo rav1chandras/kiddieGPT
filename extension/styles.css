@@ -956,7 +956,10 @@ body{background:#f6f8f5}
     .tutor-source-panel{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff 0%,#f7fbf2 72%,#eef6b5 100%);border-color:#dce8df}
     .tutor-source-panel:after{content:"";position:absolute;right:-38px;top:-44px;width:132px;height:132px;border-radius:42px;background:rgba(0,79,72,.055);transform:rotate(14deg)}
     .tutor-source-panel>*{position:relative;z-index:1}
-    .tutor-source-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+    /* block, like every other tool header. While this was flex, the inner grid
+   was a flex item sizing to its content, so the title's 1fr column collapsed
+   and the pills sat next to the title instead of at the right edge. */
+    .tutor-source-head{display:block;margin-bottom:8px}
     .tutor-source-panel h3{font-size:19px;line-height:1.16;color:#0b2d43;margin:2px 0 4px}
     .tutor-source-copy{font-size:12px;line-height:1.45;color:#60747d;margin:0 0 12px}
     .tutor-source-card{display:flex;gap:10px;align-items:center;border:1px solid #dce8df;border-radius:14px;background:rgba(255,255,255,.72);padding:12px}
