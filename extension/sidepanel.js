@@ -1912,7 +1912,6 @@ function ensureGateStyles() {
     #kg-portal-gate .kg-gate-newacct{margin-top:2px;padding-top:11px;border-top:1px solid #eef2ee;
       font-size:11.5px;color:#60747d}
     #kg-portal-gate .kg-gate-newacct a{color:#008778;font-weight:800;text-decoration:none}
-    #kg-portal-gate .kg-gate-newacct small{display:block;font-size:10px;color:#9aa8a4;margin-top:2px}
     #kg-portal-gate .kg-gate-link{background:none;border:none;color:#4f6b67;font-size:12px;cursor:pointer;
       text-decoration:underline;}
     #kg-portal-gate .kg-gate-status{min-height:16px;color:#b23a48;font-weight:600;}
@@ -2033,8 +2032,7 @@ function renderPortalGate(mode, message) {
         <button type="submit" class="kg-gate-primary">${usePassword ? "Sign in" : "Email me a code"}</button>
         <button type="button" class="kg-gate-link" id="kg-gate-method">${usePassword ? "Email me a code instead" : "Use a password instead"}</button>
         ${usePassword ? "" : `<p class="kg-gate-note">We&rsquo;ll send a 6-digit code. No password to remember.</p>`}
-        <div class="kg-gate-newacct">New to KiddieGPT? <a href="${base}/?signup=1" target="_blank" rel="noopener">Set up an account &rarr;</a>
-          <small>Opens the parent portal in a new tab &mdash; a grown-up finishes there.</small></div>`}
+        <div class="kg-gate-newacct">New to KiddieGPT? <a href="${base}/?signup=1" target="_blank" rel="noopener">Set up an account &rarr;</a></div>`}
         ${inactive ? `
         <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">Manage subscription</a>
         <button type="button" class="kg-gate-link" id="kg-gate-signout">Use a different account</button>` : ""}
