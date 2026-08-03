@@ -4710,8 +4710,12 @@ async function handleMathFile(file) {
     setMathUploadState(null, "Use a PDF, JPG, or PNG file.");
     return;
   }
-  if (file.size > maxStudyFileBytes) {
-    setMathUploadState(null, `That file is too large. Use one under ${formatBytes(maxStudyFileBytes)}.`);
+  // Math's own cap, not Mission's. The page check two lines down already read
+  // toolLimit("math", ...), so this one was quietly enforcing a different tool's
+  // budget than the number shown beside it in the admin console.
+  const byteCap = toolLimit("math", "fileBytes");
+  if (file.size > byteCap) {
+    setMathUploadState(null, `That file is too large. Use one under ${formatBytes(byteCap)}.`);
     return;
   }
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
@@ -6812,7 +6816,11 @@ async function buildStudyPackFromActiveTab(settings, challenge = "Balanced", gra
 }
 
 async function buildPdfWithOpenAI(file, settings, challenge = "Balanced", gradeBand = "6-8") {
-  if (file.size > maxStudyFileBytes) throw new Error(`Study file must be under ${formatBytes(maxStudyFileBytes)}.`);
+  // toolLimit, not the compiled constant: the constant is only the fallback for
+  // when the portal is unreachable, so reading it directly ignored whatever the
+  // admin had set.
+  const byteCap = toolLimit("mission", "fileBytes");
+  if (file.size > byteCap) throw new Error(`Study file must be under ${formatBytes(byteCap)}.`);
   setPdfStatus("Reading study file...", "blue");
   const fileData = await readStudySourceDataUrl(file);
   const studySourcePart = getOpenAIStudySourcePart(file, fileData);
