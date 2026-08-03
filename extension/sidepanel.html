@@ -462,7 +462,14 @@
           <section class="panel panel-pad writing-work-panel">
             <div class="writing-work-head">
               <div>
-                <span class="status blue hdr-pill" id="writingModeStatus">Your ideas stay yours</span>
+                <!-- Top-right, same place and shape as every other tool's source
+                     pills, so the one control that changes the panel is where a
+                     student already looks for it. -->
+                <div class="source-pills hdr-pill" role="group" aria-label="Writing help type">
+                  <button class="active" data-writing-action="assignment" type="button">Assignment</button>
+                  <button data-writing-action="draft" type="button">Draft</button>
+                  <button data-writing-action="grammar" type="button">Grammar</button>
+                </div>
                 <span class="mission-eyebrow" id="writingModeEyebrow">Assignment</span>
                 <h3 id="writingModeTitle">Understand the assignment</h3>
                 <p id="writingModeCopy">Paste the assignment question and KiddieGPT helps you plan before you write.</p>
@@ -474,11 +481,6 @@
                 <span id="writingInputHint">Start with the assignment directions or question.</span>
                 <button class="primary-action" id="writingRunButton" type="button">Help me plan</button>
               </div>
-            </div>
-            <div class="writing-action-row" aria-label="Writing help type">
-              <button class="active" data-writing-action="assignment" type="button">Assignment</button>
-              <button data-writing-action="draft" type="button">Draft</button>
-              <button data-writing-action="grammar" type="button">Grammar</button>
             </div>
           </section>
           <section class="panel panel-pad writing-output-panel">

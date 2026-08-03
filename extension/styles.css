@@ -156,9 +156,6 @@ body{background:#f6f8f5}
     .writing-input-footer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border-top:1px solid #edf2ee;padding-top:10px}
     .writing-input-footer span{font-size:11px;line-height:1.35;color:#60747d;font-weight:700}
     .writing-input-footer button{border:0;border-radius:12px;background:var(--green);color:#fff;min-height:38px;padding:0 15px;font-size:11px;font-weight:900;cursor:pointer}
-    .writing-action-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-    .writing-action-row button{border:1px solid #dce8df;border-radius:999px;background:#fff;color:#29495b;padding:9px 13px;font-size:11px;font-weight:900;cursor:pointer}
-    .writing-action-row button.active{background:#004f48;border-color:#004f48;color:#fff;box-shadow:0 10px 20px rgba(0,79,72,.12)}
     .writing-output-panel{background:linear-gradient(135deg,#fff,#fbfdf8)}
     .writing-coach-result{display:grid;gap:9px}
     .writing-next-card{position:relative;overflow:hidden;border:1px solid #d4e56d;border-radius:16px;background:#fbfde6;color:#0b2d43;padding:15px;box-shadow:0 10px 22px rgba(12,42,60,.045)}
