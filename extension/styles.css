@@ -1470,3 +1470,25 @@ body{background:#f6f8f5}
     grid-row: 3;
   }
 }
+
+
+/* ---- Plan banner ------------------------------------------------------------
+   Amber, not red: at this point the tools still work, so it is a heads-up
+   rather than a failure. The red treatment belongs to the gate that appears
+   once entitlement is actually gone. */
+.plan-banner{display:flex;align-items:center;gap:11px;margin:0 0 10px;padding:11px 13px;
+  border:1px solid #e3b34e;border-left-width:3px;border-radius:13px;background:#fdf6e3}
+.plan-banner[hidden]{display:none}
+.plan-banner-icon{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:#8a5a00;color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:900}
+.plan-banner-copy{flex:1;min-width:0}
+.plan-banner-copy b{display:block;font-size:12.5px;font-weight:800;color:#8a5a00}
+.plan-banner-copy small{display:block;font-size:11px;line-height:1.4;color:#6b5a3a;margin-top:2px}
+.plan-banner-cta{flex:0 0 auto;padding:7px 12px;border-radius:999px;background:#8a5a00;color:#fff;
+  text-decoration:none;font-size:11px;font-weight:800;white-space:nowrap}
+.plan-banner-cta:hover{background:#6f4800}
+.plan-banner-cta:focus-visible{outline:2px solid #004f48;outline-offset:2px}
+@media (max-width:420px){
+  .plan-banner{flex-wrap:wrap}
+  .plan-banner-cta{width:100%;text-align:center}
+}

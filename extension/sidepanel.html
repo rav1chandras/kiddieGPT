@@ -20,6 +20,13 @@
         </div>
         <div class="header-status"><span>Grade safe</span></div>
       </header>
+      <!-- Sits under the topbar so it shows on every view, not just the tool
+           that happened to fail. Hidden unless the plan needs attention. -->
+      <div class="plan-banner" id="planBanner" role="status" hidden>
+        <span class="plan-banner-icon" aria-hidden="true">!</span>
+        <div class="plan-banner-copy"><b id="planBannerTitle"></b><small id="planBannerText"></small></div>
+        <a class="plan-banner-cta" id="planBannerCta" href="#" target="_blank" rel="noopener">Open parent portal</a>
+      </div>
       <section class="view-panel active" id="dashboardPanel">
         <div class="dashboard-compact">
           <section class="panel panel-pad motivation-hero">

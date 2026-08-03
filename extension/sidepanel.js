@@ -280,7 +280,7 @@ async function persistDefaultChild(storedChildId) {
 }
 
 async function refreshEntitlement() {
-  if (!portalToken) { portalSession = null; return null; }
+  if (!portalToken) { portalSession = null; renderPlanBanner(); return null; }
   const stored = await storageGet([PORTAL_EMAIL_KEY, PORTAL_CHILD_KEY]);
   if (portalToken === OTP_TEST_TOKEN) {
     const configured = normalizeChildren(globalThis.KIDDIEGPT_LOCAL_SETTINGS?.children);
@@ -289,6 +289,7 @@ async function refreshEntitlement() {
     ];
     portalSession = { email: stored[PORTAL_EMAIL_KEY] || "", entitled: true, status: "test", plan: "test", familyId: "", childId: pickChildId(stored[PORTAL_CHILD_KEY], children), children, locked: false };
     await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
+    renderPlanBanner();
     return portalSession;
   }
   try {
@@ -317,9 +318,10 @@ async function refreshEntitlement() {
       locked: Boolean(ent.locked)
     };
     await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
+    renderPlanBanner();
     return portalSession;
   } catch (error) {
-    if (error.status === 401) { portalSession = null; return null; }
+    if (error.status === 401) { portalSession = null; renderPlanBanner(); return null; }
     // Family exists but not active, locked, or blocked — keep a marker so the
     // gate can explain it rather than silently failing.
     portalSession = {
@@ -329,6 +331,7 @@ async function refreshEntitlement() {
       locked: error.status === 423,
       childId: stored[PORTAL_CHILD_KEY] || ""
     };
+    renderPlanBanner();
     return portalSession;
   }
 }
@@ -946,7 +949,7 @@ function setPreferenceTab(button) {
 // the chosen source actually does.
 const SOURCE_BLURBS = {
   pdf: {
-    browser: "Builds a pack from the page you're on.",
+    browser: "Builds a pack from the page you’re on.",
     file:    "Builds a pack from a worksheet, notes, or an image."
   },
   math: {
@@ -956,12 +959,12 @@ const SOURCE_BLURBS = {
     qr:         "Photograph a problem from a book with your phone."
   },
   read: {
-    browser:    "Reads or teaches the page you're on.",
+    browser:    "Reads or teaches the page you’re on.",
     screenshot: "Grab a paragraph or diagram from the page.",
     file:       "Uses the same file as your Study Mission."
   },
   explain: {
-    page:       "Explains the page you're viewing, in simpler words.",
+    page:       "Explains the page you’re viewing, in simpler words.",
     screenshot: "Drag a box around a diagram, chart, or worksheet.",
     file:       "Explains a PDF, note, or picture you upload."
   }
@@ -1786,6 +1789,41 @@ function toolLimit(tool, field) {
   return Math.min(ceiling, value);
 }
 
+// A plan can be unhealthy while the tools still work -- cancelled but inside
+// the paid period, or a payment that failed and has not locked the account yet.
+// Nothing surfaced that, so the first sign a parent got was the day everything
+// stopped. entitled=false already raises the full gate; this covers the window
+// before it, where a warning is still actionable.
+const PLAN_BANNERS = {
+  cancelled: {
+    title: "This plan is set to end",
+    text: "KiddieGPT keeps working until the period ends, then tools stop. Restart it any time."
+  },
+  past_due: {
+    title: "Payment didn’t go through",
+    text: "Update the card in the parent portal to keep KiddieGPT working."
+  },
+  paused: {
+    title: "This plan is paused",
+    text: "Resume it in the parent portal to use the tools again."
+  }
+};
+
+function renderPlanBanner() {
+  const el = document.getElementById("planBanner");
+  if (!el) return;
+  const status = String(portalSession?.status || "").toLowerCase().replace(/[\s-]+/g, "_");
+  // Only while the session is real and still entitled. Without a plan, or once
+  // entitlement is gone, the sign-in gate is already saying it louder.
+  const notice = portalSession?.entitled ? PLAN_BANNERS[status] : null;
+  if (!notice) { el.hidden = true; return; }
+  document.getElementById("planBannerTitle").textContent = notice.title;
+  document.getElementById("planBannerText").textContent = notice.text;
+  const cta = document.getElementById("planBannerCta");
+  if (cta) cta.href = portalBaseUrl();
+  el.hidden = false;
+}
+
 function applyPortalControls(limits) {
   portalLimits = limits || null;
   portalRequireSteps = Boolean(limits && limits.requireSteps);
@@ -2118,7 +2156,7 @@ function setTutorButtonLabel(text) {
 // so this is where a student finds out what each actually does -- and it
 // changes with the selection rather than describing both at once.
 const TUTOR_MODE_BLURBS = {
-  read: "Plays the page's own words out loud, highlighting each line as it goes.",
+  read: "Plays the page’s own words out loud, highlighting each line as it goes.",
   explain: "Turns it into a lesson that fits your grade."
 };
 
