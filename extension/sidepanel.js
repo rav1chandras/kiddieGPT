@@ -2023,7 +2023,10 @@ function renderTutorFilePill() {
   const clear = document.getElementById("readClearButton");
   if (name) name.textContent = selectedPdfFile ? selectedPdfFile.name : "Choose a file or drag & drop it here";
   if (hint) hint.textContent = selectedPdfFile
-    ? `${formatBytes(selectedPdfFile.size)} \u00b7 ready to read`
+    ? (currentStudyPack
+        // Worth saying: this file is already processed, so Tutor reuses it.
+        ? `${formatBytes(selectedPdfFile.size)} \u00b7 study mission built \u2014 reused here, no extra tokens`
+        : `${formatBytes(selectedPdfFile.size)} \u00b7 ready to read`)
     : `PDF up to ${toolLimit("tutor", "pdfPages")} pages, TXT, JPG, or PNG \u00b7 up to ${formatBytes(toolLimit("tutor", "fileBytes"))}`;
   if (clear) clear.hidden = !selectedPdfFile;
 }
@@ -2045,18 +2048,13 @@ async function updateTutorSourceSummary() {
       ? "Grab a diagram, a paragraph, or a worksheet section from the page."
       : "Great for articles, stories, and reading passages.";
   if (!summary) return;
-  if (mode === "screenshot") {
-    summary.innerHTML = selectedTutorCapture
-      ? `<i class="tutor-src-icon">\u25A6</i><div><b>Screenshot ready</b><small>Ready to read aloud or teach.</small></div>`
-      : `<i class="tutor-src-icon">\u25A6</i><div><b>No screenshot yet</b><small>Click the box above, then drag around what you want.</small></div>`;
-    return;
-  }
-  if (mode === "file") {
-    summary.innerHTML = selectedPdfFile
-      ? `<i class="tutor-src-icon">▤</i><div><b>${escapeHtml(selectedPdfFile.name)}</b><small>${currentStudyPack ? "Study mission built — reused here, no extra tokens." : "Ready to read aloud or explain."}</small></div>`
-      : `<i class="tutor-src-icon">▤</i><div><b>No file chosen yet</b><small>Choose a file to read, or switch to Active tab.</small></div><button class="tutor-choose-file" id="tutorChooseFile" type="button">Choose file</button>`;
-    return;
-  }
+  // Screenshot and Local file each have an input pane that already states its
+  // own condition -- the drop zone shows the filename, the capture box shows
+  // the thumbnail. The card repeated that a second time, and in file mode
+  // repeated the Browse button too. Active tab has no pane, so there the card
+  // is the only thing describing what will be read, and it stays.
+  if (mode !== "browser") { summary.hidden = true; summary.innerHTML = ""; return; }
+  summary.hidden = false;
   summary.innerHTML = `<i class="tutor-src-icon">◷</i><div><b>Reading the active tab…</b><small>Checking the page you have open.</small></div>`;
   try {
     const context = await getActiveTabContext();
@@ -5797,7 +5795,6 @@ function initTutorMode() {
     card.addEventListener("click", () => setTutorMode(card.dataset.tutorMode));
   });
   document.getElementById("tutorSourceSummary")?.addEventListener("click", event => {
-    if (event.target.closest("#tutorChooseFile")) choosePdfFile();
   });
   const audio = document.getElementById("tutorAudioPlayer");
   document.getElementById("tutorPlayButton")?.addEventListener("click", () => {
@@ -7139,10 +7136,22 @@ function showExplainBlocked() {
   setScreenshotStatus("Blocked", "warn");
 }
 
+// A failed Tutor capture used to update Explain's status line, which the
+// student is not looking at. Put it in the box they just clicked.
+function setTutorCaptureError(message) {
+  const box = document.getElementById("tutorShotPreview");
+  if (!box) return;
+  box.classList.remove("captured");
+  box.classList.add("upload-error");
+  box.innerHTML = `<span class="math-capture-icon">!</span>
+    <div><b>Couldn't grab that</b><small>${escapeHtml(message || "Try again, or switch to Active tab.")}</small></div>`;
+}
+
 // Mirrors Explain's captured card: icon, wording, thumbnail.
 function renderTutorCapture(src) {
   const box = document.getElementById("tutorShotPreview");
   if (!box) return;
+  box.classList.remove("upload-error");
   box.classList.add("captured");
   box.innerHTML = src
     ? `<span class="math-capture-icon">\u25A6</span>
@@ -7188,15 +7197,28 @@ function captureExplainRegionCore() {
 }
 
 function finishExplainRegionCapture(rect) {
-  if (!extensionApi?.tabs?.captureVisibleTab) { setScreenshotStatus("Unavailable", "warn"); useSampleScreenshot(); return; }
-  setScreenshotStatus("Capturing", "blue");
+  const forTutor = regionCaptureTarget === "read";
+  const fail = (short, detail) => {
+    if (forTutor) setTutorCaptureError(detail);
+    else setScreenshotStatus(short, "warn");
+  };
+  if (!extensionApi?.tabs?.captureVisibleTab) {
+    fail("Unavailable", "Screenshots aren't available here. Try Active tab or a local file.");
+    if (!forTutor) useSampleScreenshot();
+    return;
+  }
+  if (!forTutor) setScreenshotStatus("Capturing", "blue");
   extensionApi.tabs.captureVisibleTab({ format: "png" }, async dataUrl => {
-    if (extensionApi.runtime.lastError || !dataUrl) { setScreenshotStatus("Use sample", "warn"); useSampleScreenshot(); return; }
+    if (extensionApi.runtime.lastError || !dataUrl) {
+      fail("Use sample", "Couldn't read the page just then. Try again.");
+      if (!forTutor) useSampleScreenshot();
+      return;
+    }
     try {
       const cropped = await cropDataUrl(dataUrl, rect);
       renderScreenshot(cropped);
     } catch {
-      setScreenshotStatus("Try again", "warn");
+      fail("Try again", "That selection couldn't be cropped. Try dragging a slightly bigger box.");
     }
   });
 }
