@@ -1738,6 +1738,9 @@ function applyPortalControls(limits) {
     try { chrome.storage?.local?.set({ kgToolLimits: limits.toolLimits }); } catch {}
   }
   applyToolLimitsToUi();
+  // Voice availability arrives with these limits, and it decides whether Read
+  // along is selectable at all, so re-render the toggle once they land.
+  if (typeof tutorMode === "string") setTutorMode(tutorMode);
 }
 
 // Reflect the numeric limits into the DOM attributes that enforce them locally.
@@ -2020,14 +2023,36 @@ async function updateTutorSourceSummary() {
 }
 
 function setTutorMode(mode) {
+  // The internal names stay "read" and "explain". Only what a student reads
+  // changed -- renaming the mode would reach the portal's explainDepth
+  // parameter and the narration clamp for no user-visible gain.
   tutorMode = mode === "explain" ? "explain" : "read";
+  // Read along is the source's own words sent to speech, so it cannot work at
+  // all with tutor voice switched off. Teach me still can, as text -- losing
+  // voice should cost narration, not the whole tool.
+  const voiceOn = tutorVoiceAvailable();
+  if (!voiceOn && tutorMode === "read") tutorMode = "explain";
   document.querySelectorAll("[data-tutor-mode]").forEach(card => {
+    const isRead = card.dataset.tutorMode === "read";
     card.classList.toggle("active", card.dataset.tutorMode === tutorMode);
+    card.disabled = isRead && !voiceOn;
+    card.title = (isRead && !voiceOn) ? "Tutor voice is turned off for this account." : "";
   });
   const button = document.getElementById("tutorGenerateButton");
-  if (button && !button.disabled) button.textContent = tutorMode === "read" ? "Read it aloud" : "Explain it aloud";
-  updateTutorDepthUi(); // depth toggle is Explain-only
+  if (button && !button.disabled) button.textContent = tutorMode === "read" ? "Read it along" : "Teach me";
+  updateTutorDepthUi(); // depth applies to Teach me only
   saveSettings({ tutorMode });
+}
+
+// The portal already folds both switches into one flag on /api/ai/usage-limits
+// -- the admin's global tutorVoiceEnabled AND the parent's per-family
+// voiceEnabled. Read that rather than re-deriving it, or the two could disagree
+// and the UI would offer something the server then refuses. Defaults to
+// available while the limits are still loading, so the toggle does not flicker
+// into a disabled state on every panel open.
+function tutorVoiceAvailable() {
+  if (!portalLimits) return true;
+  return portalLimits.tutorVoiceEnabled !== false;
 }
 
 // Show the Standard/Deep Dive toggle only for Explain on a deep-dive-eligible
