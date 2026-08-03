@@ -1890,6 +1890,20 @@ function ensureGateStyles() {
       background:#004f48;color:#fff;font-weight:800;font-size:14px;cursor:pointer;text-decoration:none;
       display:inline-block;}
     #kg-portal-gate .kg-gate-primary:hover{background:#01605a;}
+    #kg-portal-gate .kg-gate-google{display:flex;align-items:center;justify-content:center;gap:9px;
+      padding:10px;border:1.5px solid #dce8df;border-radius:999px;background:#fff;color:#3c4043;
+      font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+    #kg-portal-gate .kg-gate-google:hover{background:#f6faf5}
+    #kg-portal-gate .kg-gate-google svg{width:16px;height:16px;flex:0 0 auto}
+    #kg-portal-gate .kg-gate-or{display:flex;align-items:center;gap:8px;color:#9aa8a4;font-size:10px;font-weight:800}
+    #kg-portal-gate .kg-gate-or::before,#kg-portal-gate .kg-gate-or::after{content:"";flex:1;height:1px;background:#e2ead2}
+    #kg-portal-gate .kg-gate-note{margin:0;font-size:10.5px;color:#8a918f}
+    /* Account setup lives in the portal, so it is a link under a divider rather
+       than a peer of the sign-in button -- it leaves the panel, and says so. */
+    #kg-portal-gate .kg-gate-newacct{margin-top:2px;padding-top:11px;border-top:1px solid #eef2ee;
+      font-size:11.5px;color:#60747d}
+    #kg-portal-gate .kg-gate-newacct a{color:#008778;font-weight:800;text-decoration:none}
+    #kg-portal-gate .kg-gate-newacct small{display:block;font-size:10px;color:#9aa8a4;margin-top:2px}
     #kg-portal-gate .kg-gate-link{background:none;border:none;color:#4f6b67;font-size:12px;cursor:pointer;
       text-decoration:underline;}
     #kg-portal-gate .kg-gate-status{min-height:16px;color:#b23a48;font-weight:600;}
@@ -1915,12 +1929,49 @@ function hidePortalGate() {
   if (el) el.remove();
 }
 
+// What the portal actually offers, asked rather than assumed. Google is only
+// advertised when a client ID is configured server-side, so the button cannot
+// appear as a dead control -- and it starts working the day GOOGLE_CLIENT_ID is
+// set, with no extension release.
+let gateMethod = "code";   // "code" | "password"
+let authConfig = null;
+async function loadAuthConfig() {
+  if (authConfig) return authConfig;
+  try {
+    const res = await fetch(`${portalBaseUrl()}/api/auth/config`);
+    authConfig = res.ok ? await res.json() : {};
+  } catch { authConfig = {}; }
+  return authConfig;
+}
+
+// Password sign-in. The portal keeps the domain allowlist and the rate limit;
+// this only carries the credentials over and stores the token it returns.
+async function passwordSignIn(email, password) {
+  const res = await fetch(`${portalBaseUrl()}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, role: "parent" })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) throw new PortalError(data.error || "login_failed", res.status, data);
+  portalToken = data.token;
+  await storageSet({ [PORTAL_TOKEN_KEY]: data.token, [PORTAL_EMAIL_KEY]: email });
+  return data;
+}
+
 function renderPortalGate(mode, message) {
   ensureGateStyles();
+  // First paint happens without waiting on the network; if the portal reports
+  // Google is available, re-render once to add the button rather than holding
+  // the whole gate behind a request that may be slow or fail.
+  if (authConfig === null) {
+    loadAuthConfig().then(cfg => { if (cfg?.googleConfigured) renderPortalGate(mode, message); });
+  }
   const el = portalGateEl();
   const base = portalBaseUrl();
   const inactive = mode === "inactive";
   const codeStep = !inactive && otpState.step === "code";
+  const usePassword = !inactive && !codeStep && gateMethod === "password";
   el.innerHTML = `
     <div class="kg-gate-backdrop">
       <form class="kg-gate-card" id="kg-gate-form">
@@ -1937,9 +1988,16 @@ function renderPortalGate(mode, message) {
         <button type="submit" class="kg-gate-primary">Verify code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-resend">Resend code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>` : `
+        ${authConfig?.googleConfigured ? `
+        <button type="button" class="kg-gate-google" id="kg-gate-google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16.4z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.4s.3-3 .8-4.4l-7.8-6.1C1 16.9 0 20.3 0 24s1 7.1 2.6 10.2l7.8-5.5z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.3 0-11.7-3.7-13.6-9.3l-7.8 5.5C6.5 42.6 14.6 48 24 48z"/></svg>Continue with Google</button>
+        <div class="kg-gate-or">or</div>` : ""}
         <label>Email<input type="email" id="kg-gate-email" autocomplete="username" required></label>
-        <button type="submit" class="kg-gate-primary">Send code</button>
-        <a class="kg-gate-link kg-gate-signup" href="${base}/?signup=1" target="_blank" rel="noopener">New to KiddieGPT? Create an account</a>`}
+        ${usePassword ? `<label>Password<input type="password" id="kg-gate-password" autocomplete="current-password" required></label>` : ""}
+        <button type="submit" class="kg-gate-primary">${usePassword ? "Sign in" : "Email me a code"}</button>
+        <button type="button" class="kg-gate-link" id="kg-gate-method">${usePassword ? "Email me a code instead" : "Use a password instead"}</button>
+        ${usePassword ? "" : `<p class="kg-gate-note">We&rsquo;ll send a 6-digit code. No password to remember.</p>`}
+        <div class="kg-gate-newacct">New to KiddieGPT? <a href="${base}/?signup=1" target="_blank" rel="noopener">Set up an account &rarr;</a>
+          <small>Opens the parent portal in a new tab &mdash; a grown-up finishes there.</small></div>`}
         ${inactive ? `
         <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">Manage subscription</a>
         <button type="button" class="kg-gate-link" id="kg-gate-signout">Use a different account</button>` : ""}
@@ -1954,10 +2012,40 @@ function renderPortalGate(mode, message) {
       const input = el.querySelector("#kg-gate-email");
       if (input && data[PORTAL_EMAIL_KEY]) input.value = data[PORTAL_EMAIL_KEY];
     });
+    // Switch between the two methods without losing the typed email.
+    el.querySelector("#kg-gate-method")?.addEventListener("click", () => {
+      const typed = el.querySelector("#kg-gate-email")?.value.trim() || "";
+      gateMethod = gateMethod === "password" ? "code" : "password";
+      renderPortalGate("login", "");
+      const field = portalGateEl().querySelector("#kg-gate-email");
+      if (field && typed) field.value = typed;
+    });
+    el.querySelector("#kg-gate-google")?.addEventListener("click", () => {
+      // The side panel cannot host Google's flow directly, so the portal runs it
+      // and the student comes back to a signed-in session.
+      status.textContent = "Opening Google sign-in in a new tab…";
+      extensionApi?.tabs?.create
+        ? extensionApi.tabs.create({ url: `${base}/?google=1` })
+        : window.open(`${base}/?google=1`, "_blank", "noopener");
+    });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const email = el.querySelector("#kg-gate-email").value.trim();
       if (!email) { status.textContent = "Enter your account email."; return; }
+      if (usePassword) {
+        const password = el.querySelector("#kg-gate-password")?.value || "";
+        if (!password) { status.textContent = "Enter your password."; return; }
+        status.textContent = "Signing in…";
+        try {
+          await passwordSignIn(email, password);
+          await refreshEntitlement();
+          renderPortalState();
+        } catch (error) {
+          status.textContent = friendlyError(error) || "That email and password did not match.";
+          reportIssue("login_failed", "Password sign-in failed: " + (error?.code || "unknown"), { email });
+        }
+        return;
+      }
       status.textContent = "Sending code…";
       try {
         await requestOtp(email);
