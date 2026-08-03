@@ -4876,7 +4876,6 @@ function showMathIntro() {
   </svg>`;
   intro.innerHTML = `
     <div class="math-intro-head">
-      <span class="mission-eyebrow">Math Tutor</span>
       <h3>How it works</h3>
       <p>Turn any math problem into a clear, checked, step-by-step lesson.</p>
     </div>
@@ -6039,7 +6038,6 @@ async function answerMissionFollowup() {
 
 const writingActions = {
   assignment: {
-    eyebrow: "Assignment",
     modeTitle: "Understand the assignment",
     copy: "Paste the assignment question and KiddieGPT helps you plan before you write.",
     hint: "Start with the assignment directions or question.",
@@ -6049,7 +6047,6 @@ const writingActions = {
     emptyCopy: "Paste the assignment and press Help me plan for a plan you fill in yourself."
   },
   draft: {
-    eyebrow: "Draft",
     modeTitle: "Check my draft",
     copy: "Paste your own writing and KiddieGPT points out what to add or fix.",
     hint: "Paste your draft. KiddieGPT will coach, not rewrite.",
@@ -6059,7 +6056,6 @@ const writingActions = {
     emptyCopy: "Paste your draft and press Check my draft to see what to add next."
   },
   grammar: {
-    eyebrow: "Grammar",
     modeTitle: "Check my writing",
     copy: "KiddieGPT underlines things to look at. Tap each one to see why — you choose whether to change it.",
     hint: "Paste a sentence or paragraph you want to make clearer.",
@@ -6113,7 +6109,6 @@ function setWritingAction(action) {
   document.querySelectorAll("[data-writing-action]").forEach(button => {
     button.classList.toggle("active", button.dataset.writingAction === action);
   });
-  document.getElementById("writingModeEyebrow").textContent = config.eyebrow;
   document.getElementById("writingModeTitle").textContent = config.modeTitle;
   document.getElementById("writingModeCopy").textContent = config.copy;
   document.getElementById("writingInputHint").textContent = config.hint;
