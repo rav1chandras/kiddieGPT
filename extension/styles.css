@@ -1504,3 +1504,22 @@ body{background:#f6f8f5}
 /* Title alone should not shift when the pill comes and goes. */
 .section-title{min-height:26px}
 .section-title h3{margin:0;line-height:1.25}
+
+
+/* ---- How it works: worked-example figure -----------------------------------
+   Fixed illustration, drawn from the exact geometry so the arc really does
+   touch the long side. A picture that only looks tangent would undermine the
+   one step it exists to teach. */
+.mi2-problem{margin:0 0 11px;font-size:12px;line-height:1.55;color:#40535c}
+.mi2-problem b{color:#0b2d43;font-weight:800}
+.mi2-figure{display:block;width:100%;max-width:300px;height:auto;margin:0 auto 12px}
+.mf-tri{fill:none;stroke:#0f3d38;stroke-width:2.5;stroke-linejoin:round}
+.mf-shade{fill:#a8d5a2}
+.mf-cut{fill:#fffdf6}          /* matches the example card's own background */
+.mf-arc{fill:none;stroke:#0f5a3f;stroke-width:2.5}
+.mf-rad{stroke:#0f3d38;stroke-width:2}
+.mf-right{fill:none;stroke:#719900;stroke-width:1.8}
+.mf-dot{fill:#0f5a3f}
+.mf-lbl{font:800 13px -apple-system,Inter,Arial,sans-serif;fill:#1f4fa3}
+.mf-lbl.end{text-anchor:end}
+.mf-lbl.mid{text-anchor:middle}

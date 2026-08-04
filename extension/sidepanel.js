@@ -5048,39 +5048,48 @@ function showMathIntro() {
   if (layout) layout.hidden = true;
   if (!intro) return;
   intro.hidden = false;
+  // A worked example that is deliberately harder than it looks: two ways to
+  // write one length, a quadratic, a rejected root, then a geometry fact most
+  // adults have forgotten. Fixed content -- the figure and the numbers never
+  // change, so it is drawn from exact geometry rather than anything generated.
   const exampleLines = [
-    { math: "angle B = 90°", why: "An angle sitting on the diameter is always a right angle." },
-    { math: "35° + 90° + C = 180°", why: "The three angles of a triangle add up to 180°." },
-    { math: "C = 55°", why: "180 minus 125 leaves 55." }
+    { math: "c = (2x+1) + 4x = 6x+1", why: "The longest side is its two labelled pieces added together." },
+    { math: "(3x+3)^2 + (5x)^2 = (6x+1)^2", why: "The corner is a right angle, so Pythagoras applies." },
+    { math: "34x^2 + 18x + 9 = 36x^2 + 12x + 1", why: "Expand both sides." },
+    { math: "x^2 - 3x - 4 = 0", why: "Move everything to one side, then halve it." },
+    { math: "(x-4)(x+1) = 0", why: "Factor the quadratic." },
+    { math: "x = 4", why: "Lengths cannot be negative, so the other root is discarded." },
+    { math: "a = 3(4)+3 = 15", why: "Work out the shorter upright side." },
+    { math: "b = 5(4) = 20", why: "Work out the base." },
+    { math: "c = 6(4)+1 = 25", why: "Work out the longest side." },
+    { math: "r = 15 \\times 20 \\div 25 = 12", why: "Touching means the radius meets the long side square-on, so it is the height from the corner." },
+    { math: "A = 1/2 \\times 15 \\times 20 = 150", why: "Area of the triangle." },
+    { math: "Q = 1/4 \\times \\pi \\times 12^2 = 36\\pi", why: "Area of the quarter circle." },
+    { math: "150 - 36\\pi", why: "Take the quarter circle away from the triangle." }
   ];
-  const exampleHtml = exampleLines.map(line => (
-    `${renderTextbookMath(line.math)}<small class="tb-why">${escapeHtml(line.why)}</small>`
-  )).join("");
-  // Triangle inscribed in a circle (Thales): AC is the diameter, B on the arc.
-  const figureSvg = `<svg viewBox="0 0 220 138" role="img" aria-label="Triangle inside a circle, standing on the diameter">
-    <circle cx="110" cy="70" r="56" fill="#f4faf3" stroke="#9dbcb0" stroke-width="2"/>
-    <line x1="54" y1="70" x2="166" y2="70" stroke="#0b2d43" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="54" y1="70" x2="86" y2="19" stroke="#0b2d43" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="86" y1="19" x2="166" y2="70" stroke="#0b2d43" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 80.9 27.6 L 89.3 33 L 94.7 24.6" fill="none" stroke="#0b2d43" stroke-width="1.8"/>
-    <path d="M 70 70 A 16 16 0 0 1 67.4 61.4" fill="none" stroke="#0b2d43" stroke-width="1.8"/>
-    <circle cx="54" cy="70" r="3" fill="#0b2d43"/><circle cx="166" cy="70" r="3" fill="#0b2d43"/><circle cx="86" cy="19" r="3" fill="#0b2d43"/>
-    <text x="44" y="84" font-size="13" font-weight="800" fill="#0b2d43" font-family="Inter,Arial,sans-serif">A</text>
-    <text x="84" y="12" font-size="13" font-weight="800" fill="#0b2d43" font-family="Inter,Arial,sans-serif">B</text>
-    <text x="172" y="84" font-size="13" font-weight="800" fill="#0b2d43" font-family="Inter,Arial,sans-serif">C</text>
-    <text x="84" y="62" font-size="12" font-weight="800" fill="#0b2d43" font-family="Inter,Arial,sans-serif">35°</text>
-    <text x="143" y="63" font-size="14" font-weight="900" fill="#2f8f2e" font-family="Inter,Arial,sans-serif">?</text>
-  </svg>`;
+  // Same markup the solved panel emits, so the example looks like the real
+  // thing rather than an artist's impression of it.
+  const exampleHtml = exampleLines.map(line =>
+    `<div class="tb-row">${renderTextbookMath(line.math)}<small class="tb-why">${escapeHtml(line.why)}</small></div>`
+  ).join("");
+  const figureSvg = `<svg class="mi2-figure" viewBox="0 0 400 330" role="img" aria-label="Right triangle with a quarter circle centred on the right angle, touching the longest side"><polygon points="74.0,300.0 74.0,105.0 334.0,300.0" class="mf-shade"/><path d="M74.0,300.0 L74.0,144.0 A156.0,156.0 0 0 1 230.0,300.0 Z" class="mf-cut"/><polygon points="74.0,300.0 74.0,105.0 334.0,300.0" class="mf-tri"/><path d="M74.0,286.0 h14 v14" class="mf-right"/><path d="M74.0,144.0 A156.0,156.0 0 0 1 230.0,300.0" class="mf-arc"/><line x1="74.0" y1="300.0" x2="167.6" y2="175.2" class="mf-rad"/><path d="M161.0,184.0 L169.8,190.6 L176.4,181.8" class="mf-right"/><circle cx="167.6" cy="175.2" r="4" class="mf-dot"/><text x="64.0" y="202.5" class="mf-lbl end">3x+3</text><text x="204.0" y="326.0" class="mf-lbl mid">5x</text><text x="138.8" y="132.1" class="mf-lbl">2x+1</text><text x="262.8" y="229.6" class="mf-lbl">4x</text></svg>`;
   intro.innerHTML = `
     <div class="math-intro-head">
       <h3>How it works</h3>
       <p>Turn any math problem into a clear, checked, step-by-step lesson.</p>
     </div>
-    <div class="mi2-example" aria-hidden="true">
+    <div class="mi2-example">
       <div class="mi2-example-head"><span class="mi2-example-tag">What you get</span></div>
-      <div class="mi2-fig">${figureSvg}<small>AC is the diameter. Find angle C.</small></div>
-      <div class="tb-derivation">${exampleHtml}</div>
-      <div class="mi2-example-answer"><span>Answer</span><b>${renderMathHtml("C = 55°")}</b></div>
+      <p class="mi2-problem">A quarter circle is drawn in the corner of a right triangle, centred on the right angle, and it <b>just touches</b> the longest side. The two shorter sides are <b>3x + 3</b> and <b>5x</b>. Where the circle touches, the longest side is split into <b>2x + 1</b> and <b>4x</b>. <b>What is the green area?</b></p>
+      ${figureSvg}
+      <div class="tb-solution math-full-solution">
+        <div class="tb-derivation">${exampleHtml}</div>
+        <div class="tb-check"><i>\u2713</i><div>
+          <div class="tb-check-math">${renderMathHtml("15^2 + 20^2 = 25^2")}</div>
+          <small>The sides, the two pieces and the touching radius all agree with the picture.</small>
+        </div></div>
+      </div>
+      <div class="mi2-example-answer"><span>Answer</span><b>${renderMathHtml("150 - 36\\pi")}</b></div>
     </div>
     <ol class="mi2-flow">
       <li>
