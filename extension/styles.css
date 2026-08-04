@@ -529,10 +529,6 @@ body{background:#f6f8f5}
     .mi2-fig small{font-size:11px;font-weight:600;color:#60747d}
     .mi2-example .tb-lhs,.mi2-example .tb-op,.mi2-example .tb-rhs{font-size:14px}
     .mi2-example .tb-why{margin:1px 0 7px;font-size:11px}
-    .mi2-example-answer{display:flex;align-items:center;gap:9px;margin-top:9px;padding:8px 11px;border-radius:11px;background:#004f48;color:#fff}
-    .mi2-example-answer span{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.72)}
-    .mi2-example-answer b{font-size:15px;font-weight:800}
-    .mi2-example-answer .kx .katex{color:#fff}
     /* Math intro: vertical flow timeline */
     .mi2-flow{list-style:none;margin:0;padding:0;display:grid;gap:0;counter-reset:mi2}
     .mi2-flow li{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:start;padding:9px 0}

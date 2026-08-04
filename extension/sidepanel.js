@@ -5090,7 +5090,10 @@ function showMathIntro() {
           <small>The sides, the two pieces and the touching radius all agree with the picture.</small>
         </div></div>
       </div>
-      <div class="mi2-example-answer"><span>Answer</span><b>${renderMathHtml("150 - 36\\pi")}</b></div>
+      <div class="math-answer-panel">
+        <div class="ma-head"><span class="ma-label">Answer</span></div>
+        <div class="ma-value"><div class="ma-answer">${renderMathHtml("150 - 36\\pi")}</div></div>
+      </div>
     </div>
     <ol class="mi2-flow">
       <li>
