@@ -309,9 +309,7 @@ body{background:#f6f8f5}
     .math-capture-box.unavailable{border-style:solid;border-color:#e3b34e;background:#fdf6e3}
     .math-capture-box.unavailable .math-capture-icon{background:#e5a93c;color:#fff}
     .math-paste-box{display:grid;gap:5px;height:100%}
-    .math-paste-label{font-size:11px;font-weight:800;color:#0b2d43;line-height:1.5}
     .math-paste-tokens{font-weight:600;color:#7c8b93}
-    .math-paste-label code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;font-weight:700;color:#215c1e;background:#eef6b5;border-radius:4px;padding:0 3px;margin:0 1px}
     .math-paste-box textarea{width:100%;min-height:0;resize:vertical;border:1.5px solid #cfe0b6;border-radius:14px;background:#fff;color:#0b2d43;padding:8px 11px;font:inherit;font-size:13px;line-height:1.4;box-sizing:border-box}
     .math-paste-box textarea:focus{outline:none;border-color:var(--green)}
     .math-paste-box textarea::placeholder{color:#9aa9a2}
@@ -330,7 +328,7 @@ body{background:#f6f8f5}
     .math-qr-copy b{font-size:14px;color:#0b2d43;font-weight:800}
     .math-qr-copy small{font-size:11px;line-height:1.4;color:#60747d}
     #mathQrRefresh{justify-self:start;margin-top:2px}
-    .math-paste-box{grid-template-rows:auto 1fr auto}
+    .math-paste-box{grid-template-rows:1fr auto}
     .math-paste-box textarea{min-height:0;height:100%;resize:none}
     .math-source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
     .math-source-tile{position:relative;overflow:hidden;min-height:106px;border:1px solid rgba(0,79,72,.12);border-radius:15px;background:#fff;padding:11px;text-align:left;display:grid;align-content:start;gap:7px;color:#0b2d43;cursor:pointer;box-shadow:0 8px 20px rgba(12,42,60,.04)}
