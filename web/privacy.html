@@ -31,14 +31,14 @@
 <article class="legal legal-v2">
   <span class="v2-label">Legal</span>
   <h1>Privacy Policy</h1>
-  <p class="meta">Version 2.0 · Effective July 14, 2026 · Last updated July 14, 2026</p>
+  <p class="meta">Version 2.1 · Effective August 4, 2026 · Last updated August 4, 2026</p>
 
   <p>KiddieGPT is designed to collect as little information as reasonably necessary and keep information on the user's device when practical. This Policy explains what KiddieGPT collects and processes through the web app, browser extension, website, and related services (the "<strong>Service</strong>"), how that information is used, and the choices available to parents and users.</p>
 
   <h2>1. A quick summary</h2>
   <ul>
-    <li>Many settings and learning-history features are stored locally on your device.</li>
-    <li>When a learning tool is used, the prompt and any page text, file, screenshot, or image deliberately submitted with it must be sent to our systems and an AI provider to generate a response.</li>
+    <li>Many learning-tool settings and a short recent-activity tally are stored locally on your device; some activity is also saved to your KiddieGPT account so a parent can see progress.</li>
+    <li>When a learning tool is used, the prompt and any page text, file, screenshot, or image deliberately submitted with it must be sent to our systems and our AI provider (OpenAI) to generate a response.</li>
     <li>We do not show targeted ads, sell personal information, or build advertising profiles of children.</li>
     <li>We do not use a child's prompts or AI responses to train our own AI models.</li>
     <li>A parent or legal guardian must create and manage the account for a child.</li>
@@ -47,11 +47,11 @@
   <h2>2. Information stored on your device</h2>
   <p>Depending on the device and feature, the following may be stored in browser or extension storage rather than in a KiddieGPT account:</p>
   <ul>
-    <li>learning history, saved vocabulary, and recent activity;</li>
-    <li>parent-control settings, usage limits, content preferences, and custom blocked terms;</li>
-    <li>a child profile nickname and grade level;</li>
-    <li>usage totals and time spent; and</li>
-    <li>the parent PIN in protected or hashed form rather than as readable PIN digits.</li>
+    <li>learning-tool preferences, such as grade level, explanation style, math mode, and read-aloud settings;</li>
+    <li>a rolling activity tally covering roughly the last seven days — counts of tool use and "stars" earned, not saved prompts or answers;</li>
+    <li>the current math session and cached per-tool usage limits;</li>
+    <li>the parent PIN in hashed form (a one-way SHA-256 hash), never as readable PIN digits; and</li>
+    <li>the sign-in token and account email used to keep the parent signed in.</li>
   </ul>
   <p>On-device information remains until it is cleared through the Service, removed through browser or device settings, or deleted when the extension is uninstalled, depending on the browser. Deleting an account does not necessarily clear local data on every device, and uninstalling does not automatically cancel a subscription or delete server-side account records.</p>
 
@@ -59,11 +59,11 @@
   <h3>3.1 AI requests and learning content</h3>
   <p>When a learning tool is used, KiddieGPT processes the prompt and any source material deliberately provided with it, such as active-page text, selected text, a pasted question, local file, screenshot, worksheet image, or phone scan. The content is routed through KiddieGPT's systems as needed and forwarded to an AI provider to generate a response. We may also process safety signals, tool type, grade setting, and technical metadata needed to apply safeguards, prevent abuse, and return the result. KiddieGPT does not keep request content as a permanent prompt archive unless a feature clearly says it will be saved.</p>
   <h3>3.2 Account, subscription &amp; usage data</h3>
-  <p>When a parent creates an account, we may collect the parent's email address, authentication and security records, account preferences, subscription or plan status, license information, and limited usage totals needed to provide plan features, enforce limits, and prevent abuse. A child profile may include a parent-chosen nickname and grade level. Parents should not use a child's full legal name.</p>
+  <p>When a parent creates an account, we collect the parent's name and email address, authentication and security records (such as a hashed password, a Google sign-in identifier, and email-verification status), billing identifiers from our payment processor, subscription or plan status, and sign-in and last-use timestamps. Each family may have up to three child profiles, which include the student name, grade level, reading level, and learning goals a parent enters, together with learning activity for that profile. Learning activity can include daily counts of tool use and per-lesson or per-quiz progress, which may contain quiz questions and the answers a child missed. Because a child's name is stored, we recommend using only a first name or nickname, not a full legal name.</p>
   <h3>3.3 Device, website &amp; log data</h3>
   <p>When you use the Service, we and our hosting providers may automatically receive IP address, browser and device type, operating system, timestamps, requested pages, referring pages, and error information. We use this data for authentication, security, debugging, reliability, and basic service measurement—not for behavioral advertising.</p>
   <h3>3.4 Payment data</h3>
-  <p>Subscriptions are processed by <strong>Stripe</strong>. KiddieGPT does not receive or store your full card number. Stripe handles payment data under its own <a href="https://stripe.com/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
+  <p>Subscriptions are processed by <strong>Stripe</strong>. KiddieGPT does not receive or store your full card number; we retain only Stripe identifiers and the amount and currency of a payment. Stripe handles payment details under its own <a href="https://stripe.com/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
 
   <h2>4. Information we do not seek</h2>
   <ul>
@@ -75,7 +75,7 @@
   <p>Because learning content is supplied by users, a prompt, file, screenshot, or scan could still contain personal information. Parents should teach children not to submit personal, confidential, or identifying information.</p>
 
   <h2>5. Children's privacy &amp; the parent's role</h2>
-  <p>KiddieGPT is a family learning product designed primarily for children ages 8–14, but the account must be created and managed by a parent or legal guardian. A parent chooses the grade setting, establishes parent controls, and permits the child's use of the Service.</p>
+  <p>KiddieGPT is a family learning product designed for school-age children in grades K–12 (roughly ages 5–18), but the account must be created and managed by a parent or legal guardian. A parent chooses the grade setting, establishes parent controls, and permits the child's use of the Service.</p>
   <p>For a child under 13, the parent or guardian must complete parent setup and provide any consent required before allowing the child to use the Service. Do not allow a child to create an account independently or submit personal information through a prompt, file, screenshot, or scan.</p>
   <ul>
     <li>Child profiles are created and managed by a parent and should use a nickname.</li>
@@ -98,10 +98,10 @@
   <h2>7. Service providers</h2>
   <p>We use providers that process information for us to operate the Service:</p>
   <ul>
-    <li><strong>AI providers, which may include OpenAI and Anthropic</strong> — to process submitted learning content and generate responses. We configure provider services not to use request content for model training where that control is available under our service arrangement.</li>
+    <li><strong>OpenAI</strong> — to process submitted learning content (including active-page text, selected text, files, screenshots, and scans) and generate responses, and to run automated content moderation. We configure the service not to use request content to train its models where that control is available under our service arrangement.</li>
     <li><strong>Stripe</strong> — payment processing and billing services.</li>
-    <li><strong>Cloudflare and other infrastructure providers</strong> — to host, deliver, secure, and monitor the Service.</li>
-    <li><strong>Authentication and email providers</strong> — to manage sign-in and send essential account communications.</li>
+    <li><strong>Cloud hosting and database providers</strong> — to host, run, secure, monitor, and store data for the Service.</li>
+    <li><strong>Authentication and email providers</strong> — to manage sign-in and send essential account communications, including one-time sign-in codes.</li>
   </ul>
   <p>These providers may process information only to perform services for KiddieGPT or as otherwise permitted by their agreements and applicable law. We do not disclose a child's personal information for targeted advertising.</p>
 
@@ -113,6 +113,7 @@
     <li><strong>On-device data</strong> is kept until you clear it or remove it through the browser, device, or extension.</li>
     <li><strong>AI request content</strong> is processed to return the result and is not kept by KiddieGPT as a permanent prompt archive unless a saving feature clearly says otherwise. Infrastructure and AI providers may retain limited copies for security or legal purposes under their applicable service terms.</li>
     <li><strong>Account data</strong> is kept while the account is active and for a limited period afterward to complete deletion, prevent fraud, resolve disputes, or meet legal obligations.</li>
+    <li><strong>Child usage and progress data</strong> are pruned on a rolling basis — usage counts after about 30 days, and lesson or quiz progress after about 120 days.</li>
     <li><strong>Subscription and transaction records</strong> are kept as needed for billing, tax, accounting, fraud prevention, and legal compliance.</li>
     <li><strong>Security and server logs</strong> are generally kept for a short operational period unless an event requires longer retention for investigation or legal compliance.</li>
   </ul>
@@ -123,7 +124,7 @@
 
   <h2>11. Your rights &amp; choices</h2>
   <h3>11.1 Access, correction &amp; deletion</h3>
-  <p>You can manage available account and child-profile information in the Service and clear local data through the extension or browser. You may also request access, correction, or deletion through our <a href="contact.html?subject=Data%20request">contact form</a>. We may verify your identity and authority before completing a request. Some records may be retained where permitted or required by law.</p>
+  <p>You can manage available account and child-profile information in the Service and clear local data through the extension or browser. Account deletion is handled as a request: when you ask us to delete an account, we lock it and complete removal of personal information after review. You may also request access or correction through our <a href="contact.html?subject=Data%20request">contact form</a>. We may verify your identity and authority before completing a request, and some records may be retained where permitted or required by law.</p>
   <h3>11.2 EEA / UK residents</h3>
   <p>Where applicable, we process information to perform our contract with the parent account holder, comply with law, protect our legitimate interests in securing and improving the Service, and based on consent where required. You may have rights to access, correct, delete, port, restrict, or object to processing and to withdraw consent. You may also complain to your local data-protection authority.</p>
   <h3>11.3 U.S. state privacy rights</h3>
