@@ -5052,25 +5052,26 @@ function showMathIntro() {
   // write one length, a quadratic, a rejected root, then a geometry fact most
   // adults have forgotten. Fixed content -- the figure and the numbers never
   // change, so it is drawn from exact geometry rather than anything generated.
+  // Eight steps, not thirteen: a hook has to be readable at a glance, so the
+  // expand-and-tidy pair is one line and the three substitutions are one line.
   const exampleLines = [
     { math: "c = (2x+1) + 4x = 6x+1", why: "The longest side is its two labelled pieces added together." },
     { math: "(3x+3)^2 + (5x)^2 = (6x+1)^2", why: "The corner is a right angle, so Pythagoras applies." },
-    { math: "34x^2 + 18x + 9 = 36x^2 + 12x + 1", why: "Expand both sides." },
-    { math: "x^2 - 3x - 4 = 0", why: "Move everything to one side, then halve it." },
-    { math: "(x-4)(x+1) = 0", why: "Factor the quadratic." },
-    { math: "x = 4", why: "Lengths cannot be negative, so the other root is discarded." },
-    { math: "a = 3(4)+3 = 15", why: "Work out the shorter upright side." },
-    { math: "b = 5(4) = 20", why: "Work out the base." },
-    { math: "c = 6(4)+1 = 25", why: "Work out the longest side." },
+    { math: "x^2 - 3x - 4 = 0", why: "Expand both sides, gather the terms, then halve." },
+    { math: "(x-4)(x+1) = 0 \\Rightarrow x = 4", why: "Factor. Lengths cannot be negative, so the other root goes." },
+    { math: "a = 15, \\; b = 20, \\; c = 25", why: "Put x back into the three sides." },
     { math: "r = 15 \\times 20 \\div 25 = 12", why: "Touching means the radius meets the long side square-on, so it is the height from the corner." },
-    { math: "A = 1/2 \\times 15 \\times 20 = 150", why: "Area of the triangle." },
-    { math: "Q = 1/4 \\times \\pi \\times 12^2 = 36\\pi", why: "Area of the quarter circle." },
-    { math: "150 - 36\\pi", why: "Take the quarter circle away from the triangle." }
+    { math: "A = \\tfrac{1}{2} \\times 15 \\times 20 = 150", why: "Area of the triangle." },
+    { math: "Q = \\tfrac{1}{4} \\pi \\times 12^2 = 36\\pi", why: "Area of the quarter circle." }
   ];
-  // Same markup the solved panel emits, so the example looks like the real
-  // thing rather than an artist's impression of it.
+  // The .tb-eq wrapper is load-bearing. renderTextbookMath returns three spans
+  // -- lhs, the equals sign, rhs -- and the wide layout makes every direct
+  // child of a row its own grid cell. Without it each span became a cell of its
+  // own, so equations split across lines and the "=" landed in the explanation
+  // column. This is exactly what the solved panel does.
   const exampleHtml = exampleLines.map(line =>
-    `<div class="tb-row">${renderTextbookMath(line.math)}<small class="tb-why">${escapeHtml(line.why)}</small></div>`
+    `<div class="tb-row"><div class="tb-eq">${renderTextbookMath(line.math)}</div>` +
+    `<small class="tb-why">${escapeHtml(line.why)}</small></div>`
   ).join("");
   const figureSvg = `<svg class="mi2-figure" viewBox="0 0 400 330" role="img" aria-label="Right triangle with a quarter circle centred on the right angle, touching the longest side"><polygon points="74.0,300.0 74.0,105.0 334.0,300.0" class="mf-shade"/><path d="M74.0,300.0 L74.0,144.0 A156.0,156.0 0 0 1 230.0,300.0 Z" class="mf-cut"/><polygon points="74.0,300.0 74.0,105.0 334.0,300.0" class="mf-tri"/><path d="M74.0,286.0 h14 v14" class="mf-right"/><path d="M74.0,144.0 A156.0,156.0 0 0 1 230.0,300.0" class="mf-arc"/><line x1="74.0" y1="300.0" x2="167.6" y2="175.2" class="mf-rad"/><path d="M161.0,184.0 L169.8,190.6 L176.4,181.8" class="mf-right"/><circle cx="167.6" cy="175.2" r="4" class="mf-dot"/><text x="64.0" y="202.5" class="mf-lbl end">3x+3</text><text x="204.0" y="326.0" class="mf-lbl mid">5x</text><text x="138.8" y="132.1" class="mf-lbl">2x+1</text><text x="262.8" y="229.6" class="mf-lbl">4x</text></svg>`;
   intro.innerHTML = `
