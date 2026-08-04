@@ -810,6 +810,82 @@
       }
     };
 
+    // Support FAQ: a comprehensive, self-serve reference for limits, thresholds
+    // and policies, rendered from live server values so it can never drift.
+    function renderFaq(d) {
+      var body = document.getElementById("faq-body");
+      if (!body) return;
+      var num = function (n) { return (Number(n) || 0).toLocaleString("en-US"); };
+      var item = function (q, a) { return "<details class='faq-item'><summary>" + q + "</summary><div class='faq-answer'>" + a + "</div></details>"; };
+      var group = function (title, items) { return "<div class='faq-group'><p class='faq-group-title'>" + title + "</p>" + items.filter(Boolean).join("") + "</div>"; };
+      var plan = d.plan || {}, ai = d.ai || {}, t = ai.tools || {}, groups = [];
+
+      groups.push(group("Plans & billing", [
+        item("How much does it cost, and what's included?",
+          "Monthly <b>$" + plan.monthly + "</b> or Yearly <b>$" + plan.yearly + "</b> (best value). One subscription covers up to <b>" + plan.familyMembers + "</b> children, all tools included." + (plan.promo && (plan.promo.monthly || plan.promo.yearly) ? " Launch pricing may apply at checkout." : "")),
+        item("When am I charged?",
+          "Nothing today — billing starts when your <b>" + d.trialDays + "-day free trial</b> ends, then automatically each billing period after that. Cancel any time before the next charge and you won't be billed again."),
+        d.saveOffer ? item("Is there a discount if I try to leave?",
+          "Yes. When you start to cancel, you can keep your plan and take <b>$" + d.saveOffer.amountOff + " off your next renewal</b>. It applies to your next charge only, and you can use it up to <b>" + d.saveOffer.maxRedemptions + "</b> time" + (d.saveOffer.maxRedemptions === 1 ? "" : "s") + " over the life of your account.") : "",
+        item("Why is there a short wait between billing changes?",
+          "To avoid accidental duplicate changes, there's a ~<b>" + d.billingCooldownMinutes + "-minute</b> pause between billing actions such as upgrading or applying a discount. Cancelling and re-subscribing are never blocked.")
+      ]));
+
+      groups.push(group("Free trial", [
+        item("Is there a free trial?",
+          "Yes — a <b>" + d.trialDays + "-day</b> free trial. We collect a card at checkout but charge <b>$0 today</b>; billing only starts when the trial ends unless you cancel. One free trial per account."),
+        item("What if I cancel during the trial?",
+          "Access ends right away and <b>you are never charged</b>. Your child's profiles and progress are saved. You can subscribe later — it starts immediately with no second free trial.")
+      ]));
+
+      groups.push(group("Refunds & cancellation", [
+        item("Can I get a refund?",
+          "Yes, within these windows cancelling refunds your latest payment in full and access ends immediately:<ul><li><b>Your first payment</b> (new subscribers): within <b>" + d.refund.firstPaymentDays + " days</b>.</li><li><b>Renewals</b> and paid re-subscribes: within <b>" + d.refund.renewalHours + " hours</b> of the charge.</li></ul>Outside those windows, cancelling turns off auto-renewal: you keep access through the end of the period you've already paid for, with no refund."),
+        item("How do I cancel?",
+          "Go to <b>Subscription &rarr; Cancel</b>. Inside a refund window you'll be offered a full refund with access ending now; otherwise your renewal is switched off and access runs to the paid-through date."),
+        item("Do I lose my child's data if I cancel?",
+          "No. Profiles, learning goals, and progress are kept, so you can pick up where you left off if you come back.")
+      ]));
+
+      var pagesApprox = Math.round((ai.dailyTokens || 0) / 1500);
+      groups.push(group("AI usage limits", [
+        item("How much can my family use each day?",
+          "Your whole account can use up to <b>" + num(ai.dailyTokens) + " AI tokens per day</b>, shared across every child and tool. “Tokens” are how AI measures reading and writing — that's roughly <b>" + num(pagesApprox) + " pages</b> of work a day. It resets daily, and most families never come close."),
+        item("How large a file or photo can I upload?",
+          "Up to <b>" + ai.maxUploadMb + " MB</b> per file or photo — PDFs, worksheets, and camera shots of homework."),
+        ai.requestsPerMinute ? item("Is there a speed limit?",
+          "To keep things fast for everyone, up to <b>" + ai.requestsPerMinute + " AI requests per minute</b> per family. Normal use never reaches this.") : "",
+        item("What happens if a limit is reached?",
+          "The tool pauses that request and tells your child to try again shortly (or the next day for the daily limit). Nothing breaks, and no extra charges ever happen from usage.")
+      ]));
+
+      var tools = [];
+      if (t.mission) tools.push(item("Mission (study packs)", "Reads pages up to <b>" + num(t.mission.pageWords) + " words</b> or PDFs up to <b>" + t.mission.pdfPages + " pages</b>, and builds up to <b>" + t.mission.quizCount + "</b> quiz questions and <b>" + t.mission.cardCount + "</b> flashcards. Uploads up to " + t.mission.uploadMb + " MB."));
+      if (t.math) tools.push(item("Math", "Up to <b>" + t.math.problemsPerAttempt + "</b> problems per photo/attempt" + (t.math.problemsPerDay ? " and <b>" + t.math.problemsPerDay + "</b> problems per child per day" : "") + ". Each problem can be re-solved up to <b>" + t.math.reconsider + "</b> times."));
+      if (t.explain) tools.push(item("Explain", "Explains pages up to <b>" + num(t.explain.pageWords) + " words</b>, with up to <b>" + t.explain.followupsPerSession + "</b> follow-up questions per session."));
+      if (t.tutor) tools.push(item("Tutor (voice)", "Reads sources up to <b>" + num(t.tutor.readChars) + " characters</b>" + (t.tutor.voiceMinutesPerDay ? ", with up to <b>" + t.tutor.voiceMinutesPerDay + " minutes</b> of spoken tutoring per child per day" : "") + "."));
+      if (t.write) tools.push(item("Write", "Reviews drafts up to <b>" + num(t.write.draftChars) + " characters</b> long."));
+      if (tools.length) groups.push(group("Per-tool limits", tools));
+
+      groups.push(group("Account & login", [
+        item("Which email addresses can I use?", "We support " + (d.supportedEmailDomains || []).join(", ") + "."),
+        item("How many children can I add?", "Up to <b>" + plan.familyMembers + "</b> children on one subscription."),
+        item("Change my password, email, or close my account?", "Use <b>Account settings</b> above to update your password or email, or to request account deletion.")
+      ]));
+
+      body.innerHTML = groups.join("");
+      renderIcons();
+    }
+
+    function loadFaq() {
+      var body = document.getElementById("faq-body");
+      if (!body || body.dataset.loaded === "1") return;
+      fetch("/api/faq-limits")
+        .then(function (r) { return r.json(); })
+        .then(function (d) { body.dataset.loaded = "1"; renderFaq(d); })
+        .catch(function () { body.innerHTML = "<p class='faq-loading'>Couldn't load right now — please try again.</p>"; });
+    }
+
     function setParentTab(name) {
       tabButtons.forEach(function (button) {
         var active = button.dataset.parentTab === name;
@@ -836,7 +912,7 @@
         if (subtitle) subtitle.textContent = pageCopy[1];
       }
       if (name === "overview" || name === "progress") { loadProgress(); }
-      if (name === "support") { loadSupport(); }
+      if (name === "support") { loadSupport(); loadFaq(); }
       renderIcons();
     }
 

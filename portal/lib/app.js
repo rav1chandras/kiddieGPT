@@ -3061,6 +3061,44 @@ app.get("/api/auth/config", (req, res) => {
   });
 });
 
+// Live limits/thresholds for the parent Support FAQ. Read from the same settings
+// the app enforces, so the FAQ can never drift from the real behaviour.
+app.get("/api/faq-limits", (req, res) => {
+  const db = readDb();
+  const s = normaliseAiSettings(db.aiSettings);
+  const p = normalisePricing(db.pricing);
+  const tl = s.toolLimits || {};
+  const mb = (bytes) => Math.round((Number(bytes) || 0) / 1048576 * 10) / 10;
+  const promo = p.promotion && p.promotion.enabled ? p.promotion : null;
+  const save = p.cancellationPromo && p.cancellationPromo.enabled && Number(p.cancellationPromo.amountOff || 0) > 0 ? p.cancellationPromo : null;
+  res.json({
+    plan: {
+      monthly: Number(p.monthly?.amount || 0),
+      yearly: Number(p.yearly?.amount || 0),
+      familyMembers: Number(p.monthly?.familyMemberCount || 3),
+      promo: promo ? { monthly: Number(promo.monthlyAmount || 0), yearly: Number(promo.yearlyAmount || 0) } : null
+    },
+    trialDays: TRIAL_PERIOD_DAYS,
+    refund: { firstPaymentDays: REFUND_WINDOW_DAYS, renewalHours: RENEWAL_REFUND_WINDOW_HOURS },
+    billingCooldownMinutes: Math.round(BILLING_COOLDOWN_MS / 60000),
+    saveOffer: save ? { amountOff: Number(save.amountOff || 0), maxRedemptions: Number(save.maxRedemptions || 1) } : null,
+    ai: {
+      dailyTokens: Number(s.tokensPerFamilyDaily || 0),
+      maxUploadMb: mb(s.maxFileBytes),
+      requestsPerMinute: Number(s.requestsPerFamilyMinute || 0),
+      defaultReplyTokens: AI_MAX_OUTPUT_TOKENS,
+      tools: {
+        mission: { pdfPages: tl.mission?.pdfPages, pageWords: tl.mission?.pageWords, quizCount: tl.mission?.quizCount, cardCount: tl.mission?.cardCount, uploadMb: mb(tl.mission?.fileBytes), replyTokens: tl.mission?.maxOutputTokens },
+        math: { problemsPerAttempt: tl.math?.problems, problemsPerDay: Number(s.mathProblemsPerUserDaily || 0), reconsider: tl.math?.reconsiderAttempts, pasteChars: tl.math?.pasteChars, uploadMb: mb(tl.math?.fileBytes), replyTokens: tl.math?.maxOutputTokens },
+        write: { draftChars: tl.write?.inputChars, replyTokens: tl.write?.maxOutputTokens },
+        explain: { pageWords: tl.explain?.pageWords, followupChars: tl.explain?.followupChars, followupsPerSession: tl.explain?.followupsPerSession, replyTokens: tl.explain?.maxOutputTokens },
+        tutor: { readChars: tl.tutor?.readChars, sourceChars: tl.tutor?.sourceChars, voiceMinutesPerDay: Number(s.tutorVoiceMinutesPerUserDaily || 0), replyTokens: tl.tutor?.maxOutputTokens }
+      }
+    },
+    supportedEmailDomains: allowedParentEmailDomains
+  });
+});
+
 app.post("/api/auth/login", (req, res) => {
   const { email, password, role } = req.body || {};
   const requestedRole = role || "parent";
