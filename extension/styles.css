@@ -14,11 +14,12 @@ body{background:#f6f8f5}
     .school-pill b{display:block;font-size:12px}
     .school-pill span{font-size:10px;color:#60747d;font-weight:800}
     .nav-group{display:grid;gap:5px;width:100%}
+    .side-nav>.nav-group:last-child{margin-top:auto}
     .nav-label{font-size:10px;text-transform:uppercase;color:#8a9aa6;font-weight:900;letter-spacing:.08em;margin:8px 8px 4px}
     .side-link{width:100%;min-height:52px;border:0;background:transparent;border-radius:12px;color:#29495b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;font-size:12px;font-weight:900;text-align:center;cursor:pointer}
     .side-link span{width:29px;height:29px;border-radius:9px;background:#f2f4f4;display:inline-flex;align-items:center;justify-content:center;color:#719900;font-size:17px}
-    .side-link span svg{width:19px;height:19px}
-    .side-link b{display:block;font-size:7px;line-height:1.1}
+    .side-link span svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .side-link b{display:block;font-size:9px;line-height:1.1}
     .side-link.active,.side-link:hover{background:#eef6b5;color:#173d4f}
     .side-link.active span{background:#fff;color:#004f48}
     .admin-card{margin-top:auto;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fbfaf0}

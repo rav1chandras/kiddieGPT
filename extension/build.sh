@@ -16,7 +16,7 @@ ZIP="$OUT_DIR/kiddiegpt-$VERSION.zip"
 
 # Everything the extension needs at runtime. Anything not listed here is excluded
 # by construction (allowlist, not denylist — new dev files can't leak in).
-FILES=(manifest.json background.js sidepanel.html sidepanel.js styles.css tutor-voice.js)
+FILES=(manifest.json background.js sidepanel.html sidepanel.js styles.css tutor-voice.js calculator.html calculator.css calculator-engine.js calculator.js)
 DIRS=(icons katex vendor)
 
 rm -rf "$STAGE" "$ZIP"

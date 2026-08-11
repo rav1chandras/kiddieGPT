@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KiddieGPT Calculator</title>
+  <link rel="stylesheet" href="calculator.css">
+</head>
+<body>
+  <main class="calculator-shell">
+    <header class="calculator-header">
+      <div class="calculator-brand">
+        <span class="calculator-brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8M8 11h2M14 11h2M8 15h2M14 15h2M8 18h8"></path></svg></span>
+        <div><strong>KiddieGPT</strong><small>Calculator</small></div>
+      </div>
+      <button class="icon-button" id="closeCalculator" type="button" aria-label="Close calculator" title="Close calculator">×</button>
+    </header>
+
+    <div class="mode-switch" role="tablist" aria-label="Calculator mode">
+      <button class="active" data-mode="basic" role="tab" aria-selected="true" type="button">Basic</button>
+      <button data-mode="functions" role="tab" aria-selected="false" type="button">Functions</button>
+    </div>
+
+    <section class="calculator-display" aria-live="polite">
+      <div class="display-meta"><span id="angleModeLabel">DEG</span><span id="memoryLabel" hidden>M</span></div>
+      <div class="display-expression" id="displayExpression">Ready when you are</div>
+      <div class="display-result" id="displayResult">0</div>
+    </section>
+
+    <div class="calculator-keypad" id="basicKeypad" aria-label="Basic calculator keys">
+      <div class="memory-row">
+        <button data-key="mc" type="button">MC</button><button data-key="mr" type="button">MR</button><button data-key="mplus" type="button">M+</button><button data-key="mminus" type="button">M−</button><button data-key="backspace" type="button" aria-label="Backspace">⌫</button>
+      </div>
+      <div class="key-grid basic-grid">
+        <button class="function-key" data-key="(" type="button" aria-label="Left parenthesis">(</button><button class="function-key" data-key=")" type="button" aria-label="Right parenthesis">)</button><button class="function-key" data-key="%" type="button" aria-label="Percent">%</button><button class="clear-key" data-key="ac" type="button">AC</button>
+        <button data-key="7" type="button">7</button><button data-key="8" type="button">8</button><button data-key="9" type="button">9</button><button class="operator-key" data-key="/" type="button" aria-label="Divide">÷</button>
+        <button data-key="4" type="button">4</button><button data-key="5" type="button">5</button><button data-key="6" type="button">6</button><button class="operator-key" data-key="*" type="button" aria-label="Multiply">×</button>
+        <button data-key="1" type="button">1</button><button data-key="2" type="button">2</button><button data-key="3" type="button">3</button><button class="operator-key" data-key="-" type="button" aria-label="Subtract">−</button>
+        <button class="wide-key" data-key="0" type="button">0</button><button data-key="." type="button" aria-label="Decimal point">.</button><button class="operator-key" data-key="+" type="button" aria-label="Add">+</button>
+        <button class="function-key" data-key="ans" type="button">ANS</button><button class="function-key" data-key="sign" type="button" aria-label="Change sign">+/-</button><button class="equals-key wide-key" data-key="=" type="button">=</button>
+      </div>
+    </div>
+
+    <div class="calculator-keypad" id="functionsKeypad" aria-label="Scientific calculator keys" hidden>
+      <div class="function-toolbar"><button class="angle-key active" id="angleToggle" type="button" aria-label="Switch angle mode">DEG</button><button data-key="ac" class="clear-key" type="button">AC</button><button data-key="backspace" class="function-key" type="button" aria-label="Backspace">⌫</button></div>
+      <div class="key-grid function-grid">
+        <button class="function-key" data-key="sin(" type="button">sin</button><button class="function-key" data-key="cos(" type="button">cos</button><button class="function-key" data-key="tan(" type="button">tan</button><button class="function-key" data-key="sqrt(" type="button" aria-label="Square root">√</button>
+        <button class="function-key" data-key="asin(" type="button">sin⁻¹</button><button class="function-key" data-key="acos(" type="button">cos⁻¹</button><button class="function-key" data-key="atan(" type="button">tan⁻¹</button><button class="function-key" data-key="!" type="button" aria-label="Factorial">!</button>
+        <button class="function-key" data-key="log(" type="button">log</button><button class="function-key" data-key="ln(" type="button">ln</button><button class="function-key" data-key="exp(" type="button">EXP</button><button class="function-key" data-key="pi" type="button">π</button>
+        <button class="function-key" data-key="square" type="button">x²</button><button class="function-key" data-key="^" type="button">xʸ</button><button class="function-key" data-key="reciprocal" type="button">1/x</button><button class="function-key" data-key="e" type="button">e</button>
+        <button class="function-key" data-key="(" type="button">(</button><button class="function-key" data-key=")" type="button">)</button><button class="function-key" data-key="%" type="button">%</button><button class="operator-key" data-key="/" type="button" aria-label="Divide">÷</button>
+        <button data-key="7" type="button">7</button><button data-key="8" type="button">8</button><button data-key="9" type="button">9</button><button class="operator-key" data-key="*" type="button" aria-label="Multiply">×</button>
+        <button data-key="4" type="button">4</button><button data-key="5" type="button">5</button><button data-key="6" type="button">6</button><button class="operator-key" data-key="-" type="button" aria-label="Subtract">−</button>
+        <button data-key="1" type="button">1</button><button data-key="2" type="button">2</button><button data-key="3" type="button">3</button><button class="operator-key" data-key="+" type="button" aria-label="Add">+</button>
+        <button class="wide-key" data-key="0" type="button">0</button><button data-key="." type="button">.</button><button class="equals-key" data-key="=" type="button">=</button>
+      </div>
+    </div>
+
+    <section class="history-panel" id="historyPanel" hidden>
+      <div class="history-head"><strong>History</strong><button id="clearHistory" type="button">Clear</button></div>
+      <div id="historyList"></div>
+    </section>
+  </main>
+  <script src="calculator-engine.js"></script>
+  <script src="calculator.js"></script>
+</body>
+</html>

@@ -42,6 +42,35 @@ function localDevBypassEnabled() {
 let portalToken = "";
 let portalSession = null; // { email, entitled, status, plan, familyId, childId, children, locked }
 let currentView = "dashboard";
+let calculatorWindowId = null;
+
+function openCalculatorPopup() {
+  const url = extensionApi?.runtime?.getURL ? extensionApi.runtime.getURL("calculator.html") : "calculator.html";
+  const focusExisting = () => {
+    if (!calculatorWindowId || !extensionApi?.windows?.update) return false;
+    extensionApi.windows.update(calculatorWindowId, { focused: true }, () => {
+      if (extensionApi.runtime.lastError) {
+        calculatorWindowId = null;
+        createWindow();
+      }
+    });
+    return true;
+  };
+  const createWindow = () => {
+    if (extensionApi?.windows?.create) {
+      extensionApi.windows.create({ url, type: "popup", width: 340, height: 600, focused: true }, win => {
+        if (extensionApi.runtime.lastError) {
+          window.open(url, "kiddiegpt-calculator", "popup,width=340,height=600");
+          return;
+        }
+        calculatorWindowId = win?.id || null;
+      });
+      return;
+    }
+    window.open(url, "kiddiegpt-calculator", "popup,width=340,height=600");
+  };
+  if (!focusExisting()) createWindow();
+}
 
 class PortalError extends Error {
   constructor(code, status, data) {
@@ -451,7 +480,7 @@ let mathPinPromptOpen = false;
 let mathAnswersRevealed = false;
 // Some students want the working without the prose once they have the idea.
 // Remembered across problems and sessions so it is set once, not every time.
-let mathHideExplanations = false;
+let mathShowExplanations = false;
 let lastMathSolve = null;
 // Re-solve attempts per problem index, reset when a new solve starts.
 const mathCorrectionAttempts = new Map();
@@ -1561,6 +1590,13 @@ const PORTAL_ERROR_MESSAGES = {
 async function moderateFlagged(settings, text) {
   const input = String(text || "").trim().slice(0, 4000);
   if (!input) return false;
+  // Local development can run the portal without an AI moderation key while
+  // the main AI provider is configured elsewhere. Keep the localhost test path
+  // usable; production continues to fail closed below.
+  if (localDevBypassEnabled() && !settings?.openaiApiKey) {
+    console.warn("Local test mode: moderation service is not configured; continuing for development.");
+    return false;
+  }
   try {
     if (settings?.openaiApiKey) {
       const res = await fetch("https://api.openai.com/v1/moderations", {
@@ -1583,6 +1619,10 @@ async function moderateFlagged(settings, text) {
     const data = await res.json().catch(() => ({}));
     return Boolean(data?.flagged ?? data?.results?.some(result => result.flagged));
   } catch (error) {
+    if (localDevBypassEnabled()) {
+      console.warn("Local test mode: moderation check unavailable; continuing for development.", error);
+      return false;
+    }
     if (error instanceof PortalError) throw error;
     throw new PortalError("safety_unavailable", 503);
   }
@@ -3867,6 +3907,20 @@ function stripMathAnswerOption(value) {
     .trim() || "See final line";
 }
 
+function formatMathAnswer(value) {
+  let answer = cleanMathText(value || "See final line").trim();
+  // Occasionally a model wraps the expression in a coaching prompt. Keep only
+  // the expression so the answer card stays a textbook result, not a chat turn.
+  const prompted = answer.match(/(?:what did you get for|what did you find for)\s+(.+?)(?:\?|$)/i);
+  if (prompted) answer = prompted[1].trim();
+  answer = answer.replace(/^(?:the\s+)?(?:final\s+)?answer\s*(?:is|=|:)\s*/i, "").trim();
+  const numeric = answer.match(/^([+-]?)(\d+)(\.\d+)?$/);
+  if (!numeric) return answer || "See final line";
+  const sign = numeric[1];
+  const whole = numeric[2].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}${whole}${numeric[3] || ""}`;
+}
+
 // Which problem index the statement is expanded for, or -1 for none. Tracked by
 // index rather than a plain boolean so arrowing to another problem always lands
 // collapsed (the requested default), while a re-render of the SAME problem --
@@ -3923,14 +3977,14 @@ function renderMathFullSolutionPanel(current) {
   const lines = Array.isArray(current.lines) && current.lines.length ? current.lines : [];
   const check = current.check;
   const answerOption = getMathAnswerOption(current);
-  const answerText = stripMathAnswerOption(current.answer);
+  const answerText = formatMathAnswer(stripMathAnswerOption(current.answer));
   return `
-    <div class="tb-solution math-full-solution${mathHideExplanations ? " hide-why" : ""}">
+    <div class="tb-solution math-full-solution${mathShowExplanations ? "" : " hide-why"}">
       <div class="tb-solution-head">
         <span class="tb-solution-label">Full solution</span>
         <label class="tb-hide-why">
-          <input type="checkbox" id="mathHideWhy"${mathHideExplanations ? " checked" : ""}>
-          <span>Hide explanation</span>
+          <input type="checkbox" id="mathShowWhy"${mathShowExplanations ? " checked" : ""}>
+          <span>Show explanation</span>
         </label>
       </div>
       <div class="tb-derivation">${lines.map(line => renderDerivationLine(line)).join("")}</div>
@@ -4009,7 +4063,7 @@ function looksLikeLatex(text) {
   // square/Box are placeholder boxes the solver should never emit (see the solve
   // prompt), but they must still be recognised as LaTeX so a stray one renders as
   // a box instead of leaking the raw "\square" text into the steps.
-  return /\\(frac|sqrt|cdot|times|div|int|sum|prod|lim|infty|pi|theta|alpha|beta|gamma|Delta|approx|le|ge|ne|neq|leq|geq|pm|mp|circ|text|mathbb|mathbf|mathrm|mathcal|mathsf|operatorname|setminus|textstyle|displaystyle|left|right|begin|end|vec|bar|hat|overline|underline|angle|cos|sin|tan|log|ln|square|Box)\b|\^\{|_\{|_[0-9A-Za-z]/.test(String(text));
+  return /\\(binom|frac|sqrt|cdot|times|div|int|sum|prod|lim|infty|pi|theta|alpha|beta|gamma|Delta|approx|le|ge|ne|neq|leq|geq|pm|mp|circ|text|mathbb|mathbf|mathrm|mathcal|mathsf|operatorname|setminus|textstyle|displaystyle|left|right|begin|end|vec|bar|hat|overline|underline|angle|cos|sin|tan|log|ln|square|Box)\b|\^\{|_\{|_[0-9A-Za-z]/.test(String(text));
 }
 
 function cleanMathText(value) {
@@ -5895,11 +5949,11 @@ function initMathTool() {
   // Delegated: the solution panel is re-rendered on every navigation, so a
   // listener bound to the checkbox itself would be lost each time.
   document.getElementById("mathPanel")?.addEventListener("change", event => {
-    if (event.target?.id !== "mathHideWhy") return;
-    mathHideExplanations = event.target.checked;
-    saveSettings({ mathHideExplanations });
+    if (event.target?.id !== "mathShowWhy") return;
+    mathShowExplanations = event.target.checked;
+    saveSettings({ mathShowExplanations });
     const panel = document.querySelector("#mathPanel .math-full-solution");
-    if (panel) panel.classList.toggle("hide-why", mathHideExplanations);
+    if (panel) panel.classList.toggle("hide-why", !mathShowExplanations);
   });
   // Collapse on navigation, explicitly. Letting the index comparison do it means
   // arrowing away and back RE-OPENS the statement, because the recorded index
@@ -7514,6 +7568,13 @@ async function captureVisibleTab() {
 }
 
 document.addEventListener("click", event => {
+  // The calculator is a local utility and remains available without a portal session.
+  const publicAction = event.target.closest("[data-action='open-calculator']");
+  if (publicAction) {
+    openCalculatorPopup();
+    return;
+  }
+
   const mathModeTarget = event.target.closest("[data-math-mode]");
   if (mathModeTarget && !mathModeTarget.closest("#mathModeSwitch")) {
     setMathMode(mathModeTarget.dataset.mathMode);
@@ -7693,7 +7754,9 @@ getSettings().then(data => {
   mathAnswerGate = data.mathAnswerGate !== false;
   mathParentPinHash = data.mathParentPin || "";
   mathMode = data.mathMode === "solution" ? "solution" : "help";
-  mathHideExplanations = data.mathHideExplanations === true;
+  // Explanation is opt-in in Solution mode. Ignore the old inverted setting so
+  // existing sessions start in the new, quieter default.
+  mathShowExplanations = data.mathShowExplanations === true;
   const gateToggle = document.getElementById("mathAnswerGateToggle");
   if (gateToggle) gateToggle.checked = mathAnswerGate;
   renderParentPinArea();
