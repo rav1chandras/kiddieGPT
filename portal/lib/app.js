@@ -822,9 +822,11 @@ function emailDomain(email) {
   return normalizeEmail(email).split("@")[1] || "";
 }
 
-// Chrome Web Store reviewer account: the only email that ever gets its sign-in
-// code back in the API response (shown on-screen since the reviewer has no inbox).
-const REVIEW_EMAIL = normalizeEmail(process.env.REVIEW_EMAIL || process.env.PARENT_TEST_EMAIL || "parent.kiddiegpt@gmail.com");
+// Temporary Chrome Web Store reviewer access. Keep this disabled except during
+// review; the extension itself must never be the authority for this bypass.
+const REVIEW_EMAIL = normalizeEmail(process.env.REVIEW_EMAIL || "chrome-review@kiddiegpt.com");
+const CHROME_REVIEW_MODE = String(process.env.CHROME_REVIEW_MODE || "false").toLowerCase() === "true";
+const isReviewAccount = (email) => CHROME_REVIEW_MODE && normalizeEmail(email) === REVIEW_EMAIL;
 
 function parentAccountExists(db, email) {
   return db.users.some((u) => u.email === email && u.role === "parent")
@@ -861,7 +863,7 @@ function cleanupOtps(db) {
 function defaultDb() {
   const adminEmail = process.env.ADMIN_EMAIL || "admin@kiddiegpt.demo";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-  const parentEmail = process.env.PARENT_TEST_EMAIL || "parent.kiddiegpt@gmail.com";
+  const parentEmail = process.env.PARENT_TEST_EMAIL || "chrome-review@kiddiegpt.com";
   const parentPassword = process.env.PARENT_TEST_PASSWORD || "kiddiegpt123";
   const families = demoFamilies().map(normaliseFamily);
   return {
@@ -985,7 +987,7 @@ function readDb() {
   db.deletedUserSequence = Number(db.deletedUserSequence || 0);
   db.users = db.users || [];
   const adminEmail = process.env.ADMIN_EMAIL || "admin@kiddiegpt.demo";
-  const parentEmail = process.env.PARENT_TEST_EMAIL || "parent.kiddiegpt@gmail.com";
+  const parentEmail = process.env.PARENT_TEST_EMAIL || "chrome-review@kiddiegpt.com";
   if (!db.users.some((user) => user.role === "admin" && user.email === adminEmail)) {
     db.users.push({
       id: makeId("usr"),
@@ -3448,7 +3450,7 @@ app.post("/api/auth/otp/request", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   if (!isAllowedParentEmail(email)) return res.status(400).json({ ok: false, error: parentEmailError(email) });
   // Login is for existing accounts only; unknown emails are routed to sign-up by the client.
-  if (email !== REVIEW_EMAIL && !parentAccountExists(readDb(), email)) {
+  if (!isReviewAccount(email) && !parentAccountExists(readDb(), email)) {
     return res.status(404).json({ ok: false, error: "no_account" });
   }
   const otp = generateOtp();
@@ -3466,7 +3468,7 @@ app.post("/api/auth/otp/request", async (req, res) => {
     mutateDb((db) => monitor(db, "warning", "auth", "Login OTP email failed", { email, detail: String(error.message || error) }, email));
   }
   // Only the reviewer account gets its code back in the response (shown on-screen).
-  return res.json({ ok: true, mode, ...(email === REVIEW_EMAIL ? { testCode: otp } : {}) });
+  return res.json({ ok: true, mode, ...(isReviewAccount(email) ? { testCode: otp } : {}) });
 });
 
 app.post("/api/auth/otp/verify", (req, res) => {
@@ -3486,7 +3488,7 @@ app.post("/api/auth/otp/verify", (req, res) => {
     if (!user) {
       // Login no longer mints accounts; new users go through /api/auth/signup.
       // The reviewer account is the only one allowed to be auto-provisioned here.
-      if (email !== REVIEW_EMAIL) return { error: "no_account" };
+      if (!isReviewAccount(email)) return { error: "no_account" };
       const fam = db.families.find((item) => item.email === email);
       user = { id: makeId("usr"), role: "parent", name: fam?.parentName || "Parent", email, familyId: fam?.id || "", emailVerified: true, passwordHash: hashPassword(crypto.randomBytes(18).toString("hex")), createdAt: nowIso() };
       db.users.push(user);

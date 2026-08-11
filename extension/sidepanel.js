@@ -160,12 +160,11 @@ async function portalSignIn(email, password) {
   return data;
 }
 
-const OTP_TEST_CODE = "1234";
 const OTP_TEST_TOKEN = "test-otp-token";
 // The single account whose sign-in code is shown on-screen, so a Chrome Web Store
 // reviewer can sign in without inbox access. Everyone else gets their code by email
 // only. NOTE: the portal must also return this code (testCode) for this address.
-const REVIEW_EMAIL = "parent.kiddiegpt@gmail.com";
+const REVIEW_EMAIL = "chrome-review@kiddiegpt.com";
 function isReviewEmail(email) {
   return String(email || "").trim().toLowerCase() === REVIEW_EMAIL;
 }

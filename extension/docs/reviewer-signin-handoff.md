@@ -13,7 +13,8 @@ code by email only, and an unknown email is routed to sign-up.
 ## The review account
 
 ```
-REVIEW_EMAIL = parent.kiddiegpt@gmail.com
+REVIEW_EMAIL = chrome-review@kiddiegpt.com
+CHROME_REVIEW_MODE = true during review, false after approval
 ```
 
 This account should be a **real, active (entitled) family** on the portal with a
@@ -34,7 +35,7 @@ on-screen for real users. Restrict it to the review account.
 return res.json({ ok: true, mode, ...(mode === "mock" ? { testCode: otp } : {}) });
 
 // desired: only the review account ever gets the code back in the response
-const isReview = email === "parent.kiddiegpt@gmail.com";
+const isReview = process.env.CHROME_REVIEW_MODE === "true" && email === process.env.REVIEW_EMAIL;
 return res.json({ ok: true, mode, ...(isReview ? { testCode: otp } : {}) });
 ```
 
@@ -59,7 +60,7 @@ a 404 the extension recognises:
 ```js
 const existing = db.users.find(u => u.email === email && u.role === "parent")
              || db.families.find(f => f.email === email);
-if (!existing && email !== "parent.kiddiegpt@gmail.com") {
+if (!existing && !(process.env.CHROME_REVIEW_MODE === "true" && email === process.env.REVIEW_EMAIL)) {
   return res.status(404).json({ ok: false, error: "no_account" });
 }
 ```
