@@ -424,6 +424,11 @@ const DEFAULT_EXPLAIN_MAX_WORDS = {
 };
 const DEFAULT_STANDARD_FRACTION = 0.5;
 const DEEP_DIVE_BANDS = ["3-5", "6-8", "9-12"];
+const PARENTAL_CONSENT_VERSION = "v1";
+
+// Local provider-isolation switch. When enabled, persisted OpenAI credentials
+// are ignored so a Meta-only test cannot accidentally call OpenAI.
+const META_ONLY_MODE = String(process.env.META_ONLY_MODE || "").trim().toLowerCase() === "true";
 
 // Spoken-style presets by tutor mode + grade band. Resolved server-side in the
 // speech proxy so the client can never inject arbitrary TTS instructions.
@@ -549,12 +554,17 @@ function resolveTtsVoice(requested, settings) {
 
 function defaultAiSettings() {
   return {
+    // Text requests can be routed to Meta for extension testing. Provider keys
+    // remain server-side and are never sent to the extension.
+    aiProvider: META_ONLY_MODE ? "meta" : String(process.env.AI_PROVIDER || "openai").trim().toLowerCase(),
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     openaiModel: process.env.OPENAI_MODEL || "gpt-5.6-luna",
     // Optional stronger model for "advanced" requests (the extension's
     // "Reconsider and solve it again" and its geometry vision-retry). Empty is
     // allowed and means advanced requests fall back to openaiModel.
     openaiModelAdv: process.env.OPENAI_MODEL_ADV || "",
+    metaApiKey: process.env.META_MODEL_API_KEY || process.env.MODEL_API_KEY || "",
+    metaModel: process.env.META_MODEL || "muse-spark-1.2-contributor",
     mathProblemsPerUserDaily: 20,
     tutorVoiceMinutesPerUserDaily: 10,
     // Account-wide daily token ceiling across every child and every tool. The
@@ -595,11 +605,22 @@ function normaliseAiSettings(settings = {}) {
   return {
     ...defaults,
     ...settings,
-    openaiApiKey: typeof settings.openaiApiKey === "string" ? settings.openaiApiKey : defaults.openaiApiKey,
+    aiProvider: META_ONLY_MODE
+      ? "meta"
+      : (["openai", "meta"].includes(String(settings.aiProvider || defaults.aiProvider).trim().toLowerCase())
+        ? String(settings.aiProvider || defaults.aiProvider).trim().toLowerCase()
+        : "openai"),
+    openaiApiKey: META_ONLY_MODE
+      ? ""
+      : (typeof settings.openaiApiKey === "string" ? settings.openaiApiKey : defaults.openaiApiKey),
     openaiModel: String(settings.openaiModel || defaults.openaiModel || "gpt-5.6-luna"),
     // No fallback to the standard model here: an empty Adv field is a real state
     // that means "reuse openaiModel", resolved per request at call time.
     openaiModelAdv: String(settings.openaiModelAdv || "").trim(),
+    // Meta credentials are environment-backed. An empty saved admin value must
+    // not mask the server's MODEL_API_KEY / META_MODEL_API_KEY.
+    metaApiKey: String(settings.metaApiKey || defaults.metaApiKey || "").trim(),
+    metaModel: String(settings.metaModel || defaults.metaModel || "muse-spark-1.2-contributor").trim(),
     mathProblemsPerUserDaily: Math.max(0, Number(settings.mathProblemsPerUserDaily ?? defaults.mathProblemsPerUserDaily) || 0),
     tutorVoiceMinutesPerUserDaily: Math.max(0, Number(settings.tutorVoiceMinutesPerUserDaily ?? defaults.tutorVoiceMinutesPerUserDaily) || 0),
     // Clamped into [0, HARD_FAMILY_TOKENS_DAILY]. 0 means AI off, not unlimited,
@@ -659,8 +680,12 @@ function maskedSecret(value) {
 function safeAiSettings(settings = {}) {
   const normalised = normaliseAiSettings(settings);
   return {
+    aiProvider: normalised.aiProvider,
+    metaOnlyMode: META_ONLY_MODE,
     hasOpenAIKey: Boolean(normalised.openaiApiKey),
     maskedOpenAIKey: maskedSecret(normalised.openaiApiKey),
+    hasMetaKey: Boolean(normalised.metaApiKey),
+    metaModel: normalised.metaModel,
     openaiModel: normalised.openaiModel,
     openaiModelAdv: normalised.openaiModelAdv,
     mathProblemsPerUserDaily: normalised.mathProblemsPerUserDaily,
@@ -3261,6 +3286,9 @@ app.post("/api/auth/signup", async (req, res) => {
   const name = String(req.body?.name || req.body?.parentName || "Parent").trim() || "Parent";
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
+  if (req.body?.parentalConsent !== true) {
+    return res.status(400).json({ ok: false, error: "Parent or guardian consent is required before creating a child learning profile." });
+  }
   if (!isAllowedParentEmail(email)) {
     return res.status(400).json({ ok: false, error: parentEmailError(email) });
   }
@@ -3289,6 +3317,7 @@ app.post("/api/auth/signup", async (req, res) => {
     } else {
       family.parentName = name || family.parentName;
     }
+    family.parentalConsentPending = true;
 
     const parentUser = existingUser || {
       id: makeId("usr"),
@@ -3390,7 +3419,16 @@ app.post("/api/auth/verify-otp", (req, res) => {
     if (!user) return { error: "Parent account not found." };
     user.emailVerified = true;
     const family = db.families.find((item) => item.email === email);
-    if (family) family.emailVerified = true;
+    if (family) {
+      family.emailVerified = true;
+      family.parentalConsent = {
+        acceptedAt: nowIso(),
+        policyVersion: PARENTAL_CONSENT_VERSION,
+        parentEmail: email,
+        scope: "child_profiles_and_learning_tools"
+      };
+      family.parentalConsentPending = false;
+    }
     db.emailOtps = (db.emailOtps || []).filter((item) => item.id !== record.id);
     audit(db, "auth.signup.otp_verified", { userId: user.id, familyId: family?.id || "", email }, email);
     return { user };
@@ -3570,6 +3608,10 @@ app.get("/api/auth/me", (req, res) => {
       parentName: family.parentName || "",
       email: family.email || "",
       plan: family.plan || "",
+      parentalConsent: family.parentalConsent ? {
+        acceptedAt: family.parentalConsent.acceptedAt || "",
+        policyVersion: family.parentalConsent.policyVersion || ""
+      } : null,
       children: (Array.isArray(family.children) ? family.children : []).map((child) => ({
         id: child.id,
         studentName: child.studentName || "",
@@ -3591,6 +3633,10 @@ app.get("/api/auth/me", (req, res) => {
 // fields, and it should not depend on Stripe entitlement timing.
 app.put("/api/parent/family/profile", requireParent, (req, res) => {
   const body = req.body || {};
+  const consentFamily = parentFamilyForIdentity(readDb(), req.auth);
+  if (!consentFamily?.parentalConsent?.acceptedAt) {
+    return res.status(403).json({ error: "parental_consent_required", message: "Accept parental consent before adding a learning profile." });
+  }
   const inputChildren = Array.isArray(body.children) ? body.children.slice(0, 3) : [];
   if (!inputChildren.length) {
     return res.status(400).json({ error: "Add at least one student profile before saving." });
@@ -3641,6 +3687,27 @@ app.put("/api/parent/family/profile", requireParent, (req, res) => {
 
   if (!saved) return res.status(404).json({ error: "Family account not found." });
   return res.json({ ok: true, family: saved });
+});
+
+// Existing verified accounts created before parental consent was added can
+// accept the same policy before adding their first child profile.
+app.post("/api/parent/consent", requireParent, (req, res) => {
+  if (req.body?.accepted !== true) return res.status(400).json({ error: "Consent must be accepted." });
+  const saved = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return null;
+    family.parentalConsent = {
+      acceptedAt: nowIso(),
+      policyVersion: PARENTAL_CONSENT_VERSION,
+      parentEmail: family.email || req.auth.email,
+      scope: "child_profiles_and_learning_tools"
+    };
+    family.parentalConsentPending = false;
+    audit(db, "privacy.parental_consent.accepted", { familyId: family.id, policyVersion: PARENTAL_CONSENT_VERSION }, family.email);
+    return family.parentalConsent;
+  });
+  if (!saved) return res.status(404).json({ error: "Family account not found." });
+  return res.json({ ok: true, parentalConsent: { acceptedAt: saved.acceptedAt, policyVersion: saved.policyVersion } });
 });
 
 app.delete("/api/parent/family/children/:childId", requireParent, (req, res) => {
@@ -4077,7 +4144,7 @@ app.get("/api/ai/usage-limits", requireParent, (req, res) => {
     // compiled ceilings, so a bad value here can only ever tighten a tool.
     toolLimits: settings.toolLimits,
     controls: limits.controls,
-    aiConfigured: Boolean(settings.openaiApiKey),
+    aiConfigured: Boolean(settings.openaiApiKey || settings.metaApiKey),
     // Admin-controlled tutor voice policy — the student picks from `allowed`.
     voice: {
       allowed: settings.ttsAllowedVoices,
@@ -4786,7 +4853,9 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
   const db = readDb();
   const settings = normaliseAiSettings(db.aiSettings);
   const family = parentFamilyForIdentity(db, req.auth);
-  if (!settings.openaiApiKey) return res.status(503).json({ error: "ai_not_configured", message: "AI is not configured. Add an OpenAI key in the admin console." });
+  const provider = settings.aiProvider === "meta" ? "meta" : "openai";
+  const providerKey = provider === "meta" ? settings.metaApiKey : settings.openaiApiKey;
+  if (!providerKey) return res.status(503).json({ error: "ai_not_configured", message: provider === "meta" ? "Meta AI is not configured on the server." : "AI is not configured. Add an OpenAI key in the admin console." });
   if (!isFamilyEntitled(family)) return res.status(402).json({ error: "subscription_inactive" });
   if (aiPaused(family)) {
     return res.status(403).json({ error: "ai_paused", reason: family.aiPausedReason || "" });
@@ -4803,14 +4872,14 @@ app.post("/api/ai/responses", requireParent, async (req, res) => {
     return res.status(429).json({ error: "rate_limited", scope: rate.scope, retryAfterMs: rate.retryAfterMs });
   }
   try {
-    return await runAiResponse({ req, res, body, tool, isMath, settings, family });
+    return await runAiResponse({ req, res, body, tool, isMath, settings, family, provider, providerKey });
   } finally {
     releaseAiSlot(family?.id);
   }
 });
 
 // Split out so every early return above still releases the concurrency slot.
-async function runAiResponse({ req, res, body, tool, isMath, settings, family }) {
+async function runAiResponse({ req, res, body, tool, isMath, settings, family, provider, providerKey }) {
   // Bound the prompt server-side. `instructions` is client-supplied too, so it
   // counts against the same budget — capping only `input` would just move an
   // injection into the other field.
@@ -4867,18 +4936,30 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
   // `advanced` flag. The client's `model` is ignored on purpose — it is only a
   // dev hint, and trusting it would let a modified extension pick any model.
   const advanced = body.advanced === true;
-  const modelToUse = resolveOpenAiModel(settings, advanced);
+  const modelToUse = provider === "meta"
+    ? settings.metaModel
+    : resolveOpenAiModel(settings, advanced);
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(provider === "meta" ? "https://api.meta.ai/v1/responses" : "https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${providerKey}`
+      },
       body: JSON.stringify({
         model: modelToUse,
         instructions,
         input: body.input,
         // Clamped above against the per-tool ceiling: a modified client can send
         // any number, so we take the smaller of theirs and ours.
-        max_output_tokens: maxOutputTokens
+        max_output_tokens: maxOutputTokens,
+        ...(provider === "meta" ? {
+          stream: false,
+          temperature: 1,
+          top_p: 1,
+          reasoning: { effort: advanced ? "high" : "medium" }
+        } : {})
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -4891,10 +4972,11 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
       // right fix is obvious. 401/403 = key, 429 = quota/rate, 5xx = outage.
       const status = response.status || 0;
       const apiMessage = data?.error?.message || data?.error?.code || data?.error?.type || "";
-      let alert = { severity: "error", reason: `OpenAI HTTP ${status}` };
-      if (status === 401 || status === 403) alert = { severity: "error", reason: "OpenAI rejected the API key (invalid or revoked)" };
-      else if (status === 429) alert = { severity: "error", reason: /quota|billing|insufficient/i.test(apiMessage) ? "OpenAI quota/billing exhausted" : "OpenAI rate limit hit" };
-      else if (status >= 500) alert = { severity: "warning", reason: "OpenAI upstream outage" };
+      const providerLabel = provider === "meta" ? "Meta" : "OpenAI";
+      let alert = { severity: "error", reason: `${providerLabel} HTTP ${status}` };
+      if (status === 401 || status === 403) alert = { severity: "error", reason: `${providerLabel} rejected the API key (invalid or revoked)` };
+      else if (status === 429) alert = { severity: "error", reason: /quota|billing|insufficient/i.test(apiMessage) ? `${providerLabel} quota/billing exhausted` : `${providerLabel} rate limit hit` };
+      else if (status >= 500) alert = { severity: "warning", reason: `${providerLabel} upstream outage` };
       mutateDb((store) => monitor(store, alert.severity, "ai", alert.reason, { status, tool: tool || "ai", model: modelToUse, detail: apiMessage }, req.auth.email));
       return res.status(status || 502).json({ error: "openai_error", detail: data });
     }
@@ -4948,8 +5030,8 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family })
   } catch (error) {
     // The request never completed, so refund rather than hold the estimate.
     await settle(0);
-    mutateDb((store) => monitor(store, "error", "ai", "OpenAI responses proxy failed", { detail: String(error.message || error) }, req.auth.email));
-    res.status(502).json({ error: "openai_unreachable" });
+    mutateDb((store) => monitor(store, "error", "ai", `${provider === "meta" ? "Meta" : "OpenAI"} responses proxy failed`, { detail: String(error.message || error) }, req.auth.email));
+    res.status(502).json({ error: provider === "meta" ? "meta_unreachable" : "openai_unreachable" });
   }
 }
 
@@ -5049,6 +5131,11 @@ app.post("/api/ai/moderations", requireParent, async (req, res) => {
   const db = readDb();
   const settings = normaliseAiSettings(db.aiSettings);
   const family = parentFamilyForIdentity(db, req.auth);
+  // Meta's API is used for text testing, but it is not a drop-in moderation
+  // replacement here. Keep this local test path usable without contacting OpenAI.
+  if (META_ONLY_MODE) {
+    return res.json({ flagged: false, categories: [], metaOnlyMode: true });
+  }
   if (!settings.openaiApiKey) return res.status(503).json({ error: "ai_not_configured" });
   if (!isFamilyEntitled(family)) return res.status(402).json({ error: "subscription_inactive" });
   try {
@@ -5388,13 +5475,19 @@ app.post("/api/capture/:token/image", async (req, res) => {
   // upload size" has to mean the same thing on every route, or lowering it
   // would quietly leave the phone-capture path on the old ceiling.
   if (Buffer.byteLength(match[2], "base64") > settings.maxFileBytes) { setSession({ status: "error", reason: "That photo is too large. Try again." }); return res.status(413).json({ error: "too_large" }); }
-  if (!settings.openaiApiKey) { setSession({ status: "error", reason: "The tutor isn't set up yet. Ask a parent." }); return res.json({ ok: true }); }
+  const captureProvider = settings.aiProvider === "meta" ? "meta" : "openai";
+  const captureKey = captureProvider === "meta" ? settings.metaApiKey : settings.openaiApiKey;
+  if (!captureKey) { setSession({ status: "error", reason: "The tutor isn't set up yet. Ask a parent." }); return res.json({ ok: true }); }
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(captureProvider === "meta" ? "https://api.meta.ai/v1/responses" : "https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${captureKey}`
+      },
       body: JSON.stringify({
-        model: settings.openaiModel,
+        model: captureProvider === "meta" ? settings.metaModel : settings.openaiModel,
         instructions: CAPTURE_TRANSCRIBE_INSTRUCTION,
         input: [{ role: "user", content: [
           { type: "input_text", text: `Read this photo and list every math problem in reading order, up to 15. Grade band: ${claim.gradeBand}. Return JSON with a problems array. Each item: statement (full question in plain words), meta (short topic like "Geometry · right triangle"), diagram (complete text description of any figure so it can be solved without the image, or "" if none).` },
@@ -5403,7 +5496,13 @@ app.post("/api/capture/:token/image", async (req, res) => {
         // This is a transcription, so it gets the long ceiling — but it had no
         // ceiling at all, which left output length unbounded on a route the
         // phone reaches without a parent session.
-        max_output_tokens: maxOutputTokensForTool("transcribe", settings)
+        max_output_tokens: maxOutputTokensForTool("transcribe", settings),
+        ...(captureProvider === "meta" ? {
+          stream: false,
+          temperature: 1,
+          top_p: 1,
+          reasoning: { effort: "medium" }
+        } : {})
       })
     });
     const data = await response.json().catch(() => ({}));

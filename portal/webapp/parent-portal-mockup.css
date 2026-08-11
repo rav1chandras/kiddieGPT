@@ -67,6 +67,58 @@ button { cursor: pointer; }
 .mockup-brand strong { display: block; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
 .mockup-brand small { display: block; margin-top: 1px; color: var(--mock-muted); font-size: 10px; font-weight: 600; }
 
+body.parent-mockup .parent-portal-live .student-workspace.consent-required .student-workspace-heading,
+body.parent-mockup .parent-portal-live .student-workspace.consent-required #student-workspace-slides {
+  display: none;
+}
+
+body.parent-mockup .parent-portal-live .consent-panel {
+  min-height: 360px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  align-items: start;
+  gap: 12px 16px;
+  padding: 42px 46px;
+  border: 1px solid rgba(0, 79, 72, .12);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fbfdf9, #f0f8f2);
+}
+
+body.parent-mockup .parent-portal-live .consent-panel[hidden] { display: none; }
+body.parent-mockup .parent-portal-live .consent-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: #0b6a5d;
+  background: #e8f659;
+}
+body.parent-mockup .parent-portal-live .consent-icon svg { width: 23px; height: 23px; }
+body.parent-mockup .parent-portal-live .consent-panel h2 { margin: 0 0 8px; color: var(--mock-ink); font-size: 22px; }
+body.parent-mockup .parent-portal-live .consent-panel p { margin: 0; color: var(--mock-muted); line-height: 1.55; }
+body.parent-mockup .parent-portal-live .consent-panel a { display: inline-block; margin-top: 9px; color: var(--mock-green); font-weight: 700; }
+body.parent-mockup .parent-portal-live .consent-accept {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--mock-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+body.parent-mockup .parent-portal-live .consent-accept input { width: 18px; height: 18px; accent-color: var(--mock-green); }
+body.parent-mockup .parent-portal-live #accept-parental-consent { grid-column: 2; justify-self: start; }
+body.parent-mockup .parent-portal-live .consent-status { grid-column: 2; font-size: 12px; }
+
+@media (max-width: 720px) {
+  body.parent-mockup .parent-portal-live .consent-panel { grid-template-columns: 1fr; padding: 28px 24px; }
+  body.parent-mockup .parent-portal-live .consent-accept,
+  body.parent-mockup .parent-portal-live #accept-parental-consent,
+  body.parent-mockup .parent-portal-live .consent-status { grid-column: 1; }
+}
+
 .family-switcher {
   display: flex;
   align-items: center;

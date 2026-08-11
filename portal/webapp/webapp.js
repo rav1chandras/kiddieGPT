@@ -669,6 +669,11 @@
     var completionText = document.getElementById("completion-text");
     var profileSaveState = document.getElementById("profile-save-state");
     var childList = document.getElementById("student-workspace-slides");
+    var studentWorkspace = document.querySelector(".student-workspace");
+    var parentalConsentPanel = document.getElementById("parental-consent-panel");
+    var parentalConsentCheckbox = document.getElementById("parental-consent-checkbox");
+    var acceptParentalConsent = document.getElementById("accept-parental-consent");
+    var parentalConsentStatus = document.getElementById("parental-consent-status");
     var addChild = document.getElementById("add-child");
     var previousChild = document.getElementById("previous-child");
     var nextChild = document.getElementById("next-child");
@@ -1222,11 +1227,47 @@
       if (form.elements.parentName) form.elements.parentName.value = user.name || form.elements.parentName.value;
       if (parentAccountName) parentAccountName.textContent = user.name || "Parent";
       validateParentEmail();
+      setParentalConsentState(family && family.parentalConsent);
       // Load the family's saved children. On session restore the family is
       // already in the response; on fresh login we fetch it.
-      if (family) hydrateChildren(family); else loadParentFamily();
+      if (family && family.parentalConsent && family.parentalConsent.acceptedAt) hydrateChildren(family);
+      else loadParentFamily();
       preview();
       loadProgress().catch(function () {});
+    }
+
+    function setParentalConsentState(consent) {
+      var accepted = Boolean(consent && consent.acceptedAt);
+      if (studentWorkspace) studentWorkspace.classList.toggle("consent-required", !accepted);
+      if (parentalConsentPanel) parentalConsentPanel.hidden = accepted;
+      if (parentalConsentCheckbox) parentalConsentCheckbox.checked = false;
+      if (acceptParentalConsent) {
+        acceptParentalConsent.disabled = accepted || !(parentalConsentCheckbox && parentalConsentCheckbox.checked);
+      }
+      if (addChild) addChild.disabled = !accepted;
+      if (finish) finish.disabled = !accepted;
+      if (parentalConsentStatus) parentalConsentStatus.textContent = accepted ? "Consent recorded." : "";
+    }
+
+    async function acceptParentalConsentAndContinue() {
+      if (!parentalConsentCheckbox || !parentalConsentCheckbox.checked) return;
+      acceptParentalConsent.disabled = true;
+      if (parentalConsentStatus) parentalConsentStatus.textContent = "Saving consent…";
+      try {
+        var response = await parentAuthFetch("/api/parent/consent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accepted: true })
+        });
+        var payload = await response.json();
+        if (!response.ok) throw payload;
+        setParentalConsentState(payload.parentalConsent || { acceptedAt: new Date().toISOString() });
+        await loadParentFamily();
+        if (parentalConsentStatus) parentalConsentStatus.textContent = "Consent recorded. Add a learning profile when you are ready.";
+      } catch (error) {
+        acceptParentalConsent.disabled = false;
+        if (parentalConsentStatus) parentalConsentStatus.textContent = error.message || error.error || "Could not save consent. Try again.";
+      }
     }
 
     function showParentGate(message) {
@@ -1311,7 +1352,8 @@
         body: JSON.stringify({
           name: parentLoginForm.elements.parentName ? parentLoginForm.elements.parentName.value.trim() : "Parent",
           email: email,
-          password: parentLoginForm.elements.password.value
+          password: parentLoginForm.elements.password.value,
+          parentalConsent: Boolean(parentLoginForm.elements.parentalConsent && parentLoginForm.elements.parentalConsent.checked)
         })
       });
       var payload = await response.json();
@@ -2641,7 +2683,10 @@
       try {
         var res = await parentAuthFetch("/api/auth/me");
         var data = await res.json();
-        if (res.ok && data.family) hydrateChildren(data.family);
+        if (res.ok && data.family) {
+          setParentalConsentState(data.family.parentalConsent);
+          if (data.family.parentalConsent && data.family.parentalConsent.acceptedAt) hydrateChildren(data.family);
+        }
       } catch (error) { /* ignore */ }
     }
 
@@ -3751,7 +3796,14 @@
       if (event.target === deleteProfileModal) closeDeleteProfileDialog();
     });
 
-    if (addChild) addChild.addEventListener("click", addBlankChildProfile);
+    if (parentalConsentCheckbox) parentalConsentCheckbox.addEventListener("change", function () {
+      if (acceptParentalConsent) acceptParentalConsent.disabled = !parentalConsentCheckbox.checked;
+    });
+    if (acceptParentalConsent) acceptParentalConsent.addEventListener("click", acceptParentalConsentAndContinue);
+    if (addChild) addChild.addEventListener("click", function () {
+      if (studentWorkspace && studentWorkspace.classList.contains("consent-required")) return;
+      addBlankChildProfile();
+    });
     var profileEditorToggle = document.getElementById("toggle-profile-editor");
     var profileEditor = document.getElementById("profile-editor");
     if (profileEditorToggle && profileEditor) {
@@ -6806,6 +6858,25 @@
             "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-user-subscription-toggle data-family-id='" + rowId + "' data-subscription-action='" + (subscriptionActive ? "end" : "start") + "'" + (deleted ? " disabled" : "") + ">" + (subscriptionActive ? "Pause" : "Start") + "</button>" +
           "</div></td>" +
         "</tr>";
+      }));
+
+      renderRows("consent-table", families.slice().sort(function (a, b) {
+        var aTime = new Date(a.parentalConsent?.acceptedAt || 0).getTime();
+        var bTime = new Date(b.parentalConsent?.acceptedAt || 0).getTime();
+        return bTime - aTime;
+      }).map(function (family) {
+        var consent = family.parentalConsent;
+        var accepted = Boolean(consent && consent.acceptedAt);
+        var scope = accepted ? "Child profiles + learning tools" : "Awaiting parent consent";
+        return "<tr>" +
+          "<td>" + text(family.parentName || "—") + "</td>" +
+          "<td>" + text(family.email || "—") + "</td>" +
+          "<td>" + (accepted ? statusChip("active") : statusChip("pending")) + "</td>" +
+          "<td>" + (accepted ? rowDateTime(consent.acceptedAt) : "—") + "</td>" +
+          "<td>" + text(consent?.policyVersion || "—") + "</td>" +
+          "<td>" + text(scope) + "</td>" +
+          "<td>" + childrenOf(family).length + "</td>" +
+          "</tr>";
       }));
 
       populateExceptionFamilies();

@@ -2648,6 +2648,26 @@ body[data-page="parent"].parent-locked .flat-portal-shell {
   font: inherit;
 }
 
+.parent-auth-card .consent-signup-field {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  color: #60747d;
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.parent-auth-card .consent-signup-field input {
+  width: 18px;
+  min-height: 18px;
+  margin: 1px 0 0;
+  accent-color: #0b6a5d;
+}
+
+.parent-auth-card .consent-signup-field a { color: #0b6a5d; font-weight: 700; }
+
 .admin-auth-card small,
 .parent-auth-card small {
   min-height: 18px;

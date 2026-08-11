@@ -13,7 +13,7 @@
   <section class="parent-auth-gate" id="parent-auth-gate">
     <div class="parent-login-shell">
       <div class="parent-login-visual" aria-label="KiddieGPT learning tools preview">
-        <a class="login-v-brand" href="/index.html" aria-label="KiddieGPT home"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""><span>KiddieGPT</span></a>
+        <a class="login-v-brand" href="/index.html" aria-label="KiddieGPT home"><img src="/webapp/assets/kiddiegpt_logo.svg" alt=""><span>KiddieGPT</span></a>
         <div class="login-v-board">
           <svg class="login-flow-connections" aria-hidden="true">
             <path class="login-flow-connection" data-flow-target=".login-v-input-web" data-flow-direction="input"></path>
@@ -34,7 +34,7 @@
             <div class="login-v-tile login-v-input-screenshot"><span class="login-v-icon"><i data-lucide="scan-line"></i></span><strong>Screenshot</strong></div>
           </div>
           <div class="login-v-hub-wrap">
-            <div class="login-v-hub"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""></div>
+            <div class="login-v-hub"><img src="/webapp/assets/kiddiegpt_logo.svg" alt=""></div>
             <span class="login-v-caption"><i data-lucide="sparkles"></i>Make it click</span>
           </div>
           <div class="login-v-outputs">
@@ -56,7 +56,7 @@
         </footer>
       </div>
       <form class="parent-auth-card" id="parent-login-form">
-        <div class="login-card-topline"><div class="admin-auth-brand"><img src="/webapp/assets/kiddiegpt-logo.png" alt=""><span>KiddieGPT</span></div></div>
+        <div class="login-card-topline"><div class="admin-auth-brand"><img src="/webapp/assets/kiddiegpt_logo.svg" alt=""><span>KiddieGPT</span></div></div>
         <h1 id="parent-auth-title">Parent sign in</h1>
         <p id="parent-auth-copy" class="login-form-subhead">A simple home for your child's questions, practice, and progress.</p>
         <div class="auth-mode-toggle" id="parent-auth-mode-toggle" aria-label="Authentication mode"><button class="active" type="button" data-parent-auth-mode="login">Sign in</button><button type="button" data-parent-auth-mode="signup">Create account</button></div>
@@ -67,6 +67,7 @@
         <label class="reset-confirm-only hidden">New password<input type="password" name="resetPassword" autocomplete="new-password" placeholder="At least 8 characters"></label>
         <label class="otp-only hidden">Verification code<input type="text" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456"></label>
         <button class="button primary" type="submit" id="parent-auth-submit">Sign in</button>
+        <label class="signup-only consent-signup-field hidden"><input type="checkbox" name="parentalConsent" value="yes"><span>I am the parent or legal guardian, and I consent to KiddieGPT creating a learning profile and processing my child's learning data as described in the <a href="https://kiddiegpt.com/privacy.html" target="_blank" rel="noopener">Privacy Statement</a>.</span></label>
         <p class="supported-email-note signup-only hidden">Supported email providers: Gmail, Yahoo, AOL, Outlook, and Hotmail.</p>
         <button class="text-link-button otp-only hidden" type="button" id="resend-otp">Resend code</button><button class="text-link-button login-only" type="button" id="forgot-password">Forgot password?</button>
         <div class="login-divider"><span>Or continue with</span></div><button class="google-login-button gate-google" type="button" id="google-login-button"><i data-lucide="mail"></i>Continue with Google</button>
@@ -79,7 +80,7 @@
 
   <main class="mockup-shell parent-portal-live">
     <aside class="mockup-sidebar" aria-label="Family navigation">
-      <a class="mockup-brand" href="/index.html"><span class="brand-mark"><img src="/icons/logo-mascot.png" alt=""></span><span><strong>KiddieGPT</strong><small>Family workspace</small></span></a>
+      <a class="mockup-brand" href="/index.html"><span class="brand-mark"><img src="/webapp/assets/kiddiegpt_logo.svg" alt=""></span><span><strong>KiddieGPT</strong><small>Family workspace</small></span></a>
       <nav class="mockup-nav" aria-label="Parent portal sections"><button class="nav-item is-active" type="button" data-parent-tab="overview"><i data-lucide="layout-dashboard"></i><span>Overview</span></button><button class="nav-item" type="button" data-parent-tab="subscription"><i data-lucide="credit-card"></i><span>Subscription</span></button><button class="nav-item" type="button" data-parent-tab="support"><i data-lucide="life-buoy"></i><span>Support</span></button></nav>
       <div class="sidebar-bottom">
         <button class="sidebar-upgrade-card rail-yearly-promo hidden" type="button" id="rail-yearly-promo">
@@ -104,13 +105,14 @@
     </aside>
 
     <div class="mockup-main">
-      <header class="mockup-header"><div><h1 id="live-page-title">Good evening, Maya</h1><p class="page-subtitle" id="live-page-subtitle">Here is the latest on your child's learning journey.</p></div><a class="get-ext-cta" id="get-ext-cta" href="https://chromewebstore.google.com/" target="_blank" rel="noopener"><i data-lucide="puzzle"></i><span><b>Get the extension</b><small>Add KiddieGPT to Chrome</small></span><i data-lucide="arrow-right" class="cta-arrow"></i></a><button class="get-ext-cta" id="connect-ext-cta" type="button" hidden><i data-lucide="puzzle"></i><span><b>Sign in the extension</b><small id="connect-ext-note">Use this account in Chrome</small></span><i data-lucide="arrow-right" class="cta-arrow"></i></button></header>
+      <header class="mockup-header"><div><h1 id="live-page-title">Good evening, Maya</h1><p class="page-subtitle" id="live-page-subtitle">Here is the latest on your child's learning journey.</p></div><a class="get-ext-cta" id="get-ext-cta" href="https://chromewebstore.google.com/" target="_blank" rel="noopener"><i data-lucide="puzzle"></i><span><b>Get the extension</b><small>Add KiddieGPT to Chrome</small></span><i data-lucide="arrow-right" class="cta-arrow"></i></a></header>
 
       <form id="onboarding-form" novalidate>
         <input type="hidden" name="parentName" value="Maya Patel"><input type="hidden" name="email" value="parent.kiddiegpt@gmail.com"><input type="hidden" name="password" value=""><input type="hidden" name="usageCap" id="usage-cap" value="60"><span id="usage-cap-label" class="hidden">60 min</span>
 
         <section class="screen is-active live-screen" data-parent-panel="overview">
           <div class="student-workspace">
+          <section class="consent-panel" id="parental-consent-panel" hidden><span class="consent-icon"><i data-lucide="shield-check"></i></span><div><p class="section-kicker">Parent consent</p><h2>Set up a learning profile when you're ready</h2><p>Before you add a child, please confirm that you are their parent or legal guardian. This covers their profile, learning goals, screenshots, voice features, and learning activity.</p><a href="https://kiddiegpt.com/privacy.html" target="_blank" rel="noopener">Read the Privacy Statement</a></div><label class="consent-accept"><input type="checkbox" id="parental-consent-checkbox"><span>I confirm that I am the parent or legal guardian.</span></label><button class="button primary" type="button" id="accept-parental-consent" disabled>Continue to learning profiles <i data-lucide="arrow-right"></i></button><p class="consent-status" id="parental-consent-status" role="status"></p></section>
           <div class="student-workspace-heading"><div><p class="section-kicker">Students</p><h2>Learning profiles</h2></div><div class="workspace-actions"><div class="profile-controls"><span class="profile-count" id="child-position">1 of 3</span><button class="icon-button small" type="button" id="previous-child" aria-label="Previous student" disabled><i data-lucide="chevron-left"></i></button><button class="icon-button small" type="button" id="next-child" aria-label="Next student" disabled><i data-lucide="chevron-right"></i></button><button class="add-profile-button" type="button" id="add-child" aria-label="Add child"><i data-lucide="plus"></i></button></div><button class="button primary workspace-save-button" type="submit" id="finish"><i data-lucide="check"></i>Save</button><span id="profile-save-state"></span></div></div>
           <div id="student-workspace-slides">
           <div class="overview-grid student-workspace-slide" data-slide-index="0">

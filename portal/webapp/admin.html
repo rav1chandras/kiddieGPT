@@ -16,7 +16,7 @@
   <section class="admin-auth-gate" id="admin-auth-gate" hidden>
     <form class="admin-auth-card" id="admin-login-form">
       <div class="admin-auth-brand">
-        <img src="/icons/logo-mascot.png" alt="">
+        <img src="/webapp/assets/kiddiegpt_logo.svg" alt="">
         <span>KiddieGPT</span>
       </div>
       <h1>Admin sign in</h1>
@@ -46,7 +46,7 @@
   <main class="admin-console-shell founder-console alloce-admin">
     <aside class="admin-left-nav">
       <a class="admin-brand" href="/admin.html">
-        <img src="/icons/logo-mascot.png" alt="">
+        <img src="/webapp/assets/kiddiegpt_logo.svg" alt="">
         <span>KiddieGPT</span>
       </a>
       <span class="admin-nav-section">Main</span>
@@ -140,6 +140,7 @@
           <button type="button" data-family-table="signups">Signups</button>
           <button type="button" data-family-table="deletions">Deleted</button>
           <button type="button" data-family-table="trials">Free Trial</button>
+          <button type="button" data-family-table="consent">Consent</button>
         </div>
 
         <div data-family-table-panel="accounts">
@@ -184,6 +185,22 @@
               <table>
                 <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Subscription</th><th>Status</th><th>Next renewal</th><th>Risk</th><th>Next action</th><th>Registered</th><th>Last login</th><th>Extension last used</th><th>Actions</th></tr></thead>
                 <tbody id="family-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div data-family-table-panel="consent" hidden>
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Privacy</p><h2>Parental consent</h2></div>
+              <div class="admin-filters"><button class="table-action" type="button" data-export-table="consent-table" data-export-name="kiddiegpt-parental-consent">Export CSV</button></div>
+            </div>
+            <p class="admin-table-note">Consent is recorded during verified parent signup or from the consent gate before a child profile is added.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Parent</th><th>Email</th><th>Status</th><th>Consented</th><th>Policy version</th><th>Scope</th><th>Students</th></tr></thead>
+                <tbody id="consent-table"></tbody>
               </table>
             </div>
           </article>
