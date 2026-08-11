@@ -481,6 +481,8 @@ let mathAnswersRevealed = false;
 // Some students want the working without the prose once they have the idea.
 // Remembered across problems and sessions so it is set once, not every time.
 let mathShowExplanations = false;
+let mathBackgroundPaused = false;
+let mathBackgroundAbortController = null;
 let lastMathSolve = null;
 // Re-solve attempts per problem index, reset when a new solve starts.
 const mathCorrectionAttempts = new Map();
@@ -1761,9 +1763,10 @@ function explanationStyleNote(settings) {
   return EXPLANATION_STYLE_NOTE[settings?.explanationStyle] || "";
 }
 
-async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model, advanced = false, gradeBand, explainDepth, maxOutputTokens = MAX_OUTPUT_TOKENS }) {
+async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model, advanced = false, gradeBand, explainDepth, maxOutputTokens = MAX_OUTPUT_TOKENS, signal }) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const requestSignal = signal || controller.signal;
   const content = [{ type: "input_text", text }, ...parts];
   // Model routing is owned by the backend (Admin Console -> AI & Usage). The
   // extension never hardcodes product model IDs: it sends `advanced` and the
@@ -1778,7 +1781,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
   if (portalToken === OTP_TEST_TOKEN && settings?.openaiApiKey) {
     const direct = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      signal: controller.signal,
+      signal: requestSignal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({ model: useModel, instructions, input: [{ role: "user", content }], max_output_tokens: maxOutputTokens })
     }).finally(() => clearTimeout(timeoutId));
@@ -1790,7 +1793,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
   }
   const response = await fetch(`${portalBaseUrl()}/api/ai/responses`, {
     method: "POST",
-    signal: controller.signal,
+    signal: requestSignal,
     headers: {
       "Content-Type": "application/json",
       ...(portalToken ? { Authorization: `Bearer ${portalToken}` } : {})
@@ -4867,7 +4870,7 @@ function mathGradeGuidance(gradeBand) {
   return "Use pre-algebra and algebra as needed, but pick the simplest approach the problem allows and name the rule in each line. Prefer basic geometry and algebra (base times height, Pythagorean theorem, factoring) over trigonometry or calculus unless the problem clearly requires them.";
 }
 
-async function solveMathOnce({ settings, parts = [], sourceText, gradeBand, disputeNote = "", model, advanced = false }) {
+async function solveMathOnce({ settings, parts = [], sourceText, gradeBand, disputeNote = "", model, advanced = false, signal }) {
   const visualGuidance = parts.length
     ? " The original image or file is attached. Re-inspect it directly before solving, especially any circle, semicircle, tangent, chord, diameter, radius, arc, or intersection. Cross-check the transcription against the visual source and preserve every geometric relationship."
     : "";
@@ -4878,6 +4881,7 @@ async function solveMathOnce({ settings, parts = [], sourceText, gradeBand, disp
     advanced,  // true for "Reconsider and solve it again" -> backend uses the Adv model
     moderate: false, // math equations/steps are inherently safe; skip the extra round-trip
     maxOutputTokens: MATH_SOLVE_MAX_TOKENS, // help + full solution + check won't fit in the chat cap
+    signal,
     instructions: "You are KiddieGPT Math Tutor for K-8 students (also handle harder algebra, geometry, trigonometry, combinatorics, and early calculus when the source shows them). Accuracy is critical: a wrong answer is worse than no answer. If the source has no readable math (blank, too blurry, or not math), return exactly {\"noMath\": true, \"reason\": \"<one short kind sentence>\"} and nothing else. Otherwise read every number, symbol, and multiple-choice option; honor right-angle marks (a small square means those segments are perpendicular, so one is a height or leg) and circle parts (center, radius, diameter, chord, tangent, arc) before choosing a method. Use the SIMPLEST correct method for the grade. Return a HELP section that teaches the setup and next moves but must NOT reveal the final answer, final value, or matching choice letter, and a SOLUTION section with a full textbook derivation, a check, and the answer. For multiple choice return the exact listed choice (a binomial's fifth term uses r=4, i.e. T_{r+1} with r=4; never an equivalent expression that is not a listed choice). Never output a blank or placeholder like \\square, \\Box, \\underline{}, \"?\", or an empty box — always compute the real value. In EVERY math field put ONLY a short equation or expression (symbols and numbers), never a sentence or \\text{...}; put all words in why. Write math as clean inline LaTeX (\\frac{a}{b}, \\sqrt{48}, x^{2}, \\binom{n}{4}, 90^{\\circ}, \\pi, \\theta, \\vec{AB}) with no $, $$, \\( \\), or \\[ \\] delimiters and no markdown. If several problems are visible, split them. Return only valid JSON." + visualGuidance,
     text: `${sourceText}
 ${disputeNote ? `IMPORTANT: ${disputeNote}
@@ -5343,10 +5347,16 @@ async function ensureMathProblemSolved(index) {
   });
 }
 
-async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
+async function solveMathProblemInPlace({ settings, gradeBand, index, token, signal }) {
   const placeholder = mathSolveState.problems[index];
   const transcribed = lastMathSolve?.transcript?.[index];
   if (!placeholder) return;
+  // Mark the slot before the request starts. Background preparation and the
+  // Next arrow can touch the same problem; both must share this in-flight solve.
+  if (placeholder.status === "solving") return;
+  if (placeholder.status === "ready") return;
+  placeholder.status = "solving";
+  renderMathSolution();
   const sourceText = mathTranscriptSource(transcribed || placeholder);
   const visualParts = getMathVisionParts(transcribed || placeholder);
   const retryNote = [
@@ -5360,7 +5370,7 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
     let rawResult;
     let resolved;
     try {
-      rawResult = await solveMathOnce({ settings, parts: visualParts, sourceText, gradeBand, disputeNote: mathSingleSolveNote(placeholder.equation) });
+      rawResult = await solveMathOnce({ settings, parts: visualParts, sourceText, gradeBand, disputeNote: mathSingleSolveNote(placeholder.equation), signal });
       resolved = normalizeMathProblems(rawResult);
       const usable = resolved[0]?.lines?.some(line => line.math) && resolved[0]?.answer && resolved[0].answer !== "See final line";
       if (!usable) throw new Error("The first solve response did not include a complete answer.");
@@ -5396,6 +5406,10 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token }) {
     }
   } catch (error) {
     console.warn("Solve problem failed", error);
+    if (error?.name === "AbortError") {
+      placeholder.status = "idle";
+      return;
+    }
     // A plan that lapses mid-worksheet would otherwise land as "Couldn't solve
     // this one" with a retry button that cannot possibly succeed. Send it to the
     // one screen that carries the remedy instead.
@@ -5567,23 +5581,26 @@ async function solveMathWithAI() {
   refreshMathThinkingTips({ gradeBand, hint: mathTopicHint(problems) });
   setStage("Solving...", "Solving the first problem so you can start right away…");
 
-  // Solve the first problem (text-only) while the panel is up, then reveal it.
+  // Solve the first problem before revealing the worksheet. The remaining
+  // problems are prepared quietly in the background while the student reads.
   await solveMathProblemInPlace({ settings, gradeBand, index: 0, token });
   if (token !== mathSolveToken) return;
   bumpActivity("mathSolved", total);
   awardStars(total);
   stopMathThinking();
   resetButton();
+  mathBackgroundPaused = false;
+  if (total > 1) solveRemainingMathProblems({ settings, gradeBand, token, total });
+}
 
-  // Deliberately NOT solving the rest here. Each remaining problem is solved
-  // when the student actually navigates to it (see ensureMathProblemSolved), for
-  // two reasons: a worksheet stops costing anything for problems nobody opens,
-  // and a student can no longer dump 15 problems and get 15 answers at once,
-  // which is the opposite of "help first".
-  // Nothing should be left showing the spinner once the run is over. A problem
-  // still marked "solving" here was orphaned rather than slow, and without this
-  // it spins for the rest of the session with no way to retry.
-  sweepUnsolvedMathProblems(token);
+async function solveRemainingMathProblems({ settings, gradeBand, token, total }) {
+  mathBackgroundAbortController = new AbortController();
+  const signal = mathBackgroundAbortController.signal;
+  for (let index = 1; index < total; index += 1) {
+    if (token !== mathSolveToken || mathBackgroundPaused) return;
+    await solveMathProblemInPlace({ settings, gradeBand, index, token, signal });
+  }
+  mathBackgroundAbortController = null;
 }
 
 // Turns any still-"solving" placeholder into a retryable error. Guarded by the
@@ -5643,6 +5660,8 @@ async function correctMathProblem() {
   // no business cancelling its siblings. Checking the token before writing back
   // still lets a genuinely new solve discard a correction that is mid-flight.
   const token = mathSolveToken;
+  mathBackgroundPaused = true;
+  if (mathBackgroundAbortController) mathBackgroundAbortController.abort();
   const gradeBand = lastMathSolve.gradeBand;
   const index = mathSolveState.index;
   const current = mathSolveState.problems[index];
@@ -5703,6 +5722,10 @@ async function correctMathProblem() {
     setMathCorrectStatus(`Could not re-solve: ${friendlyError(error)}`, "warn");
   } finally {
     stopMathThinking();
+    mathBackgroundPaused = false;
+    if (token === mathSolveToken && mathSolveState.problems.length > 1) {
+      solveRemainingMathProblems({ settings, gradeBand, token, total: mathSolveState.problems.length });
+    }
     if (send) {
       send.disabled = !document.querySelector("#mathCorrectPanel .math-correction-pill.selected");
       send.classList.remove("busy");
@@ -6419,7 +6442,7 @@ function setWritingAction(action) {
   // Title stays "Writing Studio"; the mode is carried by this line and by the
   // action button's label, which already changes with it.
   document.getElementById("writingModeCopy").textContent = config.copy;
-  document.getElementById("writingInputHint").textContent = config.hint;
+  clearWritingPrivacyHint();
   document.getElementById("writingRunButton").textContent = config.button;
   if (input) input.placeholder = config.placeholder;
   renderWritingEmpty();
@@ -6474,6 +6497,46 @@ function renderWritingLoading() {
 function writingNotice(titleText, message) {
   const grid = document.getElementById("writingOutputGrid");
   if (grid) grid.innerHTML = `<div class="writing-empty"><b>${escapeHtml(titleText)}</b><p>${escapeHtml(message)}</p></div>`;
+}
+
+function luhnValid(value) {
+  const digits = String(value).replace(/\D/g, "");
+  if (digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  let doubleIt = false;
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    let digit = Number(digits[index]);
+    if (doubleIt) { digit *= 2; if (digit > 9) digit -= 9; }
+    sum += digit;
+    doubleIt = !doubleIt;
+  }
+  return sum % 10 === 0;
+}
+
+// This runs before any Writing Studio request leaves the device. It is a small
+// privacy guard, not a promise that a local regex can identify every private
+// detail. The portal remains the second layer for server-side policy checks.
+function findSensitiveWritingData(text) {
+  const value = String(text || "");
+  const findings = [];
+  if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(value)) findings.push("email address");
+  if (/(?:\+?\d{1,2}[\s.-]?)?(?:\(?\d{3}\)?[\s.-])\d{3}[\s.-]\d{4}\b/.test(value)) findings.push("phone number");
+  if (/\b\d{3}[- ]\d{2}[- ]\d{4}\b/.test(value)) findings.push("government ID number");
+  if (/\b(?:password|passcode|access\s+code|api[_ -]?key|secret|token|pin)\s*[:=]\s*\S+/i.test(value)) findings.push("password or access code");
+  if (/\b(?:student\s+id|school\s+id|account\s+number|member\s+id)\s*[:#=]?\s*[A-Z0-9-]{4,}\b/i.test(value)) findings.push("ID number");
+  if (/\b\d{1,5}\s+[A-Za-z0-9.'-]+\s+(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|court|ct|way)\b/i.test(value)) findings.push("street address");
+  const cardLike = value.match(/\b(?:\d[ -]?){13,19}\b/g) || [];
+  if (cardLike.some(luhnValid)) findings.push("payment card number");
+  if (/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{20,}\b/.test(value)) findings.push("API key");
+  return [...new Set(findings)];
+}
+
+function clearWritingPrivacyHint() {
+  const hint = document.getElementById("writingInputHint");
+  if (!hint) return;
+  hint.classList.remove("privacy-warning");
+  const config = writingActions[writingState.action] || writingActions.assignment;
+  hint.textContent = config.hint;
 }
 
 function renderWritingResult(output) {
@@ -6636,6 +6699,18 @@ async function runWritingCoach() {
     writingNotice("Nothing to check yet", config.emptyCopy);
     return;
   }
+  const sensitive = findSensitiveWritingData(text);
+  if (sensitive.length) {
+    if (status) status.textContent = "Remove private details";
+    const hint = document.getElementById("writingInputHint");
+    if (hint) {
+      hint.classList.add("privacy-warning");
+      hint.textContent = "Remove personal information before sending this writing.";
+    }
+    writingNotice("Let's keep private details private", `Please remove the ${sensitive.join(", ")} and try again. Your writing stays on this device until you press the button.`);
+    return;
+  }
+  clearWritingPrivacyHint();
   const settings = await getOpenAISettings();
   if (!settings) {
     if (status) status.textContent = "Add key";
