@@ -17,3 +17,5 @@ data/*.local.json
 # OS / editor cruft
 .DS_Store
 *.log
+.vercel
+.env*

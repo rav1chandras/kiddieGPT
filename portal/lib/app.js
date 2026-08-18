@@ -22,7 +22,7 @@ const dataDir = process.env.DATA_DIR || path.join(projectRoot, "data");
 const dbPath = process.env.DATA_PATH || path.join(dataDir, "kiddiegpt-db.json");
 const tokenSecret = process.env.AUTH_TOKEN_SECRET || "dev_kiddiegpt_change_me";
 const tokenTtlMs = Number(process.env.AUTH_TOKEN_TTL_HOURS || 24) * 60 * 60 * 1000;
-const allowedParentEmailDomains = (process.env.ALLOWED_PARENT_EMAIL_DOMAINS || "gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com")
+const allowedParentEmailDomains = (process.env.ALLOWED_PARENT_EMAIL_DOMAINS || "gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com,icloud.com,kiddiegpt.com")
   .split(",")
   .map((domain) => domain.trim().toLowerCase())
   .filter(Boolean);

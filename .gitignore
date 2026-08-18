@@ -33,3 +33,5 @@ node_modules/
 
 # Extension build output (Web Store zips)
 extension/dist/
+.vercel
+.env*

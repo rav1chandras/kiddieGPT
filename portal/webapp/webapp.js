@@ -65,7 +65,7 @@
     });
   }
 
-  var allowedParentEmailDomains = ["gmail.com", "yahoo.com", "aol.com", "outlook.com", "hotmail.com"];
+  var allowedParentEmailDomains = ["gmail.com", "yahoo.com", "aol.com", "outlook.com", "hotmail.com", "kiddiegpt.com"];
   var googleClientId = "";
   var selectedFamilyId = null;
   var familiesCache = [];
