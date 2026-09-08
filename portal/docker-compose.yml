@@ -24,10 +24,12 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       PARENT_TEST_EMAIL: ${PARENT_TEST_EMAIL:-parent.kiddiegpt@gmail.com}
       PARENT_TEST_PASSWORD: ${PARENT_TEST_PASSWORD:-kiddiegpt123}
+      REVIEW_EMAIL: ${REVIEW_EMAIL:-chrome-review@kiddiegpt.com}
+      CHROME_REVIEW_MODE: ${CHROME_REVIEW_MODE:-false}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-dev_kiddiegpt_change_me}
       AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-24}
       EMAIL_OTP_TTL_MINUTES: ${EMAIL_OTP_TTL_MINUTES:-10}
-      ALLOWED_PARENT_EMAIL_DOMAINS: ${ALLOWED_PARENT_EMAIL_DOMAINS:-gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com,icloud.com}
+      ALLOWED_PARENT_EMAIL_DOMAINS: ${ALLOWED_PARENT_EMAIL_DOMAINS:-gmail.com,yahoo.com,aol.com,outlook.com,hotmail.com,icloud.com,kiddiegpt.com}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       REQUIRE_AUTH: ${REQUIRE_AUTH:-true}
       # OpenAI proxy: key stays server-side. Leave blank to instead set it from the

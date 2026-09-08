@@ -3090,18 +3090,28 @@
 
     // Each plan card carries its own CTA, so checkout is a plain function rather
     // than a click on a separate button at the bottom of the page.
+    var checkoutInProgress = false;
     async function startStripeCheckout() {
+      if (checkoutInProgress) return;
+      var checkoutStatus = document.getElementById("checkout-status");
+      function showCheckoutStatus(message) {
+        if (checkoutStatus) {
+          checkoutStatus.hidden = false;
+          checkoutStatus.textContent = message;
+        }
+      }
       if (!validateParentEmail()) {
-        setParentTab("support");
+        showCheckoutStatus(parentEmailHint());
         return;
       }
-      var plan = selectedPlan();
-      var primaryChild = childProfiles()[0] || {};
-      localStorage.setItem(PENDING_CHECKOUT_PLAN_KEY, plan.key);
-      paymentState.textContent = "Opening Stripe";
-      paymentState.className = "state-chip warning";
+      checkoutInProgress = true;
+      var checkoutButtons = [upgradeYearly, upgradeYearlyTileButton].filter(Boolean);
+      checkoutButtons.forEach(function (button) { button.disabled = true; });
+      showCheckoutStatus("Opening secure checkout...");
       try {
-        var response = await fetch("/api/stripe/create-checkout-session", {
+        var plan = selectedPlan();
+        localStorage.setItem(PENDING_CHECKOUT_PLAN_KEY, plan.key);
+        var response = await parentAuthFetch("/api/stripe/create-checkout-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3110,10 +3120,7 @@
             promoCode: plan.promoCode,
             parentEmail: formValue("email"),
             parentName: formValue("parentName"),
-            password: formValue("password"),
-            studentName: primaryChild.studentName || "",
-            grade: primaryChild.grade || "",
-            readingLevel: primaryChild.readingLevel || ""
+            password: formValue("password")
           })
         });
         var result = await response.json();
@@ -3134,6 +3141,7 @@
         // "subscribed" a family without any Stripe flow or charge.
         throw new Error("Checkout could not be opened. Please try again.");
       } catch (error) {
+        showCheckoutStatus(error.message || "Checkout could not be opened. Please try again.");
         localStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
         paymentState.textContent = error.message;
         paymentState.className = "state-chip error";
@@ -3144,6 +3152,9 @@
           completionTitle.textContent = "Checkout needs attention";
           completionText.textContent = "Check the Stripe Price ID in Admin, then try checkout again.";
         }
+      } finally {
+        checkoutInProgress = false;
+        checkoutButtons.forEach(function (button) { button.disabled = false; });
       }
       preview();
     }

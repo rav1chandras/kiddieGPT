@@ -1,0 +1,9 @@
+.env
+.env.*
+data/**
+node_modules/**
+**/local-settings.js
+*.log
+docker/**
+docs/**
+scripts/**

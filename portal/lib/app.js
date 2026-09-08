@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
+const { createCheckoutSession } = require("./checkout-session");
 
 const app = express();
 // No ETags on app-generated responses. An ETag on /api/pricing or
@@ -929,10 +930,13 @@ function pgSslFor(connectionString) {
 
 async function initPersistence() {
   if (DB_DRIVER !== "postgres") { ensureDb(); return; }
+  if (stateCache) return;
   const { Pool } = require("pg"); // lazy require: only the postgres path needs it
   const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DB_DRIVER=postgres but POSTGRES_URL (or DATABASE_URL) is not set");
-  pgPool = new Pool({ connectionString, ssl: pgSslFor(connectionString), max: Number(process.env.PG_POOL_MAX || 3) });
+  pgPool = new Pool({ connectionString, ssl: pgSslFor(connectionString), max: Number(process.env.PG_POOL_MAX || 3), connectionTimeoutMillis: 15000, idleTimeoutMillis: 10000 });
+  pgPool.on("error", (error) => console.error("Idle Postgres connection failed:", error.message));
+  try {
   await pgPool.query(
     "CREATE TABLE IF NOT EXISTS app_state (id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK (id = 1))"
   );
@@ -940,8 +944,16 @@ async function initPersistence() {
   if (rows.length) {
     stateCache = rows[0].data;
   } else {
-    stateCache = defaultDb();
-    await pgPool.query("INSERT INTO app_state (id, data) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING", [JSON.stringify(stateCache)]);
+    const initial = defaultDb();
+    await pgPool.query("INSERT INTO app_state (id, data) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING", [JSON.stringify(initial)]);
+    const inserted = await pgPool.query("SELECT data FROM app_state WHERE id = 1");
+    stateCache = inserted.rows[0].data;
+  }
+  } catch (error) {
+    const failedPool = pgPool;
+    pgPool = null;
+    await failedPool.end().catch(() => {});
+    throw error;
   }
 }
 
@@ -6022,7 +6034,15 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     } else {
       sessionPayload.allow_promotion_codes = true;
     }
-    const session = await stripe.checkout.sessions.create(sessionPayload);
+    const session = await createCheckoutSession(stripe, sessionPayload, (missingCustomerId) => {
+      mutateDb((db) => {
+        const family = db.families.find((item) => item.id === checkoutFamilyId);
+        if (family && family.stripeCustomerId === missingCustomerId) {
+          family.stripeCustomerId = "";
+          audit(db, "stripe.checkout.missing_customer", { familyId: family.id, customerId: missingCustomerId }, parentEmail);
+        }
+      });
+    });
     mutateDb((db) => audit(db, "stripe.checkout.create", { sessionId: session.id, familyId: checkoutFamilyId, parentEmail, promoCode: checkoutPromotion?.code || "" }));
     return res.json({ mode: "stripe", sessionId: session.id, url: session.url, promotion: checkoutPromotion, trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0 });
   } catch (error) {

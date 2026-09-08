@@ -243,18 +243,25 @@ function resolveVoice(studentVoice) {
 }
 
 async function requestOtp(email) {
-  const clean = String(email || "").trim();
+  const clean = String(email || "").trim().toLowerCase();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
   const response = await fetch(`${portalBaseUrl()}/api/auth/otp/request`, {
     method: "POST",
+    signal: controller.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: clean })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) throw new PortalError(data.error || "otp_request_failed", response.status, data);
-  // testCode is only returned in mock/dev mode (no email provider configured).
+  // Only the server can grant on-screen reviewer codes.
   otpState = { step: "code", email: clean, sentCode: data.testCode || "", sentAt: Date.now() };
-  await storageSet({ [PORTAL_EMAIL_KEY]: clean });
+  void storageSet({ [PORTAL_EMAIL_KEY]: clean }).catch(() => {});
   return { ok: true, testCode: data.testCode || "" };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function verifyOtp(email, code) {
@@ -275,6 +282,7 @@ async function verifyOtp(email, code) {
 async function portalSignOut() {
   portalToken = "";
   portalSession = null;
+  await switchLearningOwner();
   otpState = { step: "email", email: "", sentCode: "" };
   await storageRemove([PORTAL_TOKEN_KEY]);
 }
@@ -317,6 +325,7 @@ async function refreshEntitlement() {
     ];
     portalSession = { email: stored[PORTAL_EMAIL_KEY] || "", entitled: true, status: "test", plan: "test", familyId: "", childId: pickChildId(stored[PORTAL_CHILD_KEY], children), children, locked: false };
     await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
+    await switchLearningOwner();
     renderPlanBanner();
     return portalSession;
   }
@@ -346,6 +355,7 @@ async function refreshEntitlement() {
       locked: Boolean(ent.locked)
     };
     await persistDefaultChild(stored[PORTAL_CHILD_KEY]);
+    await switchLearningOwner();
     renderPlanBanner();
     return portalSession;
   } catch (error) {
@@ -677,7 +687,42 @@ function saveSettings(values) {
   });
 }
 
-const activityStorageKey = "kiddiegptActivity";
+let activityStorageKey = "kiddiegptActivity:guest";
+let learningOwner = "";
+function currentLearningOwner() {
+  return portalSession?.email && portalSession?.childId
+    ? JSON.stringify([portalSession.email.toLowerCase(), portalSession.childId]) : "";
+}
+
+async function switchLearningOwner() {
+  const next = currentLearningOwner();
+  if (next === learningOwner) return;
+  clearTimeout(activitySaveTimer);
+  clearTimeout(activitySyncTimer);
+  const previousKey = activityStorageKey;
+  const previousActivity = pruneActivity(activityCache);
+  learningOwner = next;
+  activityStorageKey = `kiddiegptActivity:${next || "guest"}`;
+  activityCache = {};
+  ++mathSolveToken;
+  mathBackgroundAbortController?.abort();
+  mathBackgroundAbortController = null;
+  mathBackgroundPaused = false;
+  lastMathSolve = null;
+  mathSolveState.problems = [];
+  mathSolveState.index = 0;
+  mathAnswersRevealed = false;
+  mathCorrectionAttempts.clear();
+  selectedMathFile = null;
+  selectedMathCapture = null;
+  await storageSet({ [previousKey]: previousActivity });
+  const activity = await loadActivity();
+  if (next !== learningOwner) return;
+  activityCache = activity;
+  await restoreMathSession();
+  renderMathSolution();
+  renderActivityDashboard();
+}
 let activityCache = {};
 let activitySaveTimer = 0;
 let activitySyncTimer = 0;
@@ -706,13 +751,14 @@ function pruneActivity(activity) {
 }
 
 function loadActivity() {
+  const key = activityStorageKey;
   return new Promise(resolve => {
     if (extensionApi?.storage?.local) {
-      extensionApi.storage.local.get({ [activityStorageKey]: {} }, data => resolve(pruneActivity(data[activityStorageKey] || {})));
+      extensionApi.storage.local.get({ [key]: {} }, data => resolve(pruneActivity(data[key] || {})));
       return;
     }
     try {
-      resolve(pruneActivity(JSON.parse(localStorage.getItem(activityStorageKey) || "{}")));
+      resolve(pruneActivity(JSON.parse(localStorage.getItem(key) || "{}")));
     } catch {
       resolve({});
     }
@@ -744,6 +790,7 @@ function scheduleActivitySync() {
 }
 
 async function syncActivityToPortal() {
+  if (!portalToken || !learningOwner || learningOwner !== currentLearningOwner()) return;
   const date = activityDayKey();
   const bucket = activityCache[date];
   if (!bucket) return;
@@ -1765,7 +1812,11 @@ function explanationStyleNote(settings) {
 async function callOpenAIJson({ settings, instructions, text, parts = [], tool, timeoutMs = 90000, moderate = true, model, advanced = false, gradeBand, explainDepth, maxOutputTokens = MAX_OUTPUT_TOKENS, signal }) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const requestSignal = signal || controller.signal;
+  const abortRequest = () => controller.abort();
+  if (signal?.aborted) abortRequest();
+  else signal?.addEventListener("abort", abortRequest, { once: true });
+  const requestSignal = controller.signal;
+  try {
   const content = [{ type: "input_text", text }, ...parts];
   // Model routing is owned by the backend (Admin Console -> AI & Usage). The
   // extension never hardcodes product model IDs: it sends `advanced` and the
@@ -1783,7 +1834,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
       signal: requestSignal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.openaiApiKey}` },
       body: JSON.stringify({ model: useModel, instructions, input: [{ role: "user", content }], max_output_tokens: maxOutputTokens })
-    }).finally(() => clearTimeout(timeoutId));
+    });
     const directData = await direct.json().catch(() => ({}));
     if (!direct.ok) throw new PortalError(directData?.error?.message || "openai_error", direct.status, directData);
     const directText = extractOutputText(directData);
@@ -1810,7 +1861,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
       ...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
       input: [{ role: "user", content }]
     })
-  }).finally(() => clearTimeout(timeoutId));
+  });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) { await portalSignOut(); throw new PortalError("auth_required", 401); }
   if (!response.ok) {
@@ -1829,6 +1880,10 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
     throw new PortalError("content_blocked", 200);
   }
   return parseOpenAIJson(outputText);
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", abortRequest);
+  }
 }
 
 // ---- Parent sign-in gate (injected; no HTML/CSS file changes needed) ------
@@ -2090,14 +2145,14 @@ function renderPortalGate(mode, message) {
       <form class="kg-gate-card" id="kg-gate-form">
         <button type="button" class="kg-gate-close" id="kg-gate-close" aria-label="Close and go to Home">×</button>
         <img src="icons/kiddiegpt_logo.svg" alt="" class="kg-gate-logo">
-        <h2>${inactive ? "Subscription needed" : "Account sign in"}</h2>
+        <h2>${inactive ? "Subscription needed" : codeStep ? "Enter your code" : "Account sign in"}</h2>
         <p>${inactive
           ? "This account doesn't have an active KiddieGPT plan yet."
           : codeStep
             ? `Enter the code we sent to <b>${escapeHtml(otpState.email)}</b>.`
             : "Sign in with your account email. We'll send you a one-time code."}</p>
         ${inactive ? "" : codeStep ? `
-        <label>Verification code<input type="text" id="kg-gate-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="1234" required></label>
+        <label>Verification code<input type="text" id="kg-gate-code" inputmode="numeric" minlength="6" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" placeholder="6-digit code" required></label>
         <button type="submit" class="kg-gate-primary">Verify code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-resend" disabled>Resend code</button>
         <button type="button" class="kg-gate-link" id="kg-gate-changeemail">Use a different email</button>
@@ -2159,6 +2214,10 @@ function renderPortalGate(mode, message) {
         }
         return;
       }
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit.disabled) return;
+      submit.disabled = true;
+      submit.textContent = "Sending…";
       status.textContent = "Sending code…";
       try {
         await requestOtp(email);
@@ -2170,8 +2229,13 @@ function renderPortalGate(mode, message) {
           openSignupTab(email);
           return;
         }
-        status.textContent = friendlyError(error) || "Could not send the code.";
+        status.textContent = error?.name === "AbortError"
+          ? "Sending took too long. Please try again."
+          : friendlyError(error) || "Could not send the code.";
         reportIssue("login_failed", "OTP request failed: " + (friendlyError(error) || "unknown"), { email });
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Email me a code";
       }
     });
   }
@@ -5292,11 +5356,14 @@ const MATH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 // a phone photo is megabytes, chrome.storage.local is not sized for that, and
 // the text is what makes a restored worksheet readable.
 async function saveMathSession() {
+  const owner = currentLearningOwner();
+  if (!owner || owner !== learningOwner) return;
   if (!lastMathSolve || !mathSolveState.problems?.length) return;
   const solved = mathSolveState.problems.some(p => p?.status === "ready");
   if (!solved) return;   // nothing worth restoring yet
   try {
-    await storageSet({ [MATH_SESSION_KEY]: {
+    await storageSet({ [`${MATH_SESSION_KEY}:${owner}`]: {
+      owner,
       savedAt: Date.now(),
       gradeBand: lastMathSolve.gradeBand,
       transcript: lastMathSolve.transcript || [],
@@ -5307,17 +5374,22 @@ async function saveMathSession() {
 }
 
 async function restoreMathSession() {
+  const owner = currentLearningOwner();
+  if (!owner || owner !== learningOwner) return false;
   let saved;
-  try { saved = (await storageGet([MATH_SESSION_KEY]))?.[MATH_SESSION_KEY]; } catch { return false; }
+  const key = `${MATH_SESSION_KEY}:${owner}`;
+  try { saved = (await storageGet([key]))?.[key]; } catch { return false; }
+  if (owner !== currentLearningOwner() || saved?.owner !== owner) return false;
   if (!saved?.problems?.length) return false;
   if (Date.now() - Number(saved.savedAt || 0) > MATH_SESSION_TTL_MS) {
-    try { await storageRemove([MATH_SESSION_KEY]); } catch {}
+    try { await storageRemove([key]); } catch {}
     return false;
   }
   // No visionParts: a restored worksheet has no image, so anything that would
   // re-read the picture falls back to the transcribed text.
   lastMathSolve = { transcript: saved.transcript || [], gradeBand: saved.gradeBand || "6-8", visionParts: [] };
-  mathSolveState.problems = saved.problems;
+  mathSolveState.problems = saved.problems.map(problem =>
+    problem.status === "solving" ? { ...problem, status: "idle" } : problem);
   mathSolveState.index = Math.min(saved.index || 0, saved.problems.length - 1);
   mathCorrectionAttempts.clear();
   // Re-gate. A revealed answer should not stay revealed across a restart, or
@@ -5328,25 +5400,25 @@ async function restoreMathSession() {
 }
 
 async function clearMathSession() {
-  try { await storageRemove([MATH_SESSION_KEY]); } catch {}
+  try { await storageRemove([MATH_SESSION_KEY, `${MATH_SESSION_KEY}:${currentLearningOwner()}`]); } catch {}
 }
 
 async function ensureMathProblemSolved(index) {
+  const token = mathSolveToken;
   const problem = mathSolveState.problems[index];
   if (!problem || problem.status !== "idle") return;
   const settings = await getOpenAISettings();
-  if (!settings || !lastMathSolve) return;
-  problem.status = "solving";
-  renderMathSolution();
+  if (!settings || !lastMathSolve || token !== mathSolveToken) return;
   await solveMathProblemInPlace({
     settings,
     gradeBand: lastMathSolve.gradeBand,
     index,
-    token: mathSolveToken
+    token
   });
 }
 
 async function solveMathProblemInPlace({ settings, gradeBand, index, token, signal }) {
+  if (token !== mathSolveToken || signal?.aborted) return;
   const placeholder = mathSolveState.problems[index];
   const transcribed = lastMathSolve?.transcript?.[index];
   if (!placeholder) return;
@@ -5374,6 +5446,7 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token, sign
       const usable = resolved[0]?.lines?.some(line => line.math) && resolved[0]?.answer && resolved[0].answer !== "See final line";
       if (!usable) throw new Error("The first solve response did not include a complete answer.");
     } catch (firstError) {
+      if (signal?.aborted || firstError?.name === "AbortError" || token !== mathSolveToken) throw firstError;
       // Vision problems with a diagram get one focused retry on the advanced
       // model (Admin "OpenAI model (Adv)") — it handles dense geometry more
       // reliably — while the first pass stays on the standard model.
@@ -5387,6 +5460,7 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token, sign
         advanced: visualParts.length > 0,
         sourceText,
         gradeBand,
+        signal,
         disputeNote: `${mathSingleSolveNote(placeholder.equation)} ${retryNote}`
       });
       resolved = normalizeMathProblems(rawResult);
@@ -5429,6 +5503,8 @@ async function solveMathProblemInPlace({ settings, gradeBand, index, token, sign
 }
 
 async function solveMathWithAI() {
+  mathBackgroundAbortController?.abort();
+  mathBackgroundAbortController = null;
   const token = ++mathSolveToken;
   mathVisionEscalation = false;
   mathAnswersRevealed = false;
@@ -5593,13 +5669,19 @@ async function solveMathWithAI() {
 }
 
 async function solveRemainingMathProblems({ settings, gradeBand, token, total }) {
-  mathBackgroundAbortController = new AbortController();
-  const signal = mathBackgroundAbortController.signal;
+  if (mathBackgroundAbortController || token !== mathSolveToken || mathBackgroundPaused) return;
+  const controller = new AbortController();
+  mathBackgroundAbortController = controller;
+  const signal = controller.signal;
+  try {
   for (let index = 1; index < total; index += 1) {
-    if (token !== mathSolveToken || mathBackgroundPaused) return;
+    if (token !== mathSolveToken || mathBackgroundPaused || signal.aborted) return;
+    if (mathSolveState.problems[index]?.status !== "idle") continue;
     await solveMathProblemInPlace({ settings, gradeBand, index, token, signal });
   }
-  mathBackgroundAbortController = null;
+  } finally {
+    if (mathBackgroundAbortController === controller) mathBackgroundAbortController = null;
+  }
 }
 
 // Turns any still-"solving" placeholder into a retryable error. Guarded by the
@@ -5660,7 +5742,7 @@ async function correctMathProblem() {
   // still lets a genuinely new solve discard a correction that is mid-flight.
   const token = mathSolveToken;
   mathBackgroundPaused = true;
-  if (mathBackgroundAbortController) mathBackgroundAbortController.abort();
+  // Keep an already-started sibling solve; cancelling would discard paid work.
   const gradeBand = lastMathSolve.gradeBand;
   const index = mathSolveState.index;
   const current = mathSolveState.problems[index];
@@ -5720,6 +5802,7 @@ async function correctMathProblem() {
     console.warn("Math correction failed", error);
     setMathCorrectStatus(`Could not re-solve: ${friendlyError(error)}`, "warn");
   } finally {
+    if (token !== mathSolveToken) return;
     stopMathThinking();
     mathBackgroundPaused = false;
     if (token === mathSolveToken && mathSolveState.problems.length > 1) {
@@ -6840,6 +6923,7 @@ async function onChildSelectChange(event) {
   const id = event.target.value;
   if (portalSession) portalSession.childId = id;
   await storageSet({ [PORTAL_CHILD_KEY]: id });
+  await switchLearningOwner();
   renderChildSelect();
   renderStars();
 }
@@ -6961,6 +7045,11 @@ function initSettingsTool() {
     updateSettingsStatus("Study mission and cached source cleared.", "blue");
   });
   document.getElementById("clearAllDataButton")?.addEventListener("click", async () => {
+    ++mathSolveToken;
+    mathBackgroundAbortController?.abort();
+    mathBackgroundAbortController = null;
+    clearTimeout(activitySaveTimer);
+    clearTimeout(activitySyncTimer);
     // Wipe on-device learning data (activity/stars/cached packs). Keeps sign-in.
     activityCache = {};
     try { extensionApi?.storage?.local?.remove?.(activityStorageKey); } catch {}
@@ -7768,10 +7857,7 @@ extensionApi?.runtime?.onMessage?.addListener((message) => {
   }
 });
 
-loadActivity().then(activity => {
-  activityCache = activity;
-  renderActivityDashboard();
-});
+renderActivityDashboard();
 loadStars();
 
 initPdfTool();

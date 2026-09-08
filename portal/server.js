@@ -10,22 +10,24 @@
 // entrypoint ("The default export must be a function or server").
 const express = require("express");
 const { app, initPersistence, flushPending, runLifecycleSweep } = require("./lib/app");
+const { createPersistenceReady } = require("./lib/persistence-ready");
 
 const port = Number(process.env.PORT || 3000);
 const onVercel = Boolean(process.env.VERCEL);
 const AUTOPILOT_ENABLED = process.env.AUTOPILOT_ENABLED !== "false";
 const SWEEP_INTERVAL_MINUTES = Number(process.env.SWEEP_INTERVAL_MINUTES || 360);
 
-// Start persistence once. Requests await this rather than racing it, so a cold
-// start can never serve from an uninitialised cache.
-const ready = initPersistence();
-ready.catch((error) => console.error("Persistence init failed:", error.message));
+// Share startup work, but allow a later request to recover after a DB timeout.
+const ready = createPersistenceReady(initPersistence);
+// Vercel can freeze a prewarmed instance before its first request. Do not open
+// database sockets during that phase, where connection timers can expire.
+if (!onVercel) ready().catch((error) => console.error("Persistence init failed:", error.message));
 
 const server = express();
 
 // Registered before the app is mounted, so every request waits for persistence.
 server.use((req, res, next) => {
-  ready.then(
+  ready().then(
     () => {
       // Vercel may suspend the instance once a response finishes, so make sure
       // any queued Postgres write has landed first. No-op for the file driver.
@@ -33,7 +35,8 @@ server.use((req, res, next) => {
       next();
     },
     (error) => {
-      res.status(500).json({ error: `Server not ready: ${error.message}` });
+      console.error("Persistence unavailable:", error.message);
+      res.set("Retry-After", "2").status(503).json({ error: "Service temporarily unavailable. Please try again shortly." });
     }
   );
 });
@@ -45,7 +48,7 @@ server.listen(port, () => {
   // Locally the sweep runs on an interval. On Vercel the instance is not
   // long-lived, so Vercel Cron drives /api/cron/sweep instead (see vercel.json).
   if (AUTOPILOT_ENABLED && !onVercel) {
-    ready
+    ready()
       .then(() => {
         runLifecycleSweep("startup").catch((error) => console.error("Sweep failed:", error.message));
         setInterval(() => {
