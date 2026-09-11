@@ -1,0 +1,71 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+test("real routes queue signup, billing, goals, security and deletion notices without sending", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kg-email-test-"));
+  Object.assign(process.env, { DB_DRIVER: "file", DATA_DIR: dir, DATA_PATH: path.join(dir, "state.json"), ADMIN_EMAIL: "admin@gmail.com", ADMIN_PASSWORD: "test-password", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "", POSTMARK_SERVER_TOKEN: "", SMTP_HOST: "", AUTOPILOT_ENABLED: "false", ACTIVITY_LOG: "off" });
+  const { app, initPersistence, drainEmailOutbox, runLifecycleSweep } = require("../lib/app");
+  await initPersistence();
+  const server = app.listen(0);
+  await new Promise(resolve => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const state = () => JSON.parse(fs.readFileSync(process.env.DATA_PATH, "utf8"));
+  const mail = key => (state().emailOutbox || []).filter(e => e.key === key);
+  const call = async (url, body, token, method = "POST") => {
+    const res = await fetch(base + url, { method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    const data = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(data));
+    return data;
+  };
+  const code = () => state().emailLogs[0].preview.match(/\b\d{6}\b/)[0];
+  try {
+    await call("/api/auth/signup", { email: "integration@gmail.com", name: "Integration Parent", password: "test-password", parentalConsent: true });
+    let { token } = await call("/api/auth/verify-otp", { email: "integration@gmail.com", otp: code() });
+    const family = state().families.find(f => f.email === "integration@gmail.com");
+    assert.equal(mail("welcome").length, 1);
+    assert.equal(mail("consent_receipt").length, 1);
+    const invoice = { id: "in_test", object: "invoice", metadata: { familyId: family.id }, amount_paid: 1900, currency: "usd", created: 1780000000, period_end: 1810000000 };
+    for (const type of ["invoice.paid", "invoice.payment_succeeded"]) await call("/api/stripe/webhook", { id: `evt_${type}`, type, data: { object: invoice } });
+    assert.equal(mail("payment_receipt").length, 1);
+    assert.match(mail("payment_receipt")[0].message, /19\.00/);
+    assert.equal(mail("op_new_paid").length, 1);
+    const scheduleDb = state();
+    const scheduledFamily = scheduleDb.families.find(f => f.id === family.id);
+    scheduledFamily.createdAt = new Date(Date.now() - 40 * 86400000).toISOString();
+    scheduledFamily.currentPeriodEnd = new Date(Date.now() + 2 * 86400000).toISOString();
+    scheduledFamily.subscriptionStatus = "active";
+    scheduledFamily.children = [];
+    fs.writeFileSync(process.env.DATA_PATH, JSON.stringify(scheduleDb));
+    await runLifecycleSweep("test");
+    assert.equal(mail("renewal_reminder").length, 1);
+    assert.equal(mail("low_usage").length, 1);
+    assert.equal(mail("weekly_summary").length, 1);
+    assert.doesNotMatch(mail("weekly_summary")[0].message, /Reviewed and practiced across the week/);
+    await runLifecycleSweep("test");
+    assert.equal(mail("renewal_reminder").length, 1);
+    assert.equal(mail("weekly_summary").length, 1);
+    const profile = { children: [{ id: "c1", studentName: "Student", grade: 5, learningGoals: [{ goal: "Practice", reward: "Game", completed: true }] }] };
+    await call("/api/parent/family/profile", profile, token, "PUT");
+    await call("/api/parent/family/profile", profile, token, "PUT");
+    assert.equal(mail("goal_completed").length, 1);
+    ({ token } = await call("/api/account/change-password", { currentPassword: "test-password", newPassword: "test-password-new" }, token));
+    assert.equal(mail("password_changed").length, 1);
+    await call("/api/account/request-email-change", { newEmail: "integration.new@gmail.com" }, token);
+    ({ token } = await call("/api/account/confirm-email-change", { newEmail: "integration.new@gmail.com", otp: code() }, token));
+    assert.equal(mail("email_changed")[0].to, "integration@gmail.com");
+    await call("/api/account/delete-request", {}, token);
+    assert.equal(mail("deletion_requested").length, 1);
+    const admin = await call("/api/auth/login", { email: "admin@gmail.com", password: "test-password", role: "admin" });
+    await call(`/api/admin/users/${family.id}/anonymize`, {}, admin.token);
+    assert.equal(mail("deletion_completed")[0].to, "integration.new@gmail.com");
+    assert.equal(mail("deletion_requested").length, 0);
+    await drainEmailOutbox();
+    assert.equal(mail("deletion_completed")[0].state, "pending");
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

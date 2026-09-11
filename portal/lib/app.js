@@ -5,6 +5,8 @@ const path = require("path");
 const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
 const { createCheckoutSession } = require("./checkout-session");
+const billingPolicy = require("./billing-policy");
+const { acquireBillingLock } = require("./billing-lock");
 
 const app = express();
 // No ETags on app-generated responses. An ETag on /api/pricing or
@@ -919,6 +921,7 @@ function ensureDb() {
 //   flushPending() before a serverless response finishes.
 const DB_DRIVER = (process.env.DB_DRIVER || "file").toLowerCase();
 let pgPool = null;
+let billingLockPool = null;
 let stateCache = null;
 let pgWriteChain = Promise.resolve();
 
@@ -936,11 +939,15 @@ async function initPersistence() {
   if (!connectionString) throw new Error("DB_DRIVER=postgres but POSTGRES_URL (or DATABASE_URL) is not set");
   pgPool = new Pool({ connectionString, ssl: pgSslFor(connectionString), max: Number(process.env.PG_POOL_MAX || 3), connectionTimeoutMillis: 15000, idleTimeoutMillis: 10000 });
   pgPool.on("error", (error) => console.error("Idle Postgres connection failed:", error.message));
+  billingLockPool = new Pool({ connectionString, ssl: pgSslFor(connectionString), max: 3, connectionTimeoutMillis: 15000, idleTimeoutMillis: 10000 });
+  billingLockPool.on("error", error => console.error("Billing lock connection failed:", error.message));
   try {
   await pgPool.query(
     "CREATE TABLE IF NOT EXISTS app_state (id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK (id = 1))"
   );
   const { rows } = await pgPool.query("SELECT data FROM app_state WHERE id = 1");
+  await pgPool.query("CREATE TABLE IF NOT EXISTS billing_operations (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pgPool.query("CREATE TABLE IF NOT EXISTS email_deliveries (id TEXT PRIMARY KEY, payload JSONB NOT NULL, state TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), next_attempt TIMESTAMPTZ NOT NULL DEFAULT now(), lease_until TIMESTAMPTZ)");
   if (rows.length) {
     stateCache = rows[0].data;
   } else {
@@ -953,6 +960,7 @@ async function initPersistence() {
     const failedPool = pgPool;
     pgPool = null;
     await failedPool.end().catch(() => {});
+    await billingLockPool?.end().catch(() => {}); billingLockPool = null;
     throw error;
   }
 }
@@ -968,14 +976,22 @@ function persistReadRaw() {
 
 function persistWriteRaw(db) {
   if (DB_DRIVER === "postgres") {
+    const before = stateCache;
     stateCache = db;
-    const snapshot = JSON.stringify(db);
-    pgWriteChain = pgWriteChain
-      .then(() => pgPool.query(
-        "INSERT INTO app_state (id, data, updated_at) VALUES (1, $1::jsonb, now()) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()",
-        [snapshot]
-      ))
-      .catch((error) => console.error("Postgres write failed:", error.message));
+    const snapshot = JSON.parse(JSON.stringify(db));
+    pgWriteChain = pgWriteChain.catch(() => {}).then(async () => {
+      const client = await pgPool.connect();
+      try {
+        await client.query("BEGIN");
+        const latest = (await client.query("SELECT data FROM app_state WHERE id=1 FOR UPDATE")).rows[0]?.data || {};
+        const merged = require("./state-merge").mergeState(before, snapshot, latest);
+        await client.query("UPDATE app_state SET data=$1::jsonb, updated_at=now() WHERE id=1", [JSON.stringify(merged)]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
+    });
     return;
   }
   fs.mkdirSync(dataDir, { recursive: true });
@@ -1441,6 +1457,10 @@ function usageWindow(child, days = 7) {
 }
 
 function audit(db, action, payload, actor) {
+  const family = (db.families || []).find(f => f.id === payload?.familyId || (payload?.email && f.email === payload.email));
+  for (const event of require("./email-events").emailEvents(action, payload || {}, family, makeId("mail"))) {
+    queueTemplate(db, event.key, event.data, event.id, family?.id);
+  }
   const who = actor || payload?.actor || payload?.adminEmail || payload?.email || "system";
   db.auditLogs.unshift({
     id: makeId("log"),
@@ -1571,7 +1591,7 @@ function recordStripePayment(db, event, object, family) {
   };
   if (existingIndex >= 0) db.payments[existingIndex] = record;
   else db.payments.unshift(record);
-  if (family && !isReplacedMonthlyPayment) {
+  if (family && !isReplacedMonthlyPayment && !event.type.includes("refund") && status === "paid" && (!family.lastPaymentAt || Date.parse(record.createdAt) >= Date.parse(family.lastPaymentAt))) {
     family.stripePaymentId = paymentId || family.stripePaymentId;
     family.lastPaymentAmountCents = amountCents || family.lastPaymentAmountCents;
     family.lastPaymentCurrency = record.currency;
@@ -1717,6 +1737,152 @@ function stripeMode() {
   const key = process.env.STRIPE_SECRET_KEY || "";
   if (!key) return "mock";
   return key.startsWith("sk_test_") ? "test" : "live";
+}
+
+// Persist external side effects before acknowledging success so retries resume them.
+async function loadBillingOperation(id) {
+  if (pgPool) return (await pgPool.query("SELECT data FROM billing_operations WHERE id=$1", [id])).rows[0]?.data || null;
+  return readDb().billingOperations?.[id] || null;
+}
+async function saveBillingOperation(op) {
+  if (pgPool) await pgPool.query("INSERT INTO billing_operations(id,data) VALUES ($1,$2::jsonb) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data, updated_at=now()", [op.id, JSON.stringify(op)]);
+  else mutateDb(db => { db.billingOperations ||= {}; db.billingOperations[op.id] = op; });
+}
+function billingKey(...parts) { return "kg_" + crypto.createHash("sha256").update(parts.join(":")).digest("hex"); }
+
+async function billingGuard(req, res, next) {
+  const email = normalizeEmail(req.auth?.role === "parent" ? req.auth.email : req.body?.email || req.body?.parentEmail || "");
+  if (!email) return res.status(400).json({ error: "Select a parent account." });
+  try {
+    const release = await acquireBillingLock(billingLockPool, email);
+    if (!release) return res.status(409).json({ error: "A billing change is already processing. Refresh before trying again." });
+    const end = res.end.bind(res);
+    let ended = false;
+    res.end = function (...args) {
+      if (ended) return res;
+      ended = true;
+      flushPending().then(async () => { await release(); end(...args); }).catch(async error => {
+        console.error("Billing persistence failed:", error.message);
+        await release().catch(() => {});
+        const body = JSON.stringify({ error: "Billing status could not be saved. Retry safely to reconcile it." });
+        res.statusCode = 503; res.setHeader("Content-Length", Buffer.byteLength(body)); end(body);
+      });
+      return res;
+    };
+    if (pgPool) {
+      await flushPending();
+      const latest = await pgPool.query("SELECT data FROM app_state WHERE id=1");
+      if (latest.rows[0]) stateCache = latest.rows[0].data;
+    }
+    next();
+  } catch (error) { return res.status(503).json({ error: "Billing is temporarily unavailable. Please try again." }); }
+}
+
+async function refundFamilyPayment(family, options = {}) {
+  let paymentId = options.paymentId || family.stripePaymentId;
+  if (!paymentId) throw new Error("No captured payment is available to refund.");
+  const full = options.amountCents == null;
+  if (!full && (!Number.isInteger(options.amountCents) || options.amountCents <= 0)) throw new Error("Enter a positive refund amount in cents.");
+  const id = options.operationId || billingKey("refund", family.id, paymentId, full ? "full" : options.requestId || "");
+  if (!full && !options.requestId) throw new Error("A request ID is required for a partial refund.");
+  let op = await loadBillingOperation(id);
+  const stripe = stripeClient();
+  if (op) paymentId = op.paymentId;
+  const mock = !stripe || /^(pi|in|ch)_mock/.test(paymentId);
+  if (!op) {
+    if (family.pendingRefundOperation && family.pendingRefundOperation !== id) throw new Error("Another refund is pending. Resolve it before creating another.");
+    const source = readDb().payments.find(p => p.paymentId === paymentId);
+    if (source?.familyId && source.familyId !== family.id) throw new Error("This payment belongs to another family.");
+    let target = {}, total = Number(source?.amountCents || (family.stripePaymentId === paymentId ? family.lastPaymentAmountCents : 0));
+    let refunded = (family.refunds || []).filter(r => r.paymentId === paymentId && r.status === "succeeded").reduce((sum, r) => sum + Number(r.amountCents || 0), 0);
+    if (!mock) {
+      const resolved = await stripeRefundParamsFor(stripe, paymentId);
+      if (!resolved) throw new Error("No refundable charge was found.");
+      target = resolved.params.payment_intent ? { payment_intent: resolved.params.payment_intent } : { charge: resolved.params.charge };
+      let charge;
+      if (target.payment_intent) {
+        const pi = await stripe.paymentIntents.retrieve(target.payment_intent, { expand: ["latest_charge"] });
+        charge = typeof pi.latest_charge === "object" ? pi.latest_charge : pi.latest_charge ? await stripe.charges.retrieve(pi.latest_charge) : null;
+      } else charge = await stripe.charges.retrieve(target.charge);
+      if (!charge?.paid || stripeId(charge.customer) !== family.stripeCustomerId) throw new Error("No captured payment belongs to this customer.");
+      total = Number(charge.amount_captured || charge.amount);
+      refunded = Number(charge.amount_refunded || 0);
+    }
+    const remaining = total - refunded;
+    const amount = full ? remaining : options.amountCents;
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > remaining) throw new Error("Refund amount exceeds the remaining captured payment.");
+    const endAccess = amount + refunded >= total && paymentId === family.stripePaymentId;
+    op = { id, type: "refund", state: "started", familyId: family.id, paymentId, target,
+      amountCents: amount, totalCents: total, fullRefund: amount + refunded >= total, endAccess,
+      subscriptionId: endAccess ? effectiveFamilySubscriptionId(family) : "",
+      monthlySubscriptionIds: endAccess && hasConfirmedYearlyUpgrade(family) ? family.yearlyUpgrade.monthlySubscriptionIds || [] : [],
+      reason: options.reason || "Refund requested", createdAt: nowIso() };
+    await saveBillingOperation(op);
+  }
+  if (op.familyId !== family.id || op.type !== "refund") throw new Error("Refund operation belongs to another family.");
+  if (op.state !== "completed") {
+    mutateDb(db => { const f = db.families.find(f => f.id === family.id); f.pendingRefundOperation = id;
+      f.refundPending = { operationId: id, paymentId: op.paymentId, amountCents: op.amountCents, status: op.refund?.status || "processing", reason: op.reason, createdAt: op.createdAt }; });
+    await flushPending();
+  }
+  if (op.endAccess && op.state !== "completed" && !op.renewalStopped && !mock && op.subscriptionId) {
+    await scheduleStripeCancellationAtPeriodEnd(stripe, op.subscriptionId);
+    op.renewalStopped = true; await saveBillingOperation(op);
+  }
+  const result = await require("./billing-refund").executeRefund({
+    op, stripe: mock ? null : stripe, save: saveBillingOperation,
+    cancel: async operation => {
+      if (mock || !operation.subscriptionId || operation.subscriptionId.startsWith("sub_mock")) return;
+      // Keep any remaining monthly subscription resumable, with renewal off.
+      for (const monthlyId of operation.monthlySubscriptionIds) {
+        const monthly = await stripe.subscriptions.retrieve(monthlyId);
+        if (monthly.status !== "canceled") await stripe.subscriptions.update(monthlyId, { cancel_at_period_end: true }, { idempotencyKey: billingKey(id, monthlyId, "stop-renewal") });
+      }
+      const sub = await stripe.subscriptions.retrieve(operation.subscriptionId, { expand: ["schedule"] });
+      if (sub.status !== "canceled") {
+        if (sub.schedule) await stripe.subscriptionSchedules.release(stripeId(sub.schedule), {}, { idempotencyKey: billingKey(id, "release") });
+        await stripe.subscriptions.cancel(sub.id);
+      }
+    },
+    finalize: async operation => {
+      const result = mutateDb(db => {
+        const f = db.families.find(item => item.id === operation.familyId);
+        f.refunds ||= [];
+        const existing = f.refunds.find(r => r.refundId === operation.refund.id);
+        let restored = Boolean(existing && f.subscriptionStatus === "cancel_scheduled" && f.yearlyUpgrade?.status === "ended" && f.stripePaymentId !== paymentId);
+        if (!existing) {
+          f.refunds.unshift({ refundId: operation.refund.id, paymentId, amountCents: operation.amountCents, status: "succeeded", reason: operation.reason, createdAt: nowIso() });
+          const p = db.payments.find(p => p.paymentId === paymentId);
+          if (p) { p.status = operation.fullRefund ? "refunded" : "partial_refunded"; p.refundId = operation.refund.id; }
+          if (operation.endAccess && f.stripePaymentId === paymentId) {
+            restored = billingPolicy.restoreMonthly(f);
+            if (!restored) { f.paymentStatus = "refunded"; markSubscriptionEndedNow(f, operation.reason, operation.subscriptionId, options.admin ? "admin" : "auto"); }
+            billingPolicy.recordRefundCancellation(f, paymentId);
+          } else if (f.stripePaymentId === paymentId) f.paymentStatus = operation.fullRefund ? "refunded" : "partial_refunded";
+          f.refundedAt = nowIso();
+          audit(db, "refund.create", { familyId: f.id, email: f.email, refundId: operation.refund.id, amountCents: operation.amountCents, fullRefund: operation.fullRefund, revertedToMonthlyUntil: restored ? f.currentPeriodEnd : "" });
+          if (restored) queueTemplate(db, "monthly_restored", { parentName: f.parentName, nextDate: emailDate(f.currentPeriodEnd) }, "restore:" + operation.refund.id, f.id);
+        }
+        delete f.pendingRefundOperation;
+        return { mode: mock ? "mock" : "stripe", refunded: true, refundId: operation.refund.id, status: "succeeded",
+          familyId: f.id, subscriptionStatus: f.subscriptionStatus, cancelAccessUntil: f.cancelAccessUntil || "", amountCents: operation.amountCents,
+          message: restored ? "Your yearly upgrade was refunded. Remaining monthly access is restored with renewal off."
+            : operation.endAccess ? "Your payment was refunded and its access has ended." : "Refund completed. Your subscription access is unchanged." };
+      });
+      await flushPending();
+      return result;
+    }
+  });
+  if (result.status !== "succeeded") mutateDb(db => {
+    const f = db.families.find(f => f.id === family.id);
+    f.refundPending = { operationId: op.id, refundId: result.refundId, status: result.status, paymentId, amountCents: op.amountCents, reason: op.reason, createdAt: op.createdAt };
+  });
+  else mutateDb(db => { delete db.families.find(f => f.id === family.id).refundPending; });
+  return result;
+}
+
+function monitorBillingFailure(email, title, error) {
+  mutateDb(db => monitor(db, "error", "billing", title, { email, detail: error.message }, email));
 }
 
 function stripeClient() {
@@ -1878,70 +2044,27 @@ function cancellationStillActive(family) {
   return Number.isFinite(accessUntil) && accessUntil > Date.now();
 }
 
-function billingCooldownFor(family) {
-  const until = family?.billingCooldownUntil || "";
-  const untilMs = new Date(until).getTime();
-  return Number.isFinite(untilMs) && untilMs > Date.now()
-    ? { until, untilMs }
-    : null;
-}
+function billingCooldownFor(family) { return billingPolicy.purchaseCooldown(family); }
 
 function recordBillingAction(family, action) {
-  if (!family) return family;
-  const history = Array.isArray(family.billingActionHistory) ? family.billingActionHistory : [];
-  family.billingActionHistory = [{ action, at: nowIso() }, ...history].slice(0, 20);
-  // Arm the short cooldown. It only gates the charge-creating actions (yearly
-  // upgrade, retention discount) — cancellation, a fresh checkout, and resume
-  // are never blocked by it — so a repeat cancellation or re-subscribe is always
-  // allowed while rapid duplicate charges are still throttled.
-  family.billingCooldownUntil = new Date(Date.now() + BILLING_COOLDOWN_MS).toISOString();
+  family.billingActionHistory = [{ action, at: nowIso() }, ...(family.billingActionHistory || [])].slice(0, 50);
   return family;
 }
-
 function billingCooldownPayload(family) {
-  const cooldown = billingCooldownFor(family);
-  return {
-    code: "billing_cooldown",
-    error: `Billing changes are temporarily paused. Please wait ${BILLING_COOLDOWN_MINUTES} minutes before trying again.`,
-    cooldownUntil: cooldown?.until || family?.billingCooldownUntil || ""
-  };
+  return { code: "billing_cooldown",
+    error: "Following two refunded cancellations within 30 days, new purchases and upgrades are paused for 24 hours. Your remaining paid access is unchanged. You can still cancel renewal or contact support.",
+    cooldownUntil: billingCooldownFor(family)?.until || "" };
 }
-
-// Refund policy (monthly and yearly alike): cancelling within REFUND_WINDOW_DAYS
-// of the most recent payment is a full refund and access ends immediately.
-// After that there is no refund — access runs to the end of the paid period and
-// simply does not renew. The window re-opens on every payment (each renewal).
-const REFUND_WINDOW_DAYS = Math.max(0, Number(process.env.REFUND_WINDOW_DAYS || 7));
-// A parent could otherwise threaten to cancel every month and collect the
-// retention discount each time. Once accepted, the save offer is not shown or
-// applied again until this cooldown passes (default one year).
-// The save offer can be redeemed once per cancel attempt, up to the admin's
-// maxRedemptions cap over the account's life. Availability is a redemption count,
-// not a time cooldown: a parent who never attempts to cancel is simply never
-// offered (and pays full price), while one who does can take it again until the
-// cap is reached.
+const REFUND_WINDOW_DAYS = 0;
+const BILLING_COOLDOWN_MS = 24 * 3600000;
+const BILLING_COOLDOWN_MINUTES = 1440;
 function retentionOfferEligible(family, promo) {
-  if (!family) return false;
-  const max = Math.min(99, Math.max(1, Number(promo?.maxRedemptions) || 1));
-  return Number(family.retentionUsesCount || 0) < max;
+  return Boolean(family) && Number(family.retentionUsesCount || 0) < Math.min(99, Math.max(1, Number(promo?.maxRedemptions) || 1));
 }
-// True while an accepted discount is still sitting on the upcoming invoice (no
-// renewal has been billed since it was accepted). Re-confirming in this state
-// must not burn another redemption or stack a second discount on one invoice.
 function retentionOfferPendingUnconsumed(family) {
-  const acceptedAt = family?.retentionLastAcceptedAt ? new Date(family.retentionLastAcceptedAt).getTime() : NaN;
-  if (!Number.isFinite(acceptedAt)) return false;
-  const paidAt = family?.lastPaymentAt ? new Date(family.lastPaymentAt).getTime() : NaN;
-  return !Number.isFinite(paidAt) || paidAt <= acceptedAt;
+  const accepted = Date.parse(family?.retentionLastAcceptedAt);
+  return Number.isFinite(accepted) && (!family.lastPaymentAt || Date.parse(family.lastPaymentAt) <= accepted);
 }
-// Short anti-duplicate cooldown between charge-creating billing actions. 30
-// minutes by default (was 24h). BILLING_COOLDOWN_HOURS is still honoured for
-// backward compatibility and converted to minutes.
-const BILLING_COOLDOWN_MINUTES = Math.max(1, Number(
-  process.env.BILLING_COOLDOWN_MINUTES
-  || (process.env.BILLING_COOLDOWN_HOURS ? Number(process.env.BILLING_COOLDOWN_HOURS) * 60 : 30)
-));
-const BILLING_COOLDOWN_MS = BILLING_COOLDOWN_MINUTES * 60000;
 
 // ---- Stripe card-upfront free trial ----------------------------------------
 // Self-serve signups get a card-upfront trial: Stripe collects the card at
@@ -1995,74 +2118,10 @@ function eligibleForTrial(family) {
 }
 
 function refundWindowFor(family) {
-  // A card-upfront trial already gave the parent a risk-free week — cancelling
-  // during it costs nothing — so a charge that follows a trial does NOT also get
-  // a refund window. The trial itself IS the window. Only a subscription that
-  // was never on a trial (e.g. admin-created paid, or trials disabled) earns the
-  // post-payment refund window. Same markers eligibleForTrial() uses.
-  const hadTrial = Boolean(family?.trialUsedAt || family?.trialStartedAt || family?.trialEndedAt);
-  if (hadTrial) {
-    return { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: family?.firstPaymentAt || "", endsAt: "", daysLeft: 0, trialWasWindow: true };
-  }
-  // Keyed off the FIRST payment of the current subscription, not the last, so a
-  // renewal never re-opens the window. firstPaymentAt is set once when a
-  // subscription starts charging and cleared when it ends, so a fresh
-  // subscription earns a new window. Legacy rows fall back to lastPaymentAt
-  // (long past, so not eligible) rather than throwing the gate open.
-  const paidAt = family?.firstPaymentAt || family?.lastPaymentAt || family?.createdAt || "";
-  const paidMs = paidAt ? new Date(paidAt).getTime() : NaN;
-  if (!Number.isFinite(paidMs)) {
-    return { eligible: false, windowDays: REFUND_WINDOW_DAYS, paidAt: "", endsAt: "", daysLeft: 0 };
-  }
-  const endsMs = paidMs + REFUND_WINDOW_DAYS * 86400000;
-  const msLeft = endsMs - Date.now();
-  return {
-    eligible: msLeft > 0,
-    windowDays: REFUND_WINDOW_DAYS,
-    paidAt,
-    endsAt: new Date(endsMs).toISOString(),
-    daysLeft: Math.max(0, Math.ceil(msLeft / 86400000))
-  };
+  return { eligible: false, windowDays: 0, trialWasWindow: true };
 }
-
-// Every RENEWAL gets its own short refund window: cancelling within
-// RENEWAL_REFUND_WINDOW_HOURS of a renewal charge refunds that renewal in full
-// and ends access. This is separate from the first-payment window above and
-// applies to renewals of trial-converted subscriptions too (which have no
-// first-payment window). A renewal is any charge later than the subscription's
-// first charge — firstPaymentAt marks the first, lastPaymentAt the most recent.
-const RENEWAL_REFUND_WINDOW_HOURS = Math.max(0, Number(process.env.RENEWAL_REFUND_WINDOW_HOURS || 24));
-function renewalRefundWindowFor(family) {
-  const empty = { eligible: false, hours: RENEWAL_REFUND_WINDOW_HOURS, chargedAt: "", endsAt: "", amountCents: 0, isRenewal: false, paidResubscribe: false };
-  const lastAt = family?.lastPaymentAt || "";
-  const firstAt = family?.firstPaymentAt || "";
-  const lastMs = lastAt ? new Date(lastAt).getTime() : NaN;
-  const firstMs = firstAt ? new Date(firstAt).getTime() : NaN;
-  if (!Number.isFinite(lastMs)) return empty;
-  // A renewal is a charge meaningfully later than the subscription's first one.
-  const isRenewal = Number.isFinite(firstMs) ? lastMs > firstMs + 60000 : false;
-  // The 24h grace applies to EVERY charge except a brand-new subscriber's first
-  // one (that gets the longer 7-day window). So besides renewals, the first
-  // charge of any subscription for an account that has trialed before is covered:
-  // a trial that just converted, OR a paid resubscribe. Consistent rule: cancel
-  // within 24h of any charge and it is refunded in full.
-  const hadTrial = Boolean(family?.trialUsedAt || family?.trialStartedAt || family?.trialEndedAt);
-  const firstChargeAfterTrial = !isRenewal && hadTrial;
-  if (!isRenewal && !firstChargeAfterTrial) return { ...empty, chargedAt: lastAt };
-  const endsMs = lastMs + RENEWAL_REFUND_WINDOW_HOURS * 3600000;
-  const msLeft = endsMs - Date.now();
-  return {
-    eligible: msLeft > 0,
-    hours: RENEWAL_REFUND_WINDOW_HOURS,
-    chargedAt: lastAt,
-    endsAt: new Date(endsMs).toISOString(),
-    amountCents: Number(family?.lastPaymentAmountCents || 0),
-    isRenewal,
-    // Distinguish the two first-charge-after-trial cases for messaging/labels.
-    paidResubscribe: firstChargeAfterTrial && family?.currentSubscriptionTrialed === false,
-    trialConversion: firstChargeAfterTrial && family?.currentSubscriptionTrialed !== false
-  };
-}
+const RENEWAL_REFUND_WINDOW_HOURS = 24;
+function renewalRefundWindowFor(family) { return billingPolicy.refundWindow(family); }
 
 function markCancellationScheduled(family, subscription, reason = "", source = "") {
   if (!family) return family;
@@ -2152,6 +2211,7 @@ function effectiveFamilySubscriptionId(family) {
 
 async function scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId) {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["schedule"] });
+  if (subscription.status === "canceled") return subscription;
   const scheduleId = stripeId(subscription.schedule);
   if (scheduleId) {
     await stripe.subscriptionSchedules.release(scheduleId);
@@ -2194,124 +2254,6 @@ async function cancelStripeSubscriptionsNow(stripe, family) {
     }
   }
   return results;
-}
-
-async function createImmediateYearlyUpgradeSchedule(stripe, options) {
-  const {
-    customerId,
-    yearlyPriceId,
-    defaultPaymentMethod,
-    email,
-    bonusMonths,
-    monthlySubscriptionIds,
-    initialAmountCents,
-    promotionCode
-  } = options;
-  const yearlyPrice = await stripe.prices.retrieve(yearlyPriceId);
-  const productId = stripeId(yearlyPrice.product);
-  const accessMonths = 12 + Number(bonusMonths || 0);
-  if (!yearlyPrice.unit_amount || !yearlyPrice.currency || !productId) {
-    throw new Error("Yearly Stripe Price must have a fixed amount, currency, and product.");
-  }
-
-  const defaultSettings = {};
-  if (typeof defaultPaymentMethod === "string" && defaultPaymentMethod) {
-    defaultSettings.default_payment_method = defaultPaymentMethod;
-  }
-
-  return stripe.subscriptionSchedules.create({
-    customer: customerId,
-    start_date: "now",
-    end_behavior: "release",
-    default_settings: defaultSettings,
-    metadata: {
-      app: "KiddieGPT",
-      parentEmail: email,
-      yearlyUpgrade: "true",
-      upgradeBillingMode: "immediate_15_month",
-      bonusMonths: String(bonusMonths),
-      accessMonths: String(accessMonths),
-      promotionCode: promotionCode || "",
-      replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
-    },
-    phases: [
-      {
-        items: [
-          {
-            price_data: {
-              currency: yearlyPrice.currency,
-              product: productId,
-              unit_amount: Number(initialAmountCents || yearlyPrice.unit_amount),
-              recurring: {
-                interval: "month",
-                interval_count: accessMonths
-              }
-            },
-            quantity: 1
-          }
-        ],
-        iterations: 1,
-        metadata: {
-          app: "KiddieGPT",
-          parentEmail: email,
-          yearlyUpgrade: "true",
-          upgradeBillingMode: "immediate_15_month",
-          bonusMonths: String(bonusMonths),
-          accessMonths: String(accessMonths),
-          promotionCode: promotionCode || "",
-          replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
-        }
-      },
-      {
-        items: [{ price: yearlyPriceId, quantity: 1 }],
-        metadata: {
-          app: "KiddieGPT",
-          parentEmail: email,
-          yearlyUpgrade: "true",
-          upgradeBillingMode: "standard_yearly",
-          promotionCode: promotionCode || "",
-          replacedMonthlySubscriptions: monthlySubscriptionIds.join(",")
-        }
-      }
-    ],
-    expand: ["subscription", "subscription.latest_invoice.payment_intent", "subscription.items.data.price"]
-  });
-}
-
-async function settleStripeInvoice(stripe, invoice) {
-  if (!stripe || !invoice) return null;
-  const invoiceId = stripeId(invoice);
-  if (!invoiceId) return null;
-  let next = typeof invoice === "object" ? invoice : await stripe.invoices.retrieve(invoiceId, { expand: ["payment_intent"] });
-  if (next.status === "draft") {
-    next = await stripe.invoices.finalizeInvoice(invoiceId, { expand: ["payment_intent"] });
-  }
-  if (next.status === "open") {
-    next = await stripe.invoices.pay(invoiceId, { expand: ["payment_intent"] });
-  }
-  return next;
-}
-
-function addMonthsIso(value, months) {
-  const date = value ? new Date(value) : new Date();
-  if (Number.isNaN(date.getTime()) || date.getTime() < Date.now()) {
-    date.setTime(Date.now());
-  }
-  date.setUTCMonth(date.getUTCMonth() + Number(months || 0));
-  return date.toISOString();
-}
-
-function addDaysIso(value, days) {
-  const date = value ? new Date(value) : new Date();
-  if (Number.isNaN(date.getTime()) || date.getTime() < Date.now()) {
-    date.setTime(Date.now());
-  }
-  date.setUTCDate(date.getUTCDate() + Number(days || 0));
-  return date.toISOString();
-}
-
-function hasActiveOverride(family) {
-  return Boolean(family?.entitlementOverrideUntil && new Date(family.entitlementOverrideUntil).getTime() > Date.now());
 }
 
 function subscriptionHasCoupon(subscription, couponId, discountId) {
@@ -2436,6 +2378,16 @@ function markWebhookProcessed(db, eventId, type) {
   if (db.processedWebhookEvents.length > 500) db.processedWebhookEvents.length = 500;
 }
 
+app.use("/api", async (req, res, next) => {
+  if (!pgPool) return next();
+  try {
+    await flushPending();
+    const latest = await pgPool.query("SELECT data FROM app_state WHERE id=1");
+    if (latest.rows[0]) stateCache = latest.rows[0].data;
+    next();
+  } catch (error) { res.status(503).json({ error: "Account data is temporarily unavailable." }); }
+});
+
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   const stripe = stripeClient();
   let event;
@@ -2474,9 +2426,62 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   const webhookObject = event.data && event.data.object ? event.data.object : {};
   const refundWebhook = event.type.includes("refund");
   let webhookCancellationResult = [];
-  if (refundWebhook && stripe && process.env.STRIPE_SECRET_KEY) {
-    const family = findFamilyForStripeObject(readDb(), webhookObject);
-    webhookCancellationResult = await cancelStripeSubscriptionsNow(stripe, family);
+  let webhookFamily = findFamilyForStripeObject(readDb(), webhookObject);
+  if (!webhookFamily && refundWebhook && stripe && webhookObject.charge) {
+    try { webhookFamily = findFamilyForStripeObject(readDb(), await stripe.charges.retrieve(stripeId(webhookObject.charge))); }
+    catch (error) { return res.status(503).json({ error: "Cannot resolve refund customer yet." }); }
+  }
+  if (webhookFamily) {
+    const release = await acquireBillingLock(billingLockPool, webhookFamily.email);
+    if (!release) return res.status(503).json({ error: "Billing operation in progress; retry webhook." });
+    const end = res.end.bind(res);
+    let ending = false;
+    res.end = function (...args) {
+      if (ending) return res;
+      ending = true;
+      flushPending().then(release).then(() => end(...args));
+      return res;
+    };
+    if (pgPool) {
+      await flushPending();
+      stateCache = (await pgPool.query("SELECT data FROM app_state WHERE id=1")).rows[0].data;
+      webhookFamily = readDb().families.find(f => f.id === webhookFamily.id);
+    }
+  }
+  if (refundWebhook) {
+    try {
+      const refunds = webhookObject.object === "refund" ? [webhookObject] : webhookObject.refunds?.data || [];
+      for (const refund of refunds) {
+        let op = refund.metadata?.billingOperation ? await loadBillingOperation(refund.metadata.billingOperation) : null;
+        if (!op && webhookFamily?.pendingRefundOperation) {
+          const pending = await loadBillingOperation(webhookFamily.pendingRefundOperation);
+          if (pending?.refund?.id === refund.id) op = pending;
+        }
+        if (!op && webhookFamily && refund.status === "succeeded") {
+          const charge = stripe ? await stripe.charges.retrieve(stripeId(refund.charge)) : webhookObject;
+          const paymentId = stripeId(charge.invoice) || stripeId(charge.payment_intent) || charge.id;
+          const total = Number(charge.amount || 0), full = total > 0 && Number(charge.amount_refunded || refund.amount) >= total;
+          const current = paymentId === webhookFamily.stripePaymentId;
+          op = { id: billingKey("external-refund", refund.id), type: "refund", familyId: webhookFamily.id,
+            paymentId, refund, amountCents: refund.amount, totalCents: total, fullRefund: full,
+            endAccess: full && current, subscriptionId: full && current ? effectiveFamilySubscriptionId(webhookFamily) : "",
+            monthlySubscriptionIds: full && current && hasConfirmedYearlyUpgrade(webhookFamily) ? webhookFamily.yearlyUpgrade.monthlySubscriptionIds : [],
+            state: "started", reason: "Stripe dashboard refund", createdAt: nowIso() };
+          await saveBillingOperation(op);
+        }
+        if (op) {
+          const f = readDb().families.find(f => f.id === op.familyId);
+          if (f) await refundFamilyPayment(f, { operationId: op.id, paymentId: op.paymentId, reason: op.reason, admin: true });
+        }
+      }
+      mutateDb(db => markWebhookProcessed(db, event.id, event.type));
+      return res.json({ received: true });
+    } catch (error) {
+      return res.status(503).json({ error: "Refund reconciliation is pending. Stripe should retry." });
+    }
+  }
+  if (webhookFamily?.pendingUpgradeOperation && !event.type.startsWith("charge.dispute")) {
+    return res.status(503).json({ error: "Upgrade is being reconciled; retry this event." });
   }
 
   // A chargeback ends the relationship: stop the Stripe subscription so it cannot
@@ -2548,10 +2553,24 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       return null;
     }
 
+    const incomingSubId = event.type.startsWith("customer.subscription.") ? object.id : stripeId(object.subscription);
+    const currentSubId = effectiveFamilySubscriptionId(family);
+    // Former monthly/yearly events must never overwrite the current subscription.
+    if (incomingSubId && currentSubId && incomingSubId !== currentSubId && event.type !== "checkout.session.completed") {
+      if (event.type.startsWith("invoice.")) recordStripePayment(db, event, object, null);
+      return family;
+    }
+    const paidDeferred = hasConfirmedYearlyUpgrade(family) && ["paid_upgrade", "trial_offer"].includes(family.yearlyUpgrade.billingMode)
+      && Number(family.yearlyUpgrade.yearlyNextRenewalAt) * 1000 > Date.now();
+    const lastEvent = Number(family.lastSubscriptionEventCreated || 0);
+    if (event.type.startsWith("customer.subscription.") && event.created && event.created < lastEvent) return family;
+    if (event.type.startsWith("customer.subscription.")) family.lastSubscriptionEventCreated = event.created || lastEvent;
+
     if (event.type === "checkout.session.completed") {
       // A fresh Checkout supersedes any earlier yearly upgrade; retire it first
       // so normaliseFamily() does not overwrite the new plan/subscription id.
       retireYearlyUpgrade(family);
+      delete family.pendingCheckout;
       // Checkout completing means the card was collected, NOT that money moved.
       // On a trial nothing is charged until trial_end, so marking paid here would
       // report revenue that does not exist and put the family in the paying book.
@@ -2580,9 +2599,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     // when the first invoice is paid, -> past_due on failure, -> cancelled), so
     // mirror its status rather than inferring one.
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-      const mapped = statusFromStripeSubscription(object.status);
-      if (object.trial_end) family.trialEndsAt = unixToIso(object.trial_end) || family.trialEndsAt;
-      if (object.status === "trialing") {
+      const mapped = paidDeferred && object.status === "trialing" ? "active" : statusFromStripeSubscription(object.status);
+      if (object.trial_end && !paidDeferred && !["trialing", "scheduled"].includes(family.yearlyUpgrade?.status)) family.trialEndsAt = unixToIso(object.trial_end) || family.trialEndsAt;
+      if (object.status === "trialing" && !paidDeferred) {
         family.paymentStatus = "trial";
         family.trialUsedAt = family.trialUsedAt || nowIso();
       }
@@ -2601,13 +2620,18 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     // money on it flips the family to active/paid and stamps first payment.
     if ((event.type === "invoice.payment_succeeded" || event.type === "invoice.paid" || event.type === "invoice_payment.paid")
         && Number(object.amount_paid || 0) > 0) {
+      const paidAt = unixToIso(object.status_transitions?.paid_at || object.created);
+      if (family.lastPaymentAt && paidAt && Date.parse(paidAt) < Date.parse(family.lastPaymentAt)) return family;
+      if (family.stripePaymentId === object.id && (family.refunds || []).some(r => r.paymentId === object.id && r.status === "succeeded")) return family;
+      if (family.stripePaymentId === object.id && family.subscriptionStatus === "cancel_scheduled") return family;
+      if (family.yearlyUpgrade?.status === "trialing" && family.yearlyUpgrade.yearlySubscriptionId === incomingSubId) family.yearlyUpgrade.status = "scheduled";
       family.paymentStatus = "paid";
       family.subscriptionStatus = "active";
       clearDunning(family); // payment recovered — stop dunning, restore access
       family.stripePaymentId = stripeId(object.payment_intent) || stripeId(object.charge) || stripeId(object.id) || family.stripePaymentId;
       family.stripeCustomerId = stripeId(object.customer) || family.stripeCustomerId;
       family.stripeSubscriptionId = stripeId(object.subscription) || family.stripeSubscriptionId;
-      family.lastPaymentAt = nowIso();
+      family.lastPaymentAt = unixToIso(object.status_transitions?.paid_at || object.created) || nowIso();
       family.firstPaymentAt = family.firstPaymentAt || family.lastPaymentAt;
       // A renewal actually charged, so any pending cancellation is moot — Stripe
       // would not bill a subscription that was ending. Clearing these stops a
@@ -2619,7 +2643,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.cancelAccessUntil = "";
       family.cancellationAccessUntil = "";
       const periodEnd = object.period_end || (object.lines && object.lines.data && object.lines.data[0] && object.lines.data[0].period && object.lines.data[0].period.end);
-      if (periodEnd) family.currentPeriodEnd = unixToIso(periodEnd) || family.currentPeriodEnd;
+      if (periodEnd && !paidDeferred) family.currentPeriodEnd = unixToIso(periodEnd) || family.currentPeriodEnd;
+      if (family.yearlyUpgrade?.status === "scheduled") {
+        if (Number(family.yearlyUpgrade.yearlyNextRenewalAt) * 1000 > Date.now()) {
+          family.currentPeriodEnd = unixToIso(family.yearlyUpgrade.yearlyNextRenewalAt);
+        } else retireYearlyUpgrade(family);
+      }
       delete family.nextRenewalDiscountCents; // one-time discount consumed on this invoice
     }
     if (event.type === "customer.subscription.deleted") {
@@ -2628,7 +2657,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.cancelledAt = nowIso();
     }
     if (event.type === "customer.subscription.updated") {
-      if (object.current_period_end) family.currentPeriodEnd = unixToIso(object.current_period_end) || family.currentPeriodEnd;
+      if (object.current_period_end && !paidDeferred && family.yearlyUpgrade?.status !== "trialing") family.currentPeriodEnd = unixToIso(object.current_period_end) || family.currentPeriodEnd;
       if (object.cancel_at_period_end) {
         markCancellationScheduled(family, object, "", "other");
       } else {
@@ -2704,6 +2733,28 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       recordStripePayment(db, event, object, family);
     }
     audit(db, "stripe.webhook", { type: event.type, familyId: family.id, webhookCancellationResult });
+    const mailData = { parentName: family.parentName, email: family.email, planName: family.plan, nextDate: family.currentPeriodEnd };
+    if (["invoice.paid", "invoice.payment_succeeded"].includes(event.type) && Number(object.amount_paid) > 0) {
+      queueTemplate(db, "payment_receipt", { ...mailData, amount: emailAmount(object.amount_paid, object.currency), date: emailDate(unixToIso(object.status_transitions?.paid_at || object.created)), currency: object.currency }, `receipt:${object.id}`, family.id);
+      queueTemplate(db, "op_new_paid", { ...mailData, operator: true }, `first-paid:${family.id}`, family.id);
+    }
+    if (event.type === "invoice.payment_failed") queueTemplate(db, "payment_failed", mailData, `payment-failed:${object.id}`, family.id);
+    if (event.type === "customer.subscription.deleted") queueTemplate(db, "subscription_ended", mailData, `subscription_ended:${family.id}:${object.id}`, family.id);
+    if (event.type === "customer.subscription.updated" && object.cancel_at_period_end) queueTemplate(db, "cancellation_scheduled", { ...mailData, nextDate: family.cancelAccessUntil }, `cancellation_scheduled:${family.id}:${family.cancelAccessUntil}`, family.id);
+    if (event.type === "customer.subscription.updated" && event.data?.previous_attributes?.cancel_at_period_end === true && !object.cancel_at_period_end) {
+      queueTemplate(db, "renewal_resumed", mailData, `renewal_resumed:${family.id}:${family.currentPeriodEnd || event.created}`, family.id);
+    }
+    if (subscriptionObject?.status === "trialing" && family.trialEndsAt) {
+      queueTemplate(db, "trial_started", { ...mailData, trialDays: Math.round((subscriptionObject.trial_end - subscriptionObject.trial_start) / 86400), trialEndsAt: family.trialEndsAt, cardOnFile: true }, `trial_started:${family.id}:${family.trialEndsAt}`, family.id);
+    }
+    if (refundWebhook) {
+      const refunds = object.object === "refund" ? [object] : (object.refunds?.data || []);
+      for (const refund of refunds) if (refund.status === "succeeded") {
+        const partial = object.object === "charge" ? Number(object.amount_refunded) < Number(object.amount) : family.paymentStatus === "partial_refunded";
+        const key = partial ? "refund_partial" : "refund_full";
+        queueTemplate(db, key, { ...mailData, amountCents: refund.amount, currency: refund.currency }, `${key}:${family.id}:${refund.id}`, family.id);
+      }
+    }
     return family;
   });
 
@@ -2772,6 +2823,7 @@ async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   if (postmarkConfigured()) {
     const response = await fetch("https://api.postmarkapp.com/email", {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -2813,6 +2865,8 @@ async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   }
 
   const transporter = nodemailer.createTransport({
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
@@ -2850,47 +2904,44 @@ function emailDate(value) {
   return new Date(time).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 }
 const EMAIL_SIGNOFF = "— The KiddieGPT Team";
+function emailAmount(cents, currency = "usd") {
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(cents) / 100); }
+  catch { return `${Number(cents) / 100} ${currency}`; }
+}
 
 function renderEmailShell(o) {
-  const base = emailBaseUrl();
-  const chip = o.chip ? `<span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#e9f7ef;color:#0f6e56;font-size:12px;font-weight:700">${escHtml(o.chip)}</span>` : "";
-  const code = o.code ? `<div style="margin:6px 0 20px;padding:16px;border:1px dashed #cfe0dc;border-radius:12px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#004f48;font-family:monospace">${escHtml(o.code)}</div>` : "";
-  const stepsRows = (o.steps || []).map((s, i) => `<tr><td style="vertical-align:top;padding:0 12px 16px 0;width:20px;color:#9aa7a4;font-weight:700;font-size:14px">${i + 1}</td><td style="padding:0 0 16px 0"><div style="font-weight:700;color:#16332d;font-size:15px">${escHtml(s.title)}</div><div style="color:#6a827d;font-size:14px;line-height:1.5;margin-top:2px">${escHtml(s.text)}</div></td></tr>`).join("");
-  const steps = stepsRows ? `<table role="presentation" width="100%" style="border-collapse:collapse;margin:6px 0 20px">${stepsRows}</table>` : "";
-  const paras = (o.paragraphs || []).map((p) => `<p style="margin:0 0 14px;color:#33474a;font-size:15px;line-height:1.6">${p}</p>`).join("");
-  const cta = o.ctaText ? `<div style="margin:6px 0 22px"><a href="${escHtml(o.ctaUrl || base)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 22px;border-radius:12px">${escHtml(o.ctaText)} &rarr;</a></div>` : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;background:#f4f6f5;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif">
-<table role="presentation" width="100%" style="border-collapse:collapse;background:#f4f6f5"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6ece9;border-radius:16px;border-collapse:separate">
-<tr><td style="padding:26px 30px 24px">
-<table role="presentation" width="100%" style="border-collapse:collapse"><tr>
-<td style="vertical-align:middle"><img src="${base}/icons/logo-mascot.png" width="32" height="32" alt="" style="vertical-align:middle;border-radius:8px">&nbsp;<span style="font-weight:800;color:#004f48;font-size:16px;vertical-align:middle">KiddieGPT</span>&nbsp;<span style="color:#9aa7a4;font-size:12px;vertical-align:middle">Your learning copilot</span></td>
-<td align="right">${chip}</td></tr></table>
-<h1 style="margin:22px 0 14px;color:#16332d;font-size:24px;font-weight:800">${escHtml(o.title)}</h1>
-${o.greeting ? `<p style="margin:0 0 14px;color:#33474a;font-size:15px;line-height:1.6">${escHtml(o.greeting)}</p>` : ""}
-${paras}${code}${steps}${cta}
-${o.signoff ? `<p style="margin:8px 0 0;color:#6a827d;font-size:14px">${escHtml(o.signoff)}</p>` : ""}
-</td></tr>
-<tr><td style="padding:18px 30px;border-top:1px solid #eef3f1">
-<p style="margin:0;color:#9aa7a4;font-size:12px;line-height:1.5">This email was sent by KiddieGPT. If you weren't expecting it, you can safely ignore it.</p>
-<p style="margin:8px 0 0;color:#9aa7a4;font-size:12px">KiddieGPT &middot; kiddiegpt.com &middot; support@kiddiegpt.com</p>
-</td></tr></table></td></tr></table></body></html>`;
+  return require("./email-layout").renderEmailLayout(o, emailBaseUrl()).html;
 }
 
 const EMAIL_SAMPLE = {
   parentName: "Meena Ravi", childName: "Ava", planName: "Family Monthly", amount: "$19.00",
   date: "August 14, 2026", nextDate: "August 14, 2027", code: "402913", bonusMonths: 3,
   discountPercent: 20, email: "meena@example.com", trialDays: 14, trialEndsAt: "August 28, 2026", cardOnFile: true,
-  supportReply: "Yes — the Family plan covers up to 3 children. Open the Student tab to add another profile."
+  supportReply: "Yes — the Family plan covers up to 3 children. Open the Student tab to add another profile.",
+  amountCents: 1900, currency: "usd", acceptedAt: "2026-08-14T14:30:00.000Z", policyVersion: "2026-08", newEmail: "meena.new@example.com"
 };
 
 const EMAIL_TEMPLATES = [
+  { key: "refund_full", name: "Full refund issued", stage: "Payments & billing", subject: () => "Your KiddieGPT refund",
+    build: d => ({ chip: "Refund", title: "Your refund has been issued", greeting: `Hi ${d.parentName},`, paragraphs: [`We've issued a full refund${Number(d.amountCents) > 0 ? ` of <b>${escHtml(emailAmount(d.amountCents, d.currency))}</b>` : ""} to your original payment method.`, "Your bank determines when the refund appears. Check your parent portal for your current access and renewal details."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+  { key: "refund_partial", name: "Partial refund issued", stage: "Payments & billing", subject: () => "Your KiddieGPT partial refund",
+    build: d => ({ chip: "Refund", title: "Your partial refund has been issued", greeting: `Hi ${d.parentName},`, paragraphs: [`We've issued a partial refund${Number(d.amountCents) > 0 ? ` of <b>${escHtml(emailAmount(d.amountCents, d.currency))}</b>` : ""} to your original payment method.`, "A partial refund does not itself cancel your plan. Your bank determines when the refund appears."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+  { key: "monthly_restored", name: "Monthly access restored", stage: "Payments & billing", subject: () => "Your remaining monthly access is available",
+    build: d => ({ chip: "Scheduled", title: "Your monthly time is still yours", greeting: `Hi ${d.parentName},`, paragraphs: [`Your yearly upgrade has been cancelled. Your remaining monthly access continues until <b>${escHtml(emailDate(d.nextDate))}</b>.`, "Automatic renewal is off. Choose Keep my plan to continue monthly, or upgrade to yearly again from your parent portal."], ctaText: "Manage plan", ctaUrl: emailBaseUrl() }) },
+  { key: "renewal_resumed", name: "Renewal resumed", stage: "Payments & billing", subject: () => "Your KiddieGPT renewal is back on",
+    build: d => ({ chip: "Active", title: "You're staying with us", greeting: `Hi ${d.parentName},`, paragraphs: [`Automatic renewal is back on for <b>${escHtml(d.planName)}</b>.`, d.nextDate ? `Your next renewal is ${escHtml(emailDate(d.nextDate))}.` : "Your next renewal details are available in the parent portal."], ctaText: "View plan", ctaUrl: emailBaseUrl() }) },
+  { key: "deletion_completed", name: "Account deletion completed", stage: "Support & account", subject: () => "Your KiddieGPT account has been deleted",
+    build: d => ({ chip: "Account", title: "Your account deletion is complete", greeting: `Hi ${d.parentName},`, paragraphs: ["Your account and learning profiles have been anonymized, and you can no longer sign in to this account.", "Limited records may be retained where required. Contact support if you have questions about your request."] }) },
+  { key: "consent_receipt", name: "Parental consent receipt", stage: "Account & access", subject: () => "Your KiddieGPT consent confirmation",
+    build: d => ({ chip: "Confirmed", title: "Your consent is recorded", greeting: `Hi ${d.parentName},`, paragraphs: ["You confirmed parental consent for child profiles and learning tools.", `Recorded at: <b>${escHtml(d.acceptedAt)}</b><br>Policy version: <b>${escHtml(d.policyVersion)}</b>`, "Contact support if you did not provide this consent or would like to withdraw it."] }) },
+  { key: "email_changed", name: "Email address changed", stage: "Account & access", subject: () => "Your KiddieGPT email address changed",
+    build: d => ({ chip: "Security", title: "Your sign-in email has changed", greeting: `Hi ${d.parentName},`, paragraphs: [`Your account's sign-in email was changed to <b>${escHtml(d.newEmail)}</b>.`, "This notice was sent to your previous email address. If you did not make this change, contact support immediately."] }) },
   { key: "verify_email", name: "Verify your email", stage: "Account & access", subject: () => "Verify your KiddieGPT email",
-    build: (d) => ({ chip: "Verify", title: "Confirm your email", greeting: `Hi ${d.parentName},`, paragraphs: ["Enter this code in KiddieGPT to finish creating your account. It expires in 10 minutes."], code: d.code }) },
+    build: (d) => ({ chip: "Verification", title: "One small step. A world of discovery.", greeting: `Hi ${d.parentName},`, paragraphs: ["Welcome to KiddieGPT. Confirm your email to finish creating your parent account."], code: d.code }) },
   { key: "sign_in_code", name: "Sign-in code", stage: "Account & access", subject: () => "Your KiddieGPT sign-in code",
     build: (d) => ({ chip: "Sign in", title: "Your sign-in code", greeting: `Hi ${d.parentName},`, paragraphs: ["Use this code to sign in. It expires shortly. If you didn't request it, you can ignore this email."], code: d.code }) },
   { key: "welcome", name: "Welcome / you're all set", stage: "Account & access", subject: () => "You're all set on KiddieGPT",
-    build: (d) => ({ chip: "You're in", title: "You're all set!", greeting: `Hi ${d.parentName},`, paragraphs: ["Welcome to KiddieGPT — your child's calm, safe learning copilot. Here's how to get started:"], steps: [{ title: "Add your child's profile", text: "Set their name, grade, and reading level." }, { title: "Set learning goals", text: "Pick goals and rewards that motivate them." }, { title: "Get the Chrome extension", text: "Install it so your child can start learning." }], ctaText: "Open KiddieGPT", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "You're in", title: "You're all set!", greeting: `Hi ${d.parentName},`, paragraphs: ["Welcome to KiddieGPT — your child's calm, safe learning copilot. Here's how to get started:"], steps: [{ title: "Add your child's profile", text: "Set their name and grade after confirming parental consent." }, { title: "Set learning goals", text: "Pick goals and rewards that motivate them." }, { title: "Get the Chrome extension", text: "Install it so your child can start learning." }], ctaText: "Open KiddieGPT", ctaUrl: emailBaseUrl() }) },
   { key: "password_reset", name: "Password reset code", stage: "Account & access", subject: () => "Reset your KiddieGPT password",
     build: (d) => ({ chip: "Security", title: "Reset your password", greeting: `Hi ${d.parentName},`, paragraphs: ["Enter this code in KiddieGPT to set a new password. It expires shortly."], code: d.code }) },
   { key: "password_changed", name: "Password changed", stage: "Account & access", subject: () => "Your KiddieGPT password was changed",
@@ -2901,7 +2952,7 @@ const EMAIL_TEMPLATES = [
   { key: "payment_receipt", name: "Payment receipt", stage: "Payments & billing", subject: () => "Your KiddieGPT receipt",
     build: (d) => ({ chip: "Receipt", title: "Payment received", greeting: `Hi ${d.parentName},`, paragraphs: [`Thanks! We received your payment of <b>${escHtml(d.amount)}</b> for <b>${escHtml(d.planName)}</b> on ${escHtml(d.date)}.`, "Your child's access stays unlocked. Manage billing anytime from the parent portal."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
   { key: "yearly_upgrade", name: "Yearly upgrade confirmed", stage: "Payments & billing", subject: () => "You're on the yearly plan",
-    build: (d) => ({ chip: "Upgraded", title: "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've switched to the yearly plan with <b>${escHtml(String(d.bonusMonths))} bonus months</b>. Your unused days this month carried over — you lost nothing.`, `Your plan renews on ${escHtml(d.nextDate)}.`], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Upgraded", title: "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've switched to the yearly plan${Number(d.bonusMonths) > 0 ? ` with <b>${escHtml(String(d.bonusMonths))} bonus month${Number(d.bonusMonths) === 1 ? "" : "s"}</b>` : ""}. View your plan details in the parent portal.`, d.nextDate ? `Your plan renews on ${escHtml(emailDate(d.nextDate))}.` : "Check your billing page for your next renewal."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
   { key: "payment_failed", name: "Payment failed", stage: "Payments & billing", subject: () => "Your KiddieGPT payment didn't go through",
     build: (d) => ({ chip: "Action needed", title: "Your payment didn't go through", greeting: `Hi ${d.parentName},`, paragraphs: [`We couldn't process your payment for <b>${escHtml(d.planName)}</b>. Please update your payment method to keep your child's access.`], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
   { key: "payment_retry", name: "Payment retry reminder", stage: "Payments & billing", subject: () => "Reminder: update your payment method",
@@ -2925,7 +2976,7 @@ const EMAIL_TEMPLATES = [
   { key: "subscription_ended", name: "Subscription ended", stage: "Cancellation & winback", subject: () => "Your KiddieGPT plan has ended",
     build: (d) => ({ chip: "Ended", title: "Your plan has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["Your subscription has ended and the extension tools are now locked. Your child's profiles and progress are saved — reactivate anytime to pick up where they left off."], ctaText: "Reactivate", ctaUrl: emailBaseUrl() }) },
   { key: "winback", name: "Winback offer", stage: "Cancellation & winback", subject: () => "Come back to KiddieGPT",
-    build: (d) => ({ chip: "Come back", title: "We'd love to have you back", greeting: `Hi ${d.parentName},`, paragraphs: [`Ready to give it another go? Reactivate now and get <b>${escHtml(String(d.discountPercent))}% off</b> your next month.`], ctaText: "Reactivate & save", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Come back", title: "We'd love to have you back", greeting: `Hi ${d.parentName},`, paragraphs: [Number(d.discountPercent) > 0 ? `Reactivate and get <b>${escHtml(String(d.discountPercent))}% off</b> your next month.` : "Ready for another little breakthrough? Explore your plans in the parent portal."], ctaText: Number(d.discountPercent) > 0 ? "Reactivate & save" : "View plans", ctaUrl: emailBaseUrl() }) },
 
   { key: "support_reply", name: "Support reply", stage: "Support & account", subject: () => "Reply from KiddieGPT support",
     build: (d) => ({ chip: "Support", title: "Reply from KiddieGPT support", greeting: `Hi ${d.parentName},`, paragraphs: [escHtml(d.supportReply), "Just reply to this email if you need anything else."], ctaText: "Open support", ctaUrl: emailBaseUrl() }) },
@@ -2933,24 +2984,97 @@ const EMAIL_TEMPLATES = [
     build: (d) => ({ chip: "Account", title: "We received your request", greeting: `Hi ${d.parentName},`, paragraphs: ["We've received your account deletion request. Extension access is now locked while we process it. Billing records are kept only as required for support and tax.", "If this was a mistake, contact support and we'll stop the deletion."], ctaText: "Contact support", ctaUrl: emailBaseUrl() }) },
 
   { key: "trial_started", name: "Free trial started", stage: "Free trial", subject: (d) => `Your ${d.trialDays}-day KiddieGPT trial is live`,
-    build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b> — no card needed.`, "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b>.`, d.cardOnFile ? "Your card will be charged after the trial unless you cancel before it ends." : "Choose a plan before your trial ends to keep access.", "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
   { key: "trial_ending", name: "Free trial ending soon", stage: "Free trial", subject: () => "Your KiddieGPT trial ends soon",
     build: (d) => ({ chip: "Ending soon", title: "Your trial ends in a few days", greeting: `Hi ${d.parentName},`, paragraphs: [d.cardOnFile ? `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>, and your card will be charged for the plan you chose unless you cancel before then. Nothing has been charged so far.` : `Your free trial ends on <b>${escHtml(emailDate(d.trialEndsAt))}</b>. Pick a plan to keep your child's tools unlocked — their profiles and progress stay exactly as they are.`], ctaText: d.cardOnFile ? "Review your plan" : "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "trial_ended", name: "Free trial ended", stage: "Free trial", subject: () => "Your KiddieGPT trial has ended",
     build: (d) => ({ chip: "Ended", title: "Your free trial has ended", greeting: `Hi ${d.parentName},`, paragraphs: ["The extension tools are locked for now. Your child's profiles, goals, and progress are saved — choose a plan anytime to pick up where they left off."], ctaText: "Choose a plan", ctaUrl: emailBaseUrl() }) },
   { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
-    build: (d) => ({ chip: "New", title: "New paid family 🎉", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
+    build: (d) => ({ chip: "New", title: "New paid family", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
   { key: "op_new_support", name: "New support message (internal)", stage: "Operator", subject: () => "New support message",
     build: (d) => ({ chip: "Support", title: "New support message", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) sent a new support message. Open the admin console to reply.`], ctaText: "Open support", ctaUrl: `${emailBaseUrl()}/admin.html` }) }
 ];
 
+function queueTemplate(db, key, data, identity, familyId) {
+  if (!emailTemplateEnabled(db, key)) return false;
+  const to = data.operator ? (process.env.ADMIN_NOTIFY_EMAIL || process.env.ADMIN_EMAIL) : data.email;
+  if (!to) return false;
+  const rendered = renderTemplate(key, data);
+  if (!rendered) throw new Error(`Unknown email template: ${key}`);
+  return require("./email-outbox").enqueueEmail(db, {
+    id: identity, familyId, key, to, supportMessageId: data.supportMessageId, template: rendered.name,
+    subject: rendered.subject, html: rendered.html, message: rendered.text
+  });
+}
+
+let drainingEmails = null;
+async function drainEmailOutbox(limit = 5) {
+  // Mock delivery must never consume a notification intended for a real inbox.
+  if (emailMode() === "mock") return 0;
+  if (drainingEmails) return drainingEmails;
+  drainingEmails = (async () => {
+    await flushPending();
+    const queued = readDb().emailOutbox || [];
+    const deliver = async item => {
+      const db = readDb();
+      const family = db.families.find(f => f.id === item.familyId);
+      if (!emailTemplateEnabled(db, item.key)) return;
+      if (family?.anonymizedAt && item.key !== "deletion_completed") return;
+      if (family?.deletionRequestedAt && ["Engagement", "Cancellation & winback", "Free trial"].includes(EMAIL_TEMPLATES.find(t => t.key === item.key)?.stage)) return;
+      const result = await sendEmail(item);
+      mutateDb(store => {
+        store.emailLogs.unshift({ id: makeId("eml"), mode: result.mode, subject: item.subject, template: item.template, messageId: result.messageId || "", createdAt: nowIso(), familyId: item.familyId });
+        if (item.supportMessageId) {
+          const message = store.supportMessages.find(m => m.id === item.supportMessageId);
+          if (message) { delete message.deliveryFailed; delete message.deliveryError; }
+        }
+      });
+    };
+    if (DB_DRIVER === "postgres") {
+      for (const item of queued) {
+        if (item.state !== "pending") continue;
+        await pgPool.query("INSERT INTO email_deliveries (id,payload) VALUES ($1,$2::jsonb) ON CONFLICT (id) DO NOTHING", [item.id, JSON.stringify(item)]);
+      }
+      if (queued.length) mutateDb(db => { db.emailOutbox = (db.emailOutbox || []).filter(e => !queued.some(q => q.id === e.id)); });
+      return require("./email-outbox").drainPostgres(pgPool, deliver, limit);
+    }
+    let delivered = 0;
+    for (const item of queued.filter(e => e.state === "pending" && e.nextAttemptAt <= Date.now()).slice(0, limit)) {
+      try {
+        await deliver(item);
+        mutateDb(db => { const entry = db.emailOutbox.find(e => e.id === item.id); if (entry) { entry.state = "sent"; delete entry.html; delete entry.message; delete entry.to; } });
+        delivered++;
+      } catch (error) {
+        mutateDb(db => { const entry = db.emailOutbox.find(e => e.id === item.id); if (entry) { entry.attempts++; entry.nextAttemptAt = Date.now() + require("./email-outbox").retryDelay(entry.attempts); } });
+      }
+    }
+    return delivered;
+  })();
+  try { return await drainingEmails; } finally { drainingEmails = null; }
+}
+
 function renderTemplate(key, data) {
   const t = EMAIL_TEMPLATES.find((x) => x.key === key);
   if (!t) return null;
-  const d = { ...EMAIL_SAMPLE, ...(data || {}) };
+  const d = {
+    parentName: "there", childName: "Your child", planName: "your plan",
+    amount: "", date: "", nextDate: "", code: "", bonusMonths: 0,
+    discountPercent: 0, email: "", trialDays: "", trialEndsAt: "",
+    cardOnFile: false, supportReply: "", ...(data || {})
+  };
   const opts = t.build(d);
+  if (key === "weekly_summary" && d.summaryText) {
+    opts.title = "Your family's learning summary";
+    opts.paragraphs = [escHtml(d.summaryText).replace(/\n/g, "<br>")];
+    opts.steps = [];
+  }
+  opts.eyebrow = t.stage.toUpperCase();
+  if (opts.code) {
+    opts.codeLabel = key === "sign_in_code" ? "Your sign-in code" : key === "password_reset" ? "Your password reset code" : "Your verification code";
+    opts.codeExpiry = `Expires in ${process.env.EMAIL_OTP_TTL_MINUTES || 10} minutes`;
+  }
   if (!opts.signoff && opts.stage !== "Operator" && t.stage !== "Operator") opts.signoff = EMAIL_SIGNOFF;
-  return { key: t.key, name: t.name, stage: t.stage, subject: t.subject(d), html: renderEmailShell(opts) };
+  return { key: t.key, name: t.name, stage: t.stage, subject: key === "weekly_summary" && d.summaryText ? "Your family's KiddieGPT summary" : t.subject(d), ...require("./email-layout").renderEmailLayout(opts, emailBaseUrl()) };
 }
 
 // Only lifecycle/marketing emails can be switched off — the Engagement,
@@ -2992,7 +3116,7 @@ app.get("/api/admin/email-templates", requireAdmin, (req, res) => {
     provider: emailMode(),
     configured: postmarkConfigured() || smtpConfigured(),
     templates: EMAIL_TEMPLATES.map((t) => ({
-      ...renderTemplate(t.key),
+      ...renderTemplate(t.key, EMAIL_SAMPLE),
       toggleable: TOGGLEABLE_TEMPLATE_KEYS.has(t.key),
       enabled: emailTemplateEnabled(db, t.key)
     }))
@@ -3014,11 +3138,11 @@ app.put("/api/admin/email-templates/:key/enabled", requireAdmin, (req, res) => {
   res.json({ ok: true, key, enabled: updated });
 });
 app.post("/api/admin/email-templates/:key/test", requireAdmin, async (req, res) => {
-  const rendered = renderTemplate(req.params.key);
+  const rendered = renderTemplate(req.params.key, EMAIL_SAMPLE);
   if (!rendered) return res.status(404).json({ error: "unknown_template" });
   const to = normalizeEmail((req.body && req.body.to) || req.auth?.email || process.env.ADMIN_NOTIFY_EMAIL || "");
   try {
-    const result = await sendEmail({ to, template: rendered.name, subject: `[Test] ${rendered.subject}`, html: rendered.html, message: `Preview of the "${rendered.name}" email.` });
+    const result = await sendEmail({ to, template: rendered.name, subject: `[Test] ${rendered.subject}`, html: rendered.html, message: rendered.text });
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3118,7 +3242,7 @@ app.get("/api/faq-limits", (req, res) => {
       promo: promo ? { monthly: Number(promo.monthlyAmount || 0), yearly: Number(promo.yearlyAmount || 0) } : null
     },
     trialDays: TRIAL_PERIOD_DAYS,
-    refund: { firstPaymentDays: REFUND_WINDOW_DAYS, renewalHours: RENEWAL_REFUND_WINDOW_HOURS },
+    refund: { firstPaymentDays: 0, paymentHours: 24, renewalHours: 24 },
     billingCooldownMinutes: Math.round(BILLING_COOLDOWN_MS / 60000),
     saveOffer: save ? { amountOff: Number(save.amountOff || 0), maxRedemptions: Number(save.maxRedemptions || 1) } : null,
     ai: {
@@ -3273,26 +3397,26 @@ app.post("/api/auth/google", async (req, res) => {
 });
 
 async function sendSignupOtp(email, otp) {
+  const tpl = renderTemplate("verify_email", { code: otp });
   return sendAndLogEmail({
     to: email,
-    template: "Verify parent email",
-    message: `Your KiddieGPT verification code is ${otp}. It expires in ${process.env.EMAIL_OTP_TTL_MINUTES || 10} minutes.`
+    template: tpl.name, subject: tpl.subject, html: tpl.html, message: tpl.text
   });
 }
 
 async function sendPasswordResetOtp(email, otp) {
+  const tpl = renderTemplate("password_reset", { code: otp });
   return sendAndLogEmail({
     to: email,
-    template: "Reset parent password",
-    message: `Your KiddieGPT password reset code is ${otp}. It expires in ${process.env.EMAIL_OTP_TTL_MINUTES || 10} minutes.`
+    template: tpl.name, subject: tpl.subject, html: tpl.html, message: tpl.text
   });
 }
 
 async function sendEmailChangeOtp(email, otp) {
+  const tpl = renderTemplate("confirm_new_email", { code: otp });
   return sendAndLogEmail({
     to: email,
-    template: "Confirm new parent email",
-    message: `Your KiddieGPT email change code is ${otp}. It expires in ${process.env.EMAIL_OTP_TTL_MINUTES || 10} minutes.`
+    template: tpl.name, subject: tpl.subject, html: tpl.html, message: tpl.text
   });
 }
 
@@ -3474,7 +3598,8 @@ app.post("/api/auth/otp/request", async (req, res) => {
   });
   let mode = "mock";
   try {
-    const result = await sendEmail({ to: email, template: "Sign-in code", message: `Your KiddieGPT sign-in code is ${otp}. It expires shortly.` });
+    const tpl = renderTemplate("sign_in_code", { code: otp });
+    const result = await sendEmail({ to: email, template: tpl.name, subject: tpl.subject, html: tpl.html, message: tpl.text });
     mode = result.mode || "mock";
   } catch (error) {
     mutateDb((db) => monitor(db, "warning", "auth", "Login OTP email failed", { email, detail: String(error.message || error) }, email));
@@ -3684,6 +3809,12 @@ app.put("/api/parent/family/profile", requireParent, (req, res) => {
   const saved = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
     if (!family) return null;
+    for (const child of children) {
+      const previous = family.children?.find(c => c.id === child.id);
+      for (const goal of child.learningGoals || []) if (goal.completed && !previous?.learningGoals?.some(g => g.goal === goal.goal && g.reward === goal.reward && g.completed)) {
+        audit(db, "goal.completed", { familyId: family.id, childName: child.studentName, goalId: crypto.createHash("sha256").update(JSON.stringify([child.id, goal.goal, goal.reward])).digest("hex") }, family.email);
+      }
+    }
     family.children = children;
     const primary = children[0];
     family.studentName = primary.studentName;
@@ -3937,15 +4068,7 @@ app.post("/api/admin/trials", requireAdmin, async (req, res) => {
   });
   if (result.error) return res.status(409).json({ error: result.error });
 
-  // Respect the admin on/off switch for this (toggleable) email.
-  if (emailTemplateEnabled(readDb(), "trial_started")) {
-    const tpl = renderTemplate("trial_started", { parentName: name, trialDays: days, trialEndsAt: endsAt });
-    try {
-      await sendEmail({ to: email, template: "Trial started", subject: tpl.subject, html: tpl.html, message: tpl.text });
-    } catch (error) {
-      mutateDb((db) => monitor(db, "warning", "email", "Trial start email failed", { email, detail: String(error.message || error) }, email));
-    }
-  }
+  // trial.create queued the notification with the account change.
   return res.json({ ok: true, familyId: result.family.id, email, days, trialEndsAt: endsAt });
 });
 
@@ -4417,10 +4540,7 @@ app.post("/api/support/message", requireParent, async (req, res) => {
     monitor(db, "warning", "support", "New parent support message", { email: entry.email, category }, entry.email);
     return entry;
   });
-  // Notify the operator (best effort; only if an email provider is configured).
-  try {
-    await sendEmail({ to: process.env.ADMIN_NOTIFY_EMAIL || "", template: "Support message", message: `New ${category} message from ${created.email}:\n\n${message}` });
-  } catch (error) { /* ignore — visible in the admin console regardless */ }
+  // support.message queued the operator notification with the message.
   res.json({ ok: true, message: created });
 });
 
@@ -4477,6 +4597,7 @@ app.post("/api/admin/support/:id/reply", requireAdmin, async (req, res) => {
     mutateDb((db) => {
       const entry = (db.supportMessages || []).find((m) => m.id === req.params.id);
       if (entry) { entry.deliveryFailed = true; entry.deliveryError = delivery?.error || delivery?.mode || "unknown"; }
+      queueTemplate(db, "support_reply", { email: updated.email, parentName: updated.name || "there", supportReply: reply, supportMessageId: updated.id }, `support-retry:${updated.id}:${updated.replies.at(-1).at}`, updated.familyId);
       monitor(db, "error", "support", "Support reply email was not delivered", { id: req.params.id, email: updated.email, mode: delivery?.mode || "unknown", detail: delivery?.error || "" }, updated.email);
     });
     return res.json({
@@ -4566,6 +4687,7 @@ app.post("/api/admin/support/reply", requireAdmin, async (req, res) => {
       if (delivered) { delete entry.deliveryFailed; delete entry.deliveryError; }
       else { entry.deliveryFailed = true; entry.deliveryError = delivery?.error || delivery?.mode || "unknown"; }
     }
+    if (!delivered) queueTemplate(db, "support_reply", { email, parentName: target.name || "there", supportReply: reply, supportMessageId: target.id }, `support-retry:${target.id}:${target.replies.at(-1).at}`, target.familyId);
     if (!delivered) monitor(db, "error", "support", "Support reply email was not delivered", { email, mode: delivery?.mode || "unknown", detail: delivery?.error || "" }, email);
   });
   if (!delivered) {
@@ -5750,6 +5872,8 @@ app.post("/api/admin/users/:id/anonymize", requireAdmin, (req, res) => {
     db.auditLogs = (db.auditLogs || []).map((log) => scrubValue(log, replacements));
     db.monitorEvents = (db.monitorEvents || []).map((event) => scrubValue(event, replacements));
 
+    db.emailOutbox = (db.emailOutbox || []).filter(e => e.familyId !== family.id);
+    queueTemplate(db, "deletion_completed", { email: oldEmail, parentName: oldParentName }, `deletion-completed:${family.id}`, family.id);
     audit(db, "account.anonymize", { familyId: family.id, deletedEmail, userId: parentUser?.id || "" }, req.auth?.email || "admin");
     monitor(db, "warning", "account", "Parent account anonymized by admin", { familyId: family.id, deletedEmail }, req.auth?.email || "admin");
     return { family, deletedEmail, sequence: db.deletedUserSequence };
@@ -5821,7 +5945,14 @@ app.get("/api/entitlements/me", (req, res) => {
     cancelReason: family.cancelReason || "",
     // Lets the portal tell the parent what cancelling will actually do before
     // they confirm: full refund + access ends now, or access to the period end.
+    upgradeQuote: (() => { try {
+      if (!String(effectiveFamilyPlan(family)).toLowerCase().includes("month")) return null;
+      const pricing = normalisePricing(readDb().pricing);
+      return { ...billingPolicy.upgradeTerms(family, pricing), renewalAmount: Number(pricing.yearly.amount) };
+    } catch (_) { return null; } })(),
     refundWindow: refundWindowFor(family),
+    purchasePausedUntil: billingCooldownFor(family)?.until || "",
+    refundPending: family.refundPending || null,
     // A renewal charge opens its own 24-hour full-refund window, independent of
     // the first-payment window above.
     renewalWindow: renewalRefundWindowFor(family),
@@ -5873,19 +6004,25 @@ app.get("/api/entitlements/me", (req, res) => {
   });
 });
 
-app.post("/api/stripe/create-checkout-session", async (req, res) => {
+app.post("/api/stripe/create-checkout-session", requireParent, billingGuard, async (req, res) => {
   const { planName, promoCode, familyId, successUrl, cancelUrl } = req.body || {};
-  const parentEmail = normalizeEmail(req.body?.parentEmail || req.body?.email || "");
+  const parentEmail = normalizeEmail(req.auth?.email || req.body?.parentEmail || req.body?.email || "");
   if (parentEmail && !isAllowedParentEmail(parentEmail)) {
     return res.status(400).json({ error: parentEmailError(parentEmail) });
   }
-  let checkoutFamilyId = familyId || "";
+  const checkoutExisting = readDb().families.find(f => f.email === parentEmail);
+  if (checkoutExisting?.pendingRefundOperation || checkoutExisting?.pendingUpgradeOperation) return res.status(409).json({ error: "Resolve the pending billing change before starting another purchase." });
+  if (billingCooldownFor(checkoutExisting)) return res.status(429).json(billingCooldownPayload(checkoutExisting));
+  if (checkoutExisting && (["active", "trialing"].includes(checkoutExisting.subscriptionStatus) || cancellationStillActive(checkoutExisting))) {
+    return res.status(409).json({ error: "You already have paid or trial access. Use Keep my plan or Upgrade to Yearly." });
+  }
+  let checkoutFamilyId = checkoutExisting?.id || "";
   // Starting a (new) subscription is never blocked by the cooldown: a parent who
   // just cancelled must be able to re-subscribe immediately. The cooldown only
   // guards duplicate charge-modifying actions (upgrade, retention discount).
   if (parentEmail) {
     checkoutFamilyId = mutateDb((db) => {
-      let family = db.families.find((item) => item.id === familyId || item.email === String(parentEmail).toLowerCase());
+      let family = db.families.find((item) => item.email === String(parentEmail).toLowerCase());
       if (!family) {
         family = normaliseFamily({
           parentName: req.body?.parentName || "Parent",
@@ -5934,7 +6071,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
   }
   const pricing = normalisePricing(readDb().pricing);
   const selectedPlan = Object.values(pricing || {}).find((plan) => plan && plan.label === planName);
-  const effectivePriceId = req.body?.priceId || selectedPlan?.stripePriceId || "";
+  const effectivePriceId = selectedPlan?.stripePriceId || "";
   const checkoutPromotion = promotionForPlan(pricing, planName);
   const checkoutFamily = parentEmail
     ? readDb().families.find((item) => item.id === checkoutFamilyId || item.email === String(parentEmail).toLowerCase())
@@ -5994,8 +6131,18 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 
   try {
     const stripe = stripeClient();
+    let checkoutOperation = checkoutFamily?.pendingCheckout || null;
+    if (checkoutOperation?.sessionId) {
+      const previous = await stripe.checkout.sessions.retrieve(checkoutOperation.sessionId);
+      if (previous.status === "complete") return res.status(409).json({ error: "Your checkout completed. Refresh your subscription before making another purchase." });
+      if (previous.status === "open" && checkoutOperation.planName === planName) return res.json({ mode: "stripe", sessionId: previous.id, url: previous.url, trialDays: checkoutOperation.trialDays });
+      if (previous.status === "open") await stripe.checkout.sessions.expire(previous.id);
+      checkoutOperation = null;
+    }
+    if (checkoutOperation && Date.now() - Date.parse(checkoutOperation.createdAt) > 23 * 3600000) throw new Error("The earlier checkout needs reconciliation before creating another.");
+
     const couponId = checkoutPromotion ? await ensurePromotionCoupon(stripe, checkoutPromotion) : "";
-    const sessionPayload = {
+    let sessionPayload = {
       mode: "subscription",
       customer: checkoutFamily?.stripeCustomerId || undefined,
       customer_email: checkoutFamily?.stripeCustomerId ? undefined : parentEmail || undefined,
@@ -6034,6 +6181,12 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     } else {
       sessionPayload.allow_promotion_codes = true;
     }
+    if (!checkoutOperation) {
+      checkoutOperation = { id: billingKey("checkout", checkoutFamilyId, crypto.randomUUID()), planName, trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0, createdAt: nowIso(), payload: sessionPayload };
+      mutateDb(db => { db.families.find(f => f.id === checkoutFamilyId).pendingCheckout = checkoutOperation; });
+      await flushPending();
+    }
+    sessionPayload = checkoutOperation.payload;
     const session = await createCheckoutSession(stripe, sessionPayload, (missingCustomerId) => {
       mutateDb((db) => {
         const family = db.families.find((item) => item.id === checkoutFamilyId);
@@ -6042,7 +6195,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
           audit(db, "stripe.checkout.missing_customer", { familyId: family.id, customerId: missingCustomerId }, parentEmail);
         }
       });
-    });
+    }, { idempotencyKey: checkoutOperation.id });
+    mutateDb(db => { db.families.find(f => f.id === checkoutFamilyId).pendingCheckout = { ...checkoutOperation, sessionId: session.id }; });
     mutateDb((db) => audit(db, "stripe.checkout.create", { sessionId: session.id, familyId: checkoutFamilyId, parentEmail, promoCode: checkoutPromotion?.code || "" }));
     return res.json({ mode: "stripe", sessionId: session.id, url: session.url, promotion: checkoutPromotion, trialDays: trialEligible ? TRIAL_PERIOD_DAYS : 0 });
   } catch (error) {
@@ -6313,7 +6467,7 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
     return res.status(400).json({ error: "Missing parent email." });
   }
 
-  const existingFamily = readDb().families.find((item) => item.email === email);
+  let existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) {
     return res.status(404).json({ error: "Family account not found." });
   }
@@ -6480,17 +6634,28 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
   }
 });
 
-app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => {
+app.post("/api/stripe/request-cancellation", requireParent, billingGuard, async (req, res) => {
   const email = normalizeEmail(req.auth?.email || req.body?.email || req.body?.parentEmail || "");
   const reason = String(req.body?.reason || "Parent requested cancellation");
   if (!email) return res.status(400).json({ error: "Missing parent email." });
 
   const existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) return res.status(404).json({ error: "Family account not found." });
+  if (existingFamily?.pendingUpgradeOperation) {
+    try {
+      const op = await loadBillingOperation(existingFamily.pendingUpgradeOperation);
+      if (op && op.state !== "failed") await advanceUpgrade(op);
+        else if (op?.state === "failed") mutateDb(db => { const item = db.families.find(x => x.id === op.familyId); delete item.pendingUpgradeOperation; item.failedUpgradeAt = op.createdAt; });
+      if (op?.state === "failed") mutateDb(db => { delete db.families.find(f => f.email === email).pendingUpgradeOperation; });
+      existingFamily = readDb().families.find(f => f.email === email);
+    } catch (error) {
+      return res.status(502).json({ error: "We could not confirm the pending payment with Stripe. No additional purchase was created. Please retry cancellation or contact support." });
+    }
+  }
   // Cancellation is idempotent. A stale browser can submit the old action after
   // the first request succeeded, so return the existing schedule without making
   // another Stripe call.
-  if (existingFamily.subscriptionStatus === "cancel_scheduled") {
+  if (existingFamily.subscriptionStatus === "cancel_scheduled" && !existingFamily.pendingRefundOperation) {
     return res.json({
       mode: process.env.STRIPE_SECRET_KEY ? "stripe" : "mock",
       familyId: existingFamily.id,
@@ -6528,15 +6693,18 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
   // subscription now (not at period end) so the card is never billed at
   // trial_end. The trial is marked spent, so a later resubscribe starts a
   // charged plan with no second free week (see eligibleForTrial).
-  const onTrialNow = ["trialing", "trial"].includes(existingFamily.subscriptionStatus)
+  const onTrialNow = !hasConfirmedYearlyUpgrade(existingFamily) && (["trialing", "trial"].includes(existingFamily.subscriptionStatus)
     || trialStillActive(existingFamily)
-    || stripeTrialActive(existingFamily);
+    || stripeTrialActive(existingFamily));
   if (onTrialNow) {
     const subId = existingFamily.stripeSubscriptionId || "";
     const liveStripeSub = Boolean(process.env.STRIPE_SECRET_KEY) && subId && !subId.startsWith("sub_mock");
     if (liveStripeSub) {
       try {
-        await stripeClient().subscriptions.cancel(subId);
+        const stripe = stripeClient();
+        const trialSub = await stripe.subscriptions.retrieve(subId, { expand: ["schedule"] });
+        if (trialSub.schedule) await stripe.subscriptionSchedules.release(stripeId(trialSub.schedule));
+        await stripe.subscriptions.cancel(subId);
       } catch (error) {
         // Already gone at Stripe is fine — proceed to end access locally.
         if (error?.code !== "resource_missing") {
@@ -6572,90 +6740,13 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
     });
   }
 
-  // Either window makes the latest charge refundable. The renewal window refunds
-  // the renewal; the first-payment window refunds the opening charge. Both refund
-  // the most recent PaymentIntent (stripePaymentId) and end access now.
-  const refundEligible = refundWindow.eligible || renewalWindow.eligible;
-  // "renewal" = a renewal charge, "resubscribe" = a fresh paid start after a
-  // prior trial, "first_payment" = the 7-day new-subscriber window. The first two
-  // share the 24h grace window.
-  const refundKind = renewalWindow.eligible
-    ? (renewalWindow.isRenewal ? "renewal"
-      : renewalWindow.paidResubscribe ? "resubscribe"
-      : "trial_conversion")
-    : "first_payment";
-  const isShortWindow = refundKind === "renewal" || refundKind === "resubscribe" || refundKind === "trial_conversion";
-  if (refundEligible && existingFamily.subscriptionStatus === "active") {
-    const mockRefund = !process.env.STRIPE_SECRET_KEY
-      || !existingFamily.stripePaymentId
-      || String(existingFamily.stripePaymentId).startsWith("pi_mock");
-    let refundId = "re_mock_kiddiegpt";
-    let refundAmount = 0;
-    if (!mockRefund) {
-      try {
-        const stripe = stripeClient();
-        const resolved = await stripeRefundParamsFor(stripe, existingFamily.stripePaymentId);
-        if (!resolved) throw new Error("No refundable PaymentIntent for this payment.");
-        const refund = await stripe.refunds.create(resolved.params);
-        refundId = refund.id;
-        refundAmount = Number(refund.amount || 0);
-        await cancelStripeSubscriptionsNow(stripe, existingFamily);
-      } catch (error) {
-        mutateDb((db) => monitor(db, "error", "stripe", "Refund-window cancellation failed", { email, detail: error.message }, email));
-        return res.status(500).json({ error: "Unable to refund and cancel with Stripe. Contact support." });
-      }
+  if ((renewalWindow.eligible || existingFamily.pendingRefundOperation) && ["active", "cancel_scheduled"].includes(existingFamily.subscriptionStatus)) {
+    try {
+      return res.json(await refundFamilyPayment(existingFamily, { reason }));
+    } catch (error) {
+      monitorBillingFailure(email, "Refund cancellation needs attention", error);
+      return res.status(502).json({ error: "Refund or cancellation is not yet complete. Retry safely or contact support.", detail: error.message });
     }
-    const updated = mutateDb((db) => {
-      const family = db.families.find((item) => item.email === email);
-      if (!family) return null;
-      family.paymentStatus = "refunded";
-      family.refundedAt = nowIso();
-      family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
-      family.refunds.unshift({ refundId, paymentId: family.stripePaymentId || "", amountCents: refundAmount, status: "succeeded", reason: isShortWindow ? (refundKind + "_window") : "refund_window", createdAt: nowIso() });
-      // Refunding a yearly UPGRADE only undoes the upgrade — the monthly period
-      // underneath it was paid for separately and earlier, so ending access now
-      // would confiscate time the parent already owns. Fall back to the monthly
-      // plan and let it run out its term instead.
-      const monthlyEndsIso = hasConfirmedYearlyUpgrade(family)
-        ? (unixToIso(family.yearlyUpgrade.monthlyEndsAt) || family.yearlyUpgrade.monthlyEndsAt || "")
-        : "";
-      const monthlyRemaining = monthlyEndsIso && new Date(monthlyEndsIso).getTime() > Date.now();
-      if (monthlyRemaining) {
-        retireYearlyUpgrade(family);
-        family.plan = "Family Monthly";
-        family.currentPeriodEnd = monthlyEndsIso;
-        family.subscriptionStatus = "cancel_scheduled";
-        family.cancellationRequested = true;
-        family.cancellationStatus = "scheduled";
-        family.cancelAtPeriodEnd = true;
-        family.cancelReason = reason || "Yearly upgrade refunded";
-        family.cancelAccessUntil = monthlyEndsIso;
-        family.cancellationAccessUntil = monthlyEndsIso;
-      } else {
-        markSubscriptionEndedNow(family, reason || "Cancelled within refund window", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "auto");
-      }
-      recordBillingAction(family, "cancel");
-      audit(db, "subscription.cancel_refunded", { familyId: family.id, email, refundId, refundKind, windowDays: refundWindow.windowDays, renewalWindowHours: renewalWindow.hours, paidAt: isShortWindow ? renewalWindow.chargedAt : refundWindow.paidAt, revertedToMonthlyUntil: monthlyRemaining ? monthlyEndsIso : "" }, email);
-      monitor(db, "info", "billing", isShortWindow ? `Cancelled within ${renewalWindow.hours}h refund window (${refundKind}) — refunded` : "Cancelled inside refund window — full refund issued", { email, refundId, refundKind }, email);
-      return family;
-    });
-    const refundWindowLabel = isShortWindow
-      ? `${renewalWindow.hours}-hour refund window`
-      : `${refundWindow.windowDays}-day refund window`;
-    return res.json({
-      mode: mockRefund ? "mock" : "stripe",
-      refunded: true,
-      refundId,
-      refundKind,
-      familyId: updated?.id || existingFamily.id,
-      status: updated?.subscriptionStatus || "cancelled",
-      cancelAccessUntil: updated?.cancelAccessUntil || "",
-      refundWindow,
-      renewalWindow,
-      message: updated?.subscriptionStatus === "cancel_scheduled"
-        ? `Your yearly upgrade was refunded in full. Your monthly plan continues until ${updated.cancelAccessUntil ? new Date(updated.cancelAccessUntil).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "the end of the paid period"}, then access ends.`
-        : `Cancelled within the ${refundWindowLabel}. Your ${refundKind === "renewal" ? "renewal" : "payment"} has been refunded in full and access has ended.`
-    });
   }
 
   if (!process.env.STRIPE_SECRET_KEY || !existingFamily.stripeSubscriptionId || existingFamily.stripeSubscriptionId.startsWith("sub_mock")) {
@@ -6733,7 +6824,7 @@ app.post("/api/stripe/request-cancellation", requireParent, async (req, res) => 
 // the cheapest revenue there is: the parent already has the plan and simply
 // changed their mind, so make it one click rather than "wait to lapse, then buy
 // again".
-app.post("/api/stripe/resume-subscription", requireParent, async (req, res) => {
+app.post("/api/stripe/resume-subscription", requireParent, billingGuard, async (req, res) => {
   const email = normalizeEmail(req.auth?.email || req.body?.email || "");
   if (!email) return res.status(400).json({ error: "Missing parent email." });
   const existing = readDb().families.find((item) => item.email === email);
@@ -6778,450 +6869,104 @@ app.post("/api/stripe/resume-subscription", requireParent, async (req, res) => {
   res.json({ ok: true, status: updated.subscriptionStatus, plan: updated.plan, message: "Your plan will continue. Auto-renewal is back on." });
 });
 
-app.post("/api/stripe/upgrade-yearly", requireParent, async (req, res) => {
-  const email = normalizeEmail(req.auth?.email || req.body?.email || req.body?.parentEmail || "");
-  if (email && !isAllowedParentEmail(email)) {
-    return res.status(400).json({ error: parentEmailError(email) });
-  }
-  if (!email) {
-    return res.status(400).json({ error: "Missing parent email." });
-  }
-
-  const dbSnapshot = readDb();
-  const family = dbSnapshot.families.find((item) => item.email === email);
-  if (!family) {
-    return res.status(404).json({ error: "Family account not found." });
-  }
-  if (billingCooldownFor(family)) {
-    return res.status(429).json(billingCooldownPayload(family));
-  }
-  const trialing = family.subscriptionStatus === "trialing";
-  // A family that has cancelled but still has paid access left is the best
-  // win-back audience there is — let them upgrade instead of waiting to lapse.
-  // Upgrading is an explicit renewal, so it clears the pending cancellation.
-  const cancellingWithAccess = family.subscriptionStatus === "cancel_scheduled" && cancellationStillActive(family);
-  if (!trialing && !cancellingWithAccess && family.subscriptionStatus !== "active") {
-    return res.status(400).json({ error: "Yearly upgrade requires an active monthly subscription or card-upfront trial." });
-  }
-
-  const yearlyPlan = dbSnapshot.pricing?.yearly || defaultPricing().yearly;
-  const monthlyPlan = dbSnapshot.pricing?.monthly || defaultPricing().monthly;
-  const yearlyPriceId = req.body?.yearlyPriceId || yearlyPlan.stripePriceId;
-  const normalisedPricing = normalisePricing(dbSnapshot.pricing);
-  const upgradeConfig = normalisedPricing.yearlyUpgrade;
-  const upgradeEnabled = upgradeConfig.enabled !== false;
-  const upgradeDiscountAmount = upgradeEnabled ? Number(upgradeConfig.discountAmount || 0) : 0;
-  // Monthly-to-yearly upgrades use their dedicated offer. The generic yearly
-  // promotion is reserved for new sign-ups and must not replace the upgrade's
-  // configured bonus months or upgrade discount.
-  const yearlyPromotion = null;
-  const bonusMonths = upgradeEnabled
-    ? Number(req.body?.bonusMonths ?? upgradeConfig.bonusMonths ?? process.env.YEARLY_UPGRADE_BONUS_MONTHS ?? 3)
-    : 0;
-  const upgradeNote = upgradeEnabled ? String(upgradeConfig.note || "") : "";
-  const initialPrice = yearlyPromotion
-    ? Number(yearlyPromotion.promoPrice || yearlyPlan.amount || 0)
-    : upgradeDiscountAmount > 0
-    // Floor at zero: a discount larger than the plan price must not invert it.
-    ? Math.max(0, Math.round((Number(yearlyPlan.amount || 0) - upgradeDiscountAmount) * 100) / 100)
-    : Number(yearlyPlan.amount || 0);
-  const initialAmountCents = Math.round(initialPrice * 100);
-  const promotionCode = yearlyPromotion?.code || "";
-  const effectiveOfferNote = yearlyPromotion?.description || upgradeNote;
-
-  if (!yearlyPriceId) {
-    return res.status(400).json({ error: "Missing yearly Stripe Price ID." });
-  }
-
-  // A card-upfront trial already has a Stripe subscription. Change its price
-  // in place so the trial end date is preserved and the parent is never given
-  // a second overlapping subscription or a second trial.
-  if (trialing && family.stripeSubscriptionId) {
-    if (!process.env.STRIPE_SECRET_KEY || family.stripeSubscriptionId.startsWith("sub_mock")) {
-      const trialEnd = new Date(family.trialEndsAt || Date.now() + 7 * 86400000);
-      const updated = mutateDb((db) => {
-        const next = db.families.find((item) => item.email === email);
-        if (!next) return null;
-        next.plan = yearlyPlan.label || "Family Yearly";
-        next.pendingPlanName = "";
-        next.subscriptionStatus = "trialing";
-        next.paymentStatus = "trial";
-        next.currentPeriodEnd = trialEnd.toISOString();
-        next.yearlyUpgrade = {
-          status: "trialing",
-          mode: "mock",
-          billingMode: "trial_price_switch",
-          bonusMonths: 0,
-          accessMonths: 12,
-          trialEndsAt: trialEnd.toISOString(),
-          yearlyNextRenewalAt: new Date(trialEnd.getFullYear() + 1, trialEnd.getMonth(), trialEnd.getDate()).toISOString(),
-          yearlySubscriptionId: next.stripeSubscriptionId,
-          promoCode: promotionCode,
-          effectivePrice: initialPrice,
-          acceptedAt: nowIso()
-        };
-        audit(db, "subscription.trial_switch_yearly.mock", { familyId: next.id, email, trialEndsAt: trialEnd.toISOString() }, email);
-        return next;
-      });
-      return res.json({
-        mode: "mock",
-        familyId: updated?.id || family.id,
-        plan: yearlyPlan.label || "Family Yearly",
-        trialing: true,
-        trialEndsAt: trialEnd.toISOString(),
-        yearlyNextRenewalAt: updated?.yearlyUpgrade?.yearlyNextRenewalAt || "",
-        promoCode: promotionCode,
-        effectivePrice: initialPrice,
-        message: `Yearly billing is selected. Your first yearly charge starts when the trial ends on ${trialEnd.toLocaleDateString()}.`
-      });
-    }
-
-    try {
-      const stripe = stripeClient();
-      const subscription = await stripe.subscriptions.retrieve(family.stripeSubscriptionId, { expand: ["items.data"] });
-      const item = subscription.items?.data?.[0];
-      if (!item) return res.status(400).json({ error: "The trial subscription has no billable item to upgrade." });
-      const trialCouponId = yearlyPromotion ? await ensurePromotionCoupon(stripe, yearlyPromotion) : "";
-      const updatedSubscription = await stripe.subscriptions.update(family.stripeSubscriptionId, {
-        items: [{ id: item.id, price: yearlyPriceId }],
-        proration_behavior: "none",
-        ...(trialCouponId ? { discounts: [{ coupon: trialCouponId }] } : {}),
-        metadata: { yearlyUpgrade: "true", upgradeBillingMode: "trial_price_switch", promotionCode, app: "KiddieGPT" }
-      });
-      const trialEnd = unixToIso(updatedSubscription.trial_end || subscription.trial_end || 0) || family.trialEndsAt || "";
-      const updated = mutateDb((db) => {
-        const next = db.families.find((entry) => entry.email === email);
-        if (!next) return null;
-        next.plan = yearlyPlan.label || "Family Yearly";
-        next.pendingPlanName = "";
-        next.subscriptionStatus = "trialing";
-        next.paymentStatus = "trial";
-        next.trialEndsAt = trialEnd || next.trialEndsAt;
-        next.currentPeriodEnd = unixToIso(updatedSubscription.current_period_end || 0) || next.currentPeriodEnd;
-        next.yearlyUpgrade = {
-          status: "trialing",
-          mode: "stripe",
-          billingMode: "trial_price_switch",
-          bonusMonths: 0,
-          accessMonths: 12,
-          trialEndsAt: trialEnd,
-          yearlySubscriptionId: updatedSubscription.id,
-          promoCode: promotionCode,
-          effectivePrice: initialPrice,
-          acceptedAt: nowIso()
-        };
-        audit(db, "subscription.trial_switch_yearly", { familyId: next.id, email, subscriptionId: updatedSubscription.id, trialEndsAt: trialEnd }, email);
-        return next;
-      });
-      return res.json({
-        mode: "stripe",
-        familyId: updated?.id || family.id,
-        plan: yearlyPlan.label || "Family Yearly",
-        subscriptionId: updatedSubscription.id,
-        trialing: true,
-        trialEndsAt: trialEnd,
-        promoCode: promotionCode,
-        effectivePrice: initialPrice,
-        message: `Yearly billing is selected. Your first yearly charge starts when the trial ends on ${trialEnd ? new Date(trialEnd).toLocaleDateString() : "the trial end date"}.`
-      });
-    } catch (error) {
-      mutateDb((db) => monitor(db, "error", "stripe", "Trial yearly switch failed", { email, detail: error.message, subscriptionId: family.stripeSubscriptionId }, email));
-      return res.status(500).json({ error: "Unable to switch the trial subscription to yearly." });
-    }
-  }
-
-  if (!process.env.STRIPE_SECRET_KEY || !family.stripeSubscriptionId || family.stripeSubscriptionId.startsWith("sub_mock")) {
-    // Proration: end the monthly plan and start yearly now. Total access =
-    // 12 months + admin bonus months + the days left in the current month.
-    const now = Date.now();
-    let periodEnd;
-    if (family.currentPeriodEnd) {
-      periodEnd = new Date(family.currentPeriodEnd);
-    } else {
-      periodEnd = new Date(family.lastPaymentAt || family.createdAt || now);
-      do { periodEnd.setMonth(periodEnd.getMonth() + 1); } while (periodEnd.getTime() <= now);
-    }
-    // A monthly plan cannot hold more than a month of unused time. Without this
-    // cap a wrong currentPeriodEnd compounds: the bogus remainder is carried
-    // into the yearly date, which becomes the next currentPeriodEnd, and the
-    // following upgrade carries a bigger one still (seen in the wild at 1859
-    // days, pushing a renewal out to 2032).
-    const MAX_CARRY_DAYS = String(family.plan || "").toLowerCase().includes("year") ? 366 : 31;
-    const rawProratedDays = Math.max(0, Math.ceil((periodEnd.getTime() - now) / 86400000));
-    const proratedDays = Math.min(rawProratedDays, MAX_CARRY_DAYS);
-    if (rawProratedDays > MAX_CARRY_DAYS) {
-      mutateDb((db) => monitor(db, "warning", "billing",
-        "Prorated carry-over capped — currentPeriodEnd looks wrong",
-        { familyId: family.id, rawProratedDays, cappedTo: MAX_CARRY_DAYS, currentPeriodEnd: family.currentPeriodEnd }, family.email));
-    }
-    const accessMonths = 12 + bonusMonths;
-    const accessEnd = new Date(now);
-    accessEnd.setMonth(accessEnd.getMonth() + accessMonths);
-    accessEnd.setDate(accessEnd.getDate() + proratedDays);
-    const effectivePrice = initialPrice;
-    const accessEndUnix = Math.floor(accessEnd.getTime() / 1000);
-    const mockYearlySubscriptionId = "sub_mock_yearly_" + crypto.randomBytes(6).toString("hex");
-    const updated = mutateDb((db) => {
-      const next = db.families.find((item) => item.email === email);
-      if (!next) return null;
-      const monthlySubscriptionIds = next.stripeSubscriptionId ? [next.stripeSubscriptionId] : [];
-      next.plan = yearlyPlan.label || "Family Yearly";
-      next.subscriptionStatus = "active";
-      // Upgrading is an explicit renewal, so any pending cancellation is off.
-      next.cancellationRequested = false;
-      next.cancellationStatus = "";
-      next.cancelAtPeriodEnd = false;
-      next.cancelAccessUntil = "";
-      next.cancellationAccessUntil = "";
-      next.paymentStatus = "paid";
-      next.stripeCustomerId = next.stripeCustomerId || "cus_mock_" + crypto.randomBytes(6).toString("hex");
-      next.stripePreviousMonthlySubscriptionIds = monthlySubscriptionIds;
-      next.stripeSubscriptionId = mockYearlySubscriptionId;
-      next.currentPeriodEnd = accessEnd.toISOString();
-      next.yearlyUpgrade = {
-        status: "scheduled",
-        mode: "mock",
-        billingMode: "immediate_prorated",
-        bonusMonths,
-        accessMonths,
-        proratedDays,
-        monthlyEndsAt: Math.floor(periodEnd.getTime() / 1000),
-        yearlyNextRenewalAt: accessEndUnix,
-        monthlySubscriptionIds,
-        yearlySubscriptionId: mockYearlySubscriptionId,
-        monthlyCancelledAtPeriodEnd: false,
-        discountAmount: Math.max(0, Math.round((Number(yearlyPlan.amount || 0) - effectivePrice) * 100) / 100),
-        promoCode: promotionCode,
-        effectivePrice,
-        note: effectiveOfferNote,
-        acceptedAt: nowIso()
-      };
-      recordStripePayment(db, {
-        id: `upgrade_mock_${next.id}_${accessEndUnix}`,
-        type: "invoice.paid"
-      }, {
-        id: "pi_mock_yearly_" + crypto.randomBytes(6).toString("hex"),
-        amount_paid: Math.round(effectivePrice * 100),
-        currency: "usd",
-        customer: next.stripeCustomerId,
-        subscription: mockYearlySubscriptionId,
-        status: "paid",
-        created: Math.floor(now / 1000),
-        metadata: { parentEmail: next.email, planName: next.plan, upgradeBillingMode: "immediate_15_month", promoCode: promotionCode }
-      }, next);
-      audit(db, "subscription.upgrade_yearly.mock", { familyId: next.id, email, bonusMonths, proratedDays, accessMonths }, email);
-      return next;
+async function advanceUpgrade(op) {
+  if (op.state === "completed") return op.result;
+    const mock = !stripeClient() || String(op.monthlySubscriptionId).startsWith("sub_mock");
+    let applied;
+    if (mock) {
+      applied = { subscriptionId: op.terms.trialing ? op.monthlySubscriptionId : "sub_mock_" + op.id,
+        invoice: op.terms.trialing ? null : { id: "in_mock_" + op.id, payment_intent: "pi_mock_" + op.id,
+          amount_paid: op.terms.amountCents, currency: "usd", created: Math.floor(Date.now()/1000), status: "paid" } };
+    } else applied = await require("./billing-upgrade").executeUpgrade({ stripe: stripeClient(), op, save: saveBillingOperation });
+    op.result = mutateDb(db => {
+      const f = db.families.find(f => f.id === op.familyId);
+      const trial = op.terms.trialing;
+      f.plan = op.planLabel || "Family Yearly";
+      f.stripeSubscriptionId = applied.subscriptionId;
+      f.subscriptionStatus = trial ? "trialing" : "active";
+      f.paymentStatus = trial ? "trial" : "paid";
+      f.currentPeriodEnd = unixToIso(trial ? op.terms.startsAt : op.terms.endsAt);
+      f.cancellationRequested = false; f.cancellationStatus = ""; f.cancelAtPeriodEnd = false;
+      f.cancelAccessUntil = ""; f.cancellationAccessUntil = "";
+      f.yearlyUpgrade = { status: trial ? "trialing" : "scheduled", mode: mock ? "mock" : "stripe",
+        billingMode: trial ? "trial_offer" : "paid_upgrade", bonusMonths: op.terms.bonusMonths,
+        accessMonths: op.terms.accessMonths, effectivePrice: op.terms.amountCents / 100,
+        note: op.terms.note, renewalPrice: op.renewalAmount,
+        yearlyNextRenewalAt: op.terms.endsAt, yearlyScheduleId: op.scheduleId || "",
+        yearlySubscriptionId: applied.subscriptionId, monthlyEndsAt: trial ? null : op.terms.monthlyEndsAt,
+        monthlySubscriptionIds: trial ? [] : [op.monthlySubscriptionId],
+        monthlyPaymentId: op.monthlyPaymentId || "", monthlyPaymentAt: op.monthlyPaymentAt || "",
+        monthlyPaymentAmountCents: op.monthlyPaymentAmountCents || 0, acceptedAt: op.createdAt };
+      if (!trial) {
+        recordStripePayment(db, { id: "upgrade_" + op.id, type: "invoice.paid" }, { ...applied.invoice, subscription: applied.subscriptionId, metadata: { familyId: f.id } }, f);
+        f.stripePaymentId = applied.invoice.id;
+        f.lastPaymentAt = unixToIso(applied.invoice.created);
+        f.lastPaymentAmountCents = op.terms.amountCents;
+      }
+      delete f.pendingUpgradeOperation;
+      recordBillingAction(f, "upgrade");
+      audit(db, trial ? "subscription.trial_switch_yearly" : "subscription.upgrade_yearly", { familyId: f.id, email: op.email, bonusMonths: op.terms.bonusMonths, effectivePrice: op.terms.amountCents/100 });
+      return { mode: mock ? "mock" : "stripe", plan: f.plan, trialing: trial, status: f.subscriptionStatus,
+        trialEndsAt: trial ? f.trialEndsAt : "", effectivePrice: op.terms.amountCents / 100,
+        bonusMonths: op.terms.bonusMonths, accessMonths: op.terms.accessMonths,
+        yearlyNextRenewalAt: op.terms.endsAt, monthlyEndsAt: op.terms.monthlyEndsAt,
+        message: trial ? "Yearly selected. Your trial end date is unchanged; the offer will be charged then."
+          : "Yearly payment confirmed. Remaining monthly time and bonus months are included; monthly renewal is off." };
     });
-    return res.json({
-      mode: "mock",
-      familyId: updated?.id || family.id,
-      plan: yearlyPlan.label || "Family Yearly",
-      bonusMonths,
-      accessMonths,
-      proratedDays,
-      yearlyNextRenewalAt: accessEndUnix,
-      monthlyEndsAt: Math.floor(periodEnd.getTime() / 1000),
-      effectivePrice,
-      promoCode: promotionCode,
-      yearlySubscriptionId: updated?.yearlyUpgrade?.yearlySubscriptionId || "",
-      note: effectiveOfferNote,
-      message: `Yearly active now: 12 months + ${bonusMonths} bonus month${bonusMonths === 1 ? "" : "s"} + ${proratedDays} remaining day${proratedDays === 1 ? "" : "s"} from your current month. Next renewal ${accessEnd.toLocaleDateString()}.`
-    });
-  }
+    await flushPending();
+    op.state = "completed"; await saveBillingOperation(op);
+    return op.result;
 
+}
+
+app.post("/api/stripe/upgrade-yearly", requireParent, billingGuard, async (req, res) => {
+  const email = normalizeEmail(req.auth.email);
+  let family = readDb().families.find(f => f.email === email);
+  if (!family) return res.status(404).json({ error: "Family account not found." });
+  if (family.pendingRefundOperation) return res.status(409).json({ error: "Resolve the pending refund before upgrading." });
+  if (billingCooldownFor(family)) return res.status(429).json(billingCooldownPayload(family));
+  if (!String(effectiveFamilyPlan(family)).toLowerCase().includes("month")) return res.status(409).json({ error: "This account is already on yearly billing." });
+  if (!["active", "trialing"].includes(family.subscriptionStatus) && !cancellationStillActive(family)) return res.status(400).json({ error: "An active monthly plan is required." });
   try {
-    const stripe = stripeClient();
-    const subscriptions = await activeStripeSubscriptionsForEmail(stripe, email);
-    const monthlySubscriptions = subscriptions.filter((subscription) =>
-      subscriptionHasInterval(subscription, "month", monthlyPlan.stripePriceId) &&
-      subscription.metadata?.upgradeBillingMode !== "immediate_15_month" &&
-      !subscription.metadata?.accessMonths
-    );
-    const yearlySubscriptions = subscriptions.filter((subscription) =>
-      subscriptionHasInterval(subscription, "year", yearlyPriceId)
-    );
-    const immediateUpgradeSubscriptions = subscriptions.filter((subscription) =>
-      subscription.metadata?.upgradeBillingMode === "immediate_15_month" ||
-      subscription.metadata?.accessMonths === String(12 + bonusMonths)
-    );
-    const deferredUpgradeSubscriptions = yearlySubscriptions.filter((subscription) =>
-      subscription.status === "trialing" &&
-      subscription.metadata?.yearlyUpgrade === "true" &&
-      subscription.metadata?.upgradeBillingMode !== "immediate_15_month"
-    );
-    for (const deferred of deferredUpgradeSubscriptions) {
-      await stripe.subscriptions.cancel(deferred.id);
-    }
+    const pricing = normalisePricing(readDb().pricing);
+    let op = family.pendingUpgradeOperation ? await loadBillingOperation(family.pendingUpgradeOperation) : null;
+    if (!op) {
+      const terms = billingPolicy.upgradeTerms(family, pricing);
+      if (!terms.priceId) return res.status(400).json({ error: "Yearly pricing is not configured." });
+      const id = billingKey("upgrade", family.id, family.stripeSubscriptionId, family.subscriptionStatus === "trialing" ? family.trialEndsAt : family.lastPaymentAt, family.refundedAt || "", family.failedUpgradeAt || "");
+      op = await loadBillingOperation(id);
+      if (!op) {
+        op = { id, type: "upgrade", state: "started", familyId: family.id, email, terms, createdAt: nowIso(),
+          planLabel: pricing.yearly.label, renewalAmount: Number(pricing.yearly.amount),
+          monthlySubscriptionId: family.stripeSubscriptionId, customerId: family.stripeCustomerId,
+          monthlyPaymentId: family.stripePaymentId, monthlyPaymentAt: family.lastPaymentAt,
+          monthlyPaymentAmountCents: family.lastPaymentAmountCents };
+        const stripe = stripeClient();
+        if (stripe && !String(family.stripeSubscriptionId).startsWith("sub_mock")) {
+          const monthly = await stripe.subscriptions.retrieve(family.stripeSubscriptionId);
+          if (!subscriptionHasInterval(monthly, "month", pricing.monthly.stripePriceId)) throw new Error("Stripe does not show a monthly subscription.");
+          if (!["active", "trialing"].includes(monthly.status)) throw new Error("Stripe does not show an active monthly plan. Refresh billing first.");
+          op.terms = billingPolicy.upgradeTerms({ ...family, subscriptionStatus: monthly.status,
+            currentPeriodEnd: unixToIso(monthly.current_period_end), trialEndsAt: unixToIso(monthly.trial_end) }, pricing);
 
-    if (immediateUpgradeSubscriptions.length) {
-      const existingYearly = immediateUpgradeSubscriptions[0];
-      const settledInvoice = await settleStripeInvoice(stripe, existingYearly.latest_invoice);
-      const monthlyIds = monthlySubscriptions.map((subscription) => subscription.id);
-      const monthlyEndsAt = monthlySubscriptions.length
-        ? Math.max(...monthlySubscriptions.map((subscription) => subscription.current_period_end || 0))
-        : null;
-      for (const monthly of monthlySubscriptions) {
-        if (!monthly.cancel_at_period_end) {
-          await stripe.subscriptions.update(monthly.id, {
-            cancel_at_period_end: true,
-            metadata: {
-              yearlyUpgrade: "true",
-              yearlyUpgradeReplacement: existingYearly.id
-            }
-          });
+          op.paymentMethod = stripeId(monthly.default_payment_method) || undefined;
+          op.customerId = stripeId(monthly.customer);
         }
+        await saveBillingOperation(op);
       }
-      mutateDb((db) => {
-        const next = db.families.find((item) => item.email === email);
-        if (!next) return null;
-        next.plan = yearlyPlan.label || "Family Yearly";
-        next.stripeSubscriptionId = existingYearly.id;
-        next.stripeCustomerId = existingYearly.customer || next.stripeCustomerId;
-        next.yearlyUpgrade = {
-          status: "scheduled",
-          mode: "stripe",
-          alreadyScheduled: true,
-          billingMode: "immediate_15_month",
-          bonusMonths,
-          accessMonths: Number(existingYearly.metadata?.accessMonths || 12 + bonusMonths),
-          monthlySubscriptionIds: monthlyIds,
-          yearlySubscriptionId: existingYearly.id,
-          yearlyScheduleId: stripeId(existingYearly.schedule),
-          yearlyNextRenewalAt: existingYearly.current_period_end || null,
-          monthlyEndsAt,
-          chargedAt: settledInvoice?.status === "paid" ? nowIso() : next.yearlyUpgrade?.chargedAt || "",
-          acceptedAt: nowIso()
-        };
-        if (settledInvoice && Number(settledInvoice.amount_paid || 0) > 0) {
-          recordStripePayment(db, { id: `upgrade_${settledInvoice.id}`, type: "invoice.paid" }, settledInvoice, next);
-        }
-        audit(db, "subscription.upgrade_yearly.exists", { familyId: next.id, email, yearlySubscriptionId: existingYearly.id, monthlySubscriptionIds: monthlyIds });
-        return next;
-      });
-      return res.json({
-        mode: "stripe",
-        alreadyScheduled: true,
-        plan: yearlyPlan.label || "Family Yearly",
-        bonusMonths,
-        accessMonths: Number(existingYearly.metadata?.accessMonths || 12 + bonusMonths),
-        yearlySubscriptionId: existingYearly.id,
-        yearlyScheduleId: stripeId(existingYearly.schedule),
-        monthlySubscriptionIds: monthlyIds,
-        monthlyEndsAt,
-        yearlyNextRenewalAt: existingYearly.current_period_end || null,
-        paymentStatus: settledInvoice?.status || existingYearly.latest_invoice?.status || "",
-        message: "Yearly has already been charged and the next renewal is set after the bonus period."
-      });
     }
-
-    if (!monthlySubscriptions.length) {
-      return res.status(404).json({ error: "No active monthly Stripe subscription found for this parent email." });
-    }
-
-    const primaryMonthly = monthlySubscriptions.slice().sort((a, b) => b.current_period_end - a.current_period_end)[0];
-    const monthlyEndsAt = Math.max(...monthlySubscriptions.map((subscription) => subscription.current_period_end || primaryMonthly.current_period_end));
-    const defaultPaymentMethod =
-      primaryMonthly.default_payment_method ||
-      primaryMonthly.default_source ||
-      undefined;
-
-    for (const monthly of monthlySubscriptions) {
-      await stripe.subscriptions.update(monthly.id, {
-        cancel_at_period_end: true,
-        metadata: {
-          yearlyUpgrade: "true",
-          yearlyUpgradeBonusMonths: String(bonusMonths)
-        }
-      });
-    }
-
-    const monthlyIds = monthlySubscriptions.map((subscription) => subscription.id);
-    const yearlySchedule = await createImmediateYearlyUpgradeSchedule(stripe, {
-      customerId: primaryMonthly.customer,
-      yearlyPriceId,
-      defaultPaymentMethod,
-      email,
-      bonusMonths,
-      monthlySubscriptionIds: monthlyIds,
-      initialAmountCents,
-      promotionCode
-    });
-    const yearlySubscription = yearlySchedule.subscription && typeof yearlySchedule.subscription === "object" ? yearlySchedule.subscription : null;
-    if (!yearlySubscription) {
-      throw new Error("Stripe did not return the yearly upgrade subscription.");
-    }
-    const latestInvoice = yearlySubscription.latest_invoice && typeof yearlySubscription.latest_invoice === "object"
-      ? yearlySubscription.latest_invoice
-      : null;
-    const settledInvoice = await settleStripeInvoice(stripe, latestInvoice);
-
-    mutateDb((db) => {
-      const next = db.families.find((item) => item.email === email);
-      if (!next) return null;
-      next.plan = yearlyPlan.label || "Family Yearly";
-      next.subscriptionStatus = "active";
-      // Upgrading is an explicit renewal, so any pending cancellation is off.
-      next.cancellationRequested = false;
-      next.cancellationStatus = "";
-      next.cancelAtPeriodEnd = false;
-      next.cancelAccessUntil = "";
-      next.cancellationAccessUntil = "";
-      next.paymentStatus = "paid";
-      next.stripeCustomerId = primaryMonthly.customer || next.stripeCustomerId;
-      next.stripeSubscriptionId = yearlySubscription.id;
-      next.stripePreviousMonthlySubscriptionIds = monthlyIds;
-      next.yearlyUpgrade = {
-        status: "scheduled",
-        mode: "stripe",
-        billingMode: "immediate_15_month",
-        bonusMonths,
-        accessMonths: 12 + bonusMonths,
-        monthlySubscriptionIds: monthlyIds,
-        yearlySubscriptionId: yearlySubscription.id,
-        yearlyScheduleId: yearlySchedule.id,
-        promoCode: promotionCode,
-        effectivePrice: initialPrice,
-        yearlyNextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null,
-        monthlyEndsAt,
-        chargedAt: settledInvoice?.status === "paid" ? nowIso() : "",
-        acceptedAt: nowIso()
-      };
-      if (settledInvoice && Number(settledInvoice.amount_paid || 0) > 0) {
-        recordStripePayment(db, { id: `upgrade_${settledInvoice.id}`, type: "invoice.paid" }, settledInvoice, next);
-      }
-      audit(db, "subscription.upgrade_yearly", {
-        familyId: next.id,
-        email,
-        monthlySubscriptionIds: monthlyIds,
-        yearlySubscriptionId: yearlySubscription.id,
-        yearlyScheduleId: yearlySchedule.id,
-        promoCode: promotionCode,
-        effectivePrice: initialPrice,
-        bonusMonths,
-        accessMonths: 12 + bonusMonths,
-        nextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null
-      });
-      return next;
-    });
-
-    return res.json({
-      mode: "stripe",
-      plan: yearlyPlan.label || "Family Yearly",
-      bonusMonths,
-      accessMonths: 12 + bonusMonths,
-      monthlySubscriptionIds: monthlyIds,
-      yearlySubscriptionId: yearlySubscription.id,
-      yearlyScheduleId: yearlySchedule.id,
-      yearlyNextRenewalAt: yearlySubscription.current_period_end || yearlySchedule.current_phase?.end_date || null,
-      monthlyEndsAt,
-      paymentStatus: settledInvoice?.status || "",
-      effectivePrice: initialPrice,
-      promoCode: promotionCode,
-      message: `Yearly is charged now and includes ${12 + bonusMonths} months before the next renewal. Monthly renewal is cancelled at period end.`
-    });
+    if (op.state === "completed") return res.json(op.result);
+    mutateDb(db => { db.families.find(f => f.id === family.id).pendingUpgradeOperation = op.id; });
+    await flushPending();
+    return res.json(await advanceUpgrade(op));
   } catch (error) {
-    mutateDb((db) => monitor(db, "error", "stripe", "Yearly upgrade failed", { email, detail: error.message }, email));
-    return res.status(500).json({ error: "Unable to upgrade this family to yearly billing." });
+    const latest = readDb().families.find(f => f.email === email);
+    const pending = latest?.pendingUpgradeOperation ? await loadBillingOperation(latest.pendingUpgradeOperation) : null;
+    if (pending?.state === "failed") mutateDb(db => {
+      const f = db.families.find(f => f.email === email); delete f.pendingUpgradeOperation; f.failedUpgradeAt = nowIso();
+    });
+    monitorBillingFailure(email, "Yearly upgrade needs attention", error);
+    return res.status(502).json({ error: pending?.state === "failed" ? "Yearly payment failed. Your monthly plan is unchanged. Update your card and try again." : error.message + " Retry the same upgrade to check or complete it; no new purchase will be created." });
   }
 });
 
@@ -7510,8 +7255,12 @@ app.post("/api/admin/trigger-email", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
-  const { action, subscriptionId, email } = req.body || {};
+app.post("/api/admin/subscription-action", requireAdmin, billingGuard, async (req, res) => {
+  const { action, email } = req.body || {};
+  const selectedFamily = readDb().families.find(f => f.email === normalizeEmail(email));
+  if (!selectedFamily) return res.status(404).json({ error: "Family account not found." });
+  const subscriptionId = effectiveFamilySubscriptionId(selectedFamily);
+  let scheduledSubscription;
   // pause/cancel schedule; end_now finalises immediately; keep undoes a scheduled
   // cancellation; reactivate restores a cancelled account.
   const allowed = new Set(["pause", "cancel", "end_now", "keep", "reactivate"]);
@@ -7528,9 +7277,13 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
     try {
       const stripe = stripeClient();
       if (action === "pause") await stripe.subscriptions.update(subscriptionId, { pause_collection: { behavior: "void" } });
-      else if (action === "cancel") await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
+      else if (action === "cancel") scheduledSubscription = await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
       else if (action === "keep") await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
-      else if (action === "end_now") await stripe.subscriptions.cancel(subscriptionId).catch(() => {});
+      else if (action === "end_now") {
+        const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["schedule"] });
+        if (sub.schedule) await stripe.subscriptionSchedules.release(stripeId(sub.schedule));
+        await stripe.subscriptions.cancel(subscriptionId);
+      }
     } catch (error) {
       return res.status(502).json({ error: "Could not update the subscription with Stripe." });
     }
@@ -7545,8 +7298,8 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
 
     if (action === "pause") { family.accountLocked = true; family.pausedAt = nowIso(); }
     else if (action === "cancel") {
-      const end = new Date(); end.setMonth(end.getMonth() + (isYearly(family.plan) ? 12 : 1));
-      markCancellationScheduled(family, { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(end.getTime() / 1000) }, "Admin scheduled cancellation", "admin");
+      const end = new Date(family.currentPeriodEnd || family.trialEndsAt || Date.now());
+      markCancellationScheduled(family, scheduledSubscription || { id: subscriptionId || "sub_mock_kiddiegpt", current_period_end: Math.floor(end.getTime() / 1000) }, "Admin scheduled cancellation", "admin");
       message = "Cancellation scheduled for the end of the paid period.";
     }
     else if (action === "end_now") {
@@ -7599,88 +7352,21 @@ app.post("/api/admin/subscription-action", requireAdmin, async (req, res) => {
   return res.json({ ok: true, mode: liveStripe ? "stripe" : "mock", action, subscriptionId: subscriptionId || "", family: result.family, message: result.message });
 });
 
-app.post("/api/stripe/refund", requireAdmin, async (req, res) => {
-  const { paymentIntentId, amountCents, email } = req.body || {};
-  if (!paymentIntentId) {
-    return res.status(400).json({ error: "Missing Stripe payment intent ID." });
-  }
-
-  if (!process.env.STRIPE_SECRET_KEY || paymentIntentId.startsWith("pi_mock")) {
-    const result = {
-      mode: "mock",
-      refundId: "re_mock_kiddiegpt",
-      paymentIntentId,
-      email,
-      message: "Refund was simulated."
-    };
-    mutateDb((db) => {
-      const family = db.families.find((item) => item.email === String(email || "").toLowerCase() || item.stripePaymentId === paymentIntentId);
-      if (family) {
-        family.paymentStatus = "refunded";
-        family.refundedAt = nowIso();
-        markSubscriptionEndedNow(family, "Payment refunded", family.stripeSubscriptionId || family.cancellationSubscriptionId || "", "admin");
-      }
-      audit(db, "refund.mock", { paymentIntentId, email, amountCents });
-    });
-    return res.json(result);
-  }
-
+app.post("/api/stripe/refund", requireAdmin, billingGuard, async (req, res) => {
+  const family = readDb().families.find(f => f.email === normalizeEmail(req.body?.email || ""));
+  if (!family) return res.status(404).json({ error: "Family account not found." });
+  if (!String(req.body?.reason || "").trim()) return res.status(400).json({ error: "Enter a refund reason." });
   try {
-    const stripe = stripeClient();
-    const resolved = await stripeRefundParamsFor(stripe, paymentIntentId, amountCents);
-    if (!resolved) {
-      return res.status(400).json({ error: "This payment does not have a refundable Stripe PaymentIntent yet. Refresh the payment from Stripe and try again." });
-    }
-    const resolvedPaymentId = resolved.resolvedPaymentId;
-    const refund = await stripe.refunds.create(resolved.params);
-    const preRefundDb = readDb();
-    const preSourcePayment = preRefundDb.payments.find((payment) => payment.paymentId === paymentIntentId || payment.paymentId === resolvedPaymentId);
-    const preFamily = preRefundDb.families.find((item) =>
-      item.email === String(email || "").toLowerCase() ||
-      item.stripePaymentId === paymentIntentId ||
-      item.stripePaymentId === resolvedPaymentId ||
-      (preSourcePayment?.familyId && item.id === preSourcePayment.familyId)
-    );
-    const refundAmount = Number(refund.amount || amountCents || 0);
-    const fullRefund = preSourcePayment?.amountCents
-      ? refundAmount >= Number(preSourcePayment.amountCents)
-      : true;
-    const stripeCancellationResult = fullRefund ? await cancelStripeSubscriptionsNow(stripe, preFamily) : [];
-    mutateDb((db) => {
-      const sourcePayment = db.payments.find((payment) => payment.paymentId === paymentIntentId || payment.paymentId === resolvedPaymentId);
-      const family = db.families.find((item) =>
-        item.email === String(email || "").toLowerCase() ||
-        item.stripePaymentId === paymentIntentId ||
-        item.stripePaymentId === resolvedPaymentId ||
-        (sourcePayment?.familyId && item.id === sourcePayment.familyId)
-      );
-      const refundStatus = sourcePayment?.amountCents && refundAmount > 0 && refundAmount < Number(sourcePayment.amountCents)
-        ? "partial_refunded"
-        : "refunded";
-      if (sourcePayment) {
-        sourcePayment.status = refundStatus;
-        sourcePayment.refundId = refund.id;
-        sourcePayment.refundedAt = nowIso();
-      }
-      if (family) {
-        family.paymentStatus = refundStatus;
-        family.refundedAt = nowIso();
-        family.stripePaymentId = resolvedPaymentId;
-        family.refunds = Array.isArray(family.refunds) ? family.refunds : [];
-        family.refunds.unshift({ refundId: refund.id, paymentId: resolvedPaymentId, amountCents: refundAmount, status: refund.status, createdAt: nowIso() });
-        if (refundStatus === "refunded") {
-          markSubscriptionEndedNow(family, "Payment refunded", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "admin");
-        }
-      }
-      audit(db, "refund.create", { paymentIntentId, resolvedPaymentId, email, refundId: refund.id, amountCents: refundAmount, fullRefund, stripeCancellationResult });
-    });
-    return res.json({ mode: "stripe", refundId: refund.id, paymentIntentId: resolvedPaymentId, status: refund.status, subscriptionEnded: fullRefund, stripeCancellationResult });
+    return res.json(await refundFamilyPayment(family, { admin: true, paymentId: req.body.paymentIntentId,
+      amountCents: req.body.fullRefund === false ? req.body.amountCents : undefined,
+      requestId: req.body.requestId, operationId: family.pendingRefundOperation || undefined, reason: req.body.reason }));
   } catch (error) {
-    return res.status(500).json({ error: "Unable to create Stripe refund." });
+    monitorBillingFailure(family.email, "Admin refund needs attention", error);
+    return res.status(502).json({ error: error.message });
   }
 });
 
-app.post("/api/admin/billing-exception", requireAdmin, async (req, res) => {
+app.post("/api/admin/billing-exception", requireAdmin, billingGuard, async (req, res) => {
   const action = String(req.body?.action || "");
   const email = String(req.body?.email || req.body?.parentEmail || "").toLowerCase();
   const familyId = req.body?.familyId || "";
@@ -7717,46 +7403,9 @@ app.post("/api/admin/billing-exception", requireAdmin, async (req, res) => {
     const stripe = stripeClient();
 
     if (action === "partial_refund") {
-      const amountCents = Math.max(1, Number(req.body?.amountCents || 1000));
-      const liveStripe = Boolean(process.env.STRIPE_SECRET_KEY) && stripe;
-      if (liveStripe) {
-        // Resolve a real charge to refund. family.stripePaymentId is often unset
-        // (subscription renewals capture it inconsistently), so fall back to the
-        // customer's most recent refundable charge. Never silently record a mock
-        // refund in live mode — if nothing is found, fail loudly so it does not
-        // look refunded in the app while Stripe has no record.
-        let payId = req.body?.paymentIntentId || family.stripePaymentId || "";
-        if ((!payId || payId.startsWith("pi_mock")) && family.stripeCustomerId) {
-          const charges = await stripe.charges.list({ customer: family.stripeCustomerId, limit: 10 });
-          const ch = (charges.data || []).find((c) => c.paid && !c.refunded && Number(c.amount_captured || c.amount || 0) > 0);
-          payId = ch ? (stripeId(ch.payment_intent) || ch.id) : "";
-        }
-        const resolved = payId ? await stripeRefundParamsFor(stripe, payId, amountCents) : null;
-        if (!resolved) {
-          return res.status(400).json({ error: "No refundable Stripe charge found for this customer. Refund a specific charge from the Payments tab, or check the customer in Stripe." });
-        }
-        const refund = await stripe.refunds.create(resolved.params);
-        result.refundId = refund.id;
-        result.status = refund.status;
-        result.resolvedPaymentId = resolved.resolvedPaymentId;
-      } else {
-        result.mode = "mock";
-        result.refundId = "re_mock_exception";
-        result.status = "succeeded";
-      }
-      mutateDb((db) => {
-        const next = db.families.find((item) => item.id === family.id);
-        if (!next) return null;
-        next.paymentStatus = "partial_refunded";
-        next.partialRefundedAt = nowIso();
-        next.billingExceptions = next.billingExceptions || [];
-        next.billingExceptions.unshift({ action, amountCents, reason, resultId: result.refundId, createdAt: nowIso() });
-        audit(db, "billing_exception.partial_refund", { familyId: next.id, email: next.email, amountCents, refundId: result.refundId, reason });
-        return next;
-      });
-      result.amountCents = amountCents;
-      result.message = `Partial refund of $${(amountCents / 100).toFixed(2)} recorded.`;
-      return res.json(result);
+      return res.json(await refundFamilyPayment(family, { admin: true,
+        paymentId: req.body.paymentIntentId || family.stripePaymentId, amountCents: req.body.amountCents,
+        requestId: req.body.requestId, reason }));
     }
 
     if (action === "credit_next_invoice") {
@@ -8101,13 +7750,13 @@ async function reconcileWithStripe() {
   const stripe = stripeClient();
   if (!stripe) return { reconciled: 0, skipped: "no_stripe" };
   const targets = (readDb().families || [])
-    .filter((family) => family.stripeSubscriptionId && !family.anonymizedAt)
+    .filter((family) => family.stripeSubscriptionId && !family.anonymizedAt && !family.pendingUpgradeOperation && !family.pendingRefundOperation)
     .slice(0, 100);
   const observed = [];
   for (const family of targets) {
     try {
       const sub = await stripe.subscriptions.retrieve(family.stripeSubscriptionId);
-      observed.push({ id: family.id, status: sub.status });
+      observed.push({ id: family.id, subscriptionId: family.stripeSubscriptionId, status: sub.status });
     } catch (error) {
       observed.push({ id: family.id, status: error?.code === "resource_missing" ? "canceled" : "" });
     }
@@ -8116,7 +7765,7 @@ async function reconcileWithStripe() {
     let reconciled = 0;
     observed.forEach((obs) => {
       const family = db.families.find((item) => item.id === obs.id);
-      if (!family || !obs.status) return;
+      if (!family || !obs.status || family.pendingUpgradeOperation || family.pendingRefundOperation || (obs.subscriptionId && obs.subscriptionId !== family.stripeSubscriptionId)) return;
       const stripeActive = obs.status === "active" || obs.status === "trialing";
       const stripeCanceled = obs.status === "canceled" || obs.status === "incomplete_expired";
       if (stripeCanceled && !["cancelled", "deleted"].includes(family.subscriptionStatus)) {
@@ -8170,7 +7819,34 @@ async function sendLifecycleEmail(family, template, message) {
 // lapsed cancellations, and sends convert-nudge / win-back / weekly-summary
 // emails — all idempotent via per-family stage/timestamp tracking.
 const SWEEP_EMAIL_CAP = 300; // safety cap on emails sent per sweep
+async function recoverBillingOperations() {
+  const deadline = Date.now() + 15000;
+  for (const snapshot of readDb().families.filter(f => f.pendingRefundOperation || f.pendingUpgradeOperation).slice(0, 5)) {
+    if (Date.now() > deadline) break;
+    const release = await acquireBillingLock(billingLockPool, snapshot.email);
+    if (!release) continue;
+    try {
+      if (pgPool) {
+        await flushPending();
+        stateCache = (await pgPool.query("SELECT data FROM app_state WHERE id=1")).rows[0].data;
+      }
+      const f = readDb().families.find(f => f.id === snapshot.id);
+      if (f.pendingRefundOperation) {
+        const op = await loadBillingOperation(f.pendingRefundOperation);
+        if (op && op.state !== "failed") await refundFamilyPayment(f, { operationId: op.id, paymentId: op.paymentId, admin: true, reason: op.reason });
+      } else if (f.pendingUpgradeOperation) {
+        const op = await loadBillingOperation(f.pendingUpgradeOperation);
+        if (op && op.state !== "failed") await advanceUpgrade(op);
+        else if (op?.state === "failed") mutateDb(db => { const item = db.families.find(x => x.id === op.familyId); delete item.pendingUpgradeOperation; item.failedUpgradeAt = op.createdAt; });
+      }
+      await flushPending();
+    } catch (error) { monitorBillingFailure(snapshot.email, "Pending billing recovery needs attention", error); }
+    finally { await release(); }
+  }
+}
+
 async function runLifecycleSweep(trigger = "cron") {
+  await recoverBillingOperations();
   let reconciled = 0;
   try {
     reconciled = (await reconcileWithStripe()).reconciled || 0;
@@ -8184,8 +7860,7 @@ async function runLifecycleSweep(trigger = "cron") {
   const queueEmail = (family, key, message) => {
     // Respect the admin enable/disable switch for automated emails.
     if (TOGGLEABLE_TEMPLATE_KEYS.has(key) && emailToggles[key] === false) return;
-    const name = (EMAIL_TEMPLATES.find((t) => t.key === key) || {}).name || key;
-    if (emailsToSend.length < SWEEP_EMAIL_CAP) emailsToSend.push({ family: { id: family.id, email: family.email }, template: name, message });
+    emailsToSend.push({ family, key, message });
   };
   const summary = mutateDb((db) => {
     const now = Date.now();
@@ -8297,6 +7972,19 @@ async function runLifecycleSweep(trigger = "cron") {
 
       // --- Weekly progress summary (active, opted-in) ---
       const active = family.subscriptionStatus === "active" || cancellationStillActive(family);
+      const renewalAt = Date.parse(family.currentPeriodEnd || "");
+      if (active && !family.cancelAtPeriodEnd && !family.cancellationRequested && renewalAt > now && renewalAt - now <= 3 * 86400000 && family.renewalEmailPeriod !== family.currentPeriodEnd) {
+        family.renewalEmailPeriod = family.currentPeriodEnd;
+        queueEmail(family, "renewal_reminder");
+      }
+      const lastActivity = Math.max(Date.parse(family.createdAt || "") || 0, ...(family.children || []).map(child => {
+        const dates = Object.keys(child.usage?.daily || {}).filter(day => Object.values(child.usage.daily[day] || {}).some(v => typeof v === "number" && v > 0));
+        return Math.max(0, ...dates.map(d => Date.parse(d) || 0));
+      }));
+      if (active && !family.accountLocked && lastActivity && now - lastActivity >= 14 * 86400000 && now - (Date.parse(family.lowUsageNoticeAt || "") || 0) >= 30 * 86400000) {
+        family.lowUsageNoticeAt = nowIso();
+        queueEmail(family, "low_usage");
+      }
       if (rules.weeklySummaryEnabled && active && !family.accountLocked && normaliseParentControls(family.controls).weeklySummary !== false) {
         const lastMs = new Date(family.lastWeeklySummaryAt || family.createdAt || 0).getTime();
         if (lastMs && now - lastMs >= 7 * 86400000) {
@@ -8306,12 +7994,13 @@ async function runLifecycleSweep(trigger = "cron") {
         }
       }
     });
+    for (const { family, key, message } of emailsToSend) {
+      queueTemplate(db, key, { email: family.email, parentName: family.parentName, childName: family.children?.[0]?.studentName || "Your child", planName: family.plan, nextDate: family.currentPeriodEnd, trialEndsAt: family.trialEndsAt, cardOnFile: Boolean(family.stripeSubscriptionId), summaryText: key === "weekly_summary" ? message : undefined }, `${key}:${family.id}:${key === "renewal_reminder" ? family.currentPeriodEnd : now}`, family.id);
+    }
     monitor(db, "info", "autopilot", "Lifecycle sweep ran", { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries });
     return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, trialsEnded, trialNotices, emailsQueued: emailsToSend.length };
   });
-  for (const item of emailsToSend) {
-    await sendLifecycleEmail(item.family, item.template, item.message);
-  }
+  await drainEmailOutbox(SWEEP_EMAIL_CAP);
   return summary;
 }
 
@@ -8455,4 +8144,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, initPersistence, flushPending, runLifecycleSweep, resolveOpenAiModel };
+module.exports = { app, initPersistence, flushPending, runLifecycleSweep, drainEmailOutbox, resolveOpenAiModel };

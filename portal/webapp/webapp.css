@@ -5368,6 +5368,22 @@ body[data-page="admin"] td small {
   line-height: 1.45;
 }
 
+.refund-confirm-box input,
+.refund-confirm-box select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #d5e1da;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #fbfdf9;
+  color: #003d35;
+  font: inherit;
+}
+.refund-confirm-box textarea { min-height: 76px; }
+.refund-confirm-box [role="status"] { font-weight: 600; overflow-wrap: anywhere; }
+#refund-table td { overflow-wrap: anywhere; }
+
 body[data-page="admin"],
 body[data-page="admin"] .admin-left-nav nav button,
 body[data-page="admin"] .admin-nav-link,
@@ -10826,3 +10842,23 @@ body[data-page="admin"] .ai-tool-extras {
 /* Price placeholder shown until server pricing loads — avoids flashing a stale
    cached price before the fresh one arrives. */
 body[data-page="parent"] .price-loading { color: var(--parent-muted, #9aa7a0); opacity: .45; font-weight: 700; }
+
+/* Keep the expanded billing tools inside the workspace at narrow widths. */
+.alloce-admin .admin-workspace,
+.alloce-admin .admin-screen,
+.alloce-admin .admin-table-card { min-width: 0; }
+.alloce-admin .payment-table-toggle { max-width: 100%; flex-wrap: wrap; }
+.alloce-admin #refund-table .state-chip { white-space: nowrap; }
+.alloce-admin .refund-workflow { grid-template-columns: minmax(0, 1fr); }
+.alloce-admin .refund-workflow section[hidden] { display: none; }
+.alloce-admin .refund-workflow section { align-content: start; }
+@media (max-width: 920px) {
+  .alloce-admin.admin-console-shell { grid-template-columns: minmax(0, 1fr); }
+  .alloce-admin .admin-left-nav { position: static; height: auto; }
+  .alloce-admin .admin-left-nav nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .alloce-admin .admin-workspace { padding: 16px; }
+  .alloce-admin .admin-topbar { position: static; margin: -16px -16px 16px; padding: 16px; }
+  .alloce-admin .payment-action-grid { grid-template-columns: minmax(0, 1fr); }
+  .alloce-admin [data-payment-table-panel] .table-wrap { max-width: 100%; overflow-x: auto; }
+  .alloce-admin [data-payment-table-panel] table { min-width: 720px; }
+}

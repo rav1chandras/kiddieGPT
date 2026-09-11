@@ -313,9 +313,9 @@
 
       <section class="admin-view" data-admin-panel="billing">
         <div class="admin-stat-grid payment-kpis">
-          <article><span>Collected</span><strong id="payment-collected">$0</strong><small>Successful mock charges</small></article>
+          <article><span>Collected</span><strong id="payment-collected">$0</strong><small>Captured payments</small></article>
           <article><span>Failed</span><strong id="payment-failed">$0</strong><small>Needs retry email</small></article>
-          <article><span>Refunded</span><strong id="payment-refunded">$0</strong><small>Customer saves lost</small></article>
+          <article><span>Refunded</span><strong id="payment-refunded">$0</strong><small>Completed refunds</small></article>
           <article><span>Stripe mode</span><strong id="payment-stripe-mode">Mock</strong><small>Developer status</small></article>
         </div>
 
@@ -328,6 +328,7 @@
 
         <div class="payment-table-toggle" role="tablist" aria-label="Payment tables">
           <button class="active" type="button" data-payment-table="payments">Payments <span id="payment-toggle-payments">0</span></button>
+          <button type="button" data-payment-table="refunds">Refunds <span id="payment-toggle-refunds">0</span></button>
           <button type="button" data-payment-table="trials">Trials <span id="payment-toggle-trials">0</span></button>
           <button type="button" data-payment-table="renewals">Upcoming renewals</button>
           <button type="button" data-payment-table="cancellations">Cancellation requests <span id="payment-toggle-cancellations">0</span></button>
@@ -364,6 +365,20 @@
               <tbody id="payment-table"></tbody>
             </table>
           </div>
+        </article>
+        <article class="admin-table-card" data-payment-table-panel="refunds" hidden>
+          <div class="admin-card-head">
+            <div><h2>Refunds</h2></div>
+            <div class="admin-filters">
+              <input id="refund-search" type="search" aria-label="Search refunds" placeholder="Parent, email, payment or reason">
+              <select id="refund-status-filter" aria-label="Refund status"><option value="all">All statuses</option><option value="succeeded">Completed</option><option value="pending">Pending / needs attention</option></select>
+              <button class="table-action" type="button" data-export-table="refund-table" data-export-name="kiddiegpt-refunds">Export CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Requested</th><th>Parent</th><th>Payment</th><th>Amount</th><th>Status</th><th>Reason</th><th>Action</th></tr></thead>
+            <tbody id="refund-table"></tbody>
+          </table></div>
         </article>
         <article class="admin-table-card" data-payment-table-panel="trials" hidden>
           <div class="admin-card-head">

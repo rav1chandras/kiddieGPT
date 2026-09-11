@@ -833,7 +833,7 @@
         d.saveOffer ? item("Is there a discount if I try to leave?",
           "Yes. When you start to cancel, you can keep your plan and take <b>$" + d.saveOffer.amountOff + " off your next renewal</b>. It applies to your next charge only, and you can use it up to <b>" + d.saveOffer.maxRedemptions + "</b> time" + (d.saveOffer.maxRedemptions === 1 ? "" : "s") + " over the life of your account.") : "",
         item("Why is there a short wait between billing changes?",
-          "To avoid accidental duplicate changes, there's a ~<b>" + d.billingCooldownMinutes + "-minute</b> pause between billing actions such as upgrading or applying a discount. Cancelling and re-subscribing are never blocked.")
+          "After two completed refund cancellations within 30 days, new purchases and upgrades pause for <b>24 hours</b>. Cancellation and remaining paid access are unaffected. Contact support for help.")
       ]));
 
       groups.push(group("Free trial", [
@@ -845,7 +845,7 @@
 
       groups.push(group("Refunds & cancellation", [
         item("Can I get a refund?",
-          "Yes, within these windows cancelling refunds your latest payment in full and access ends immediately:<ul><li><b>Your first payment</b> (new subscribers): within <b>" + d.refund.firstPaymentDays + " days</b>.</li><li><b>Renewals</b> and paid re-subscribes: within <b>" + d.refund.renewalHours + " hours</b> of the charge.</li></ul>Outside those windows, cancelling turns off auto-renewal: you keep access through the end of the period you've already paid for, with no refund."),
+          "Cancel within <b>24 hours of a subscription or yearly-upgrade charge</b> for a full refund. Refunded access ends, but any separately paid monthly time remaining after an upgrade refund is restored with renewal off. Outside this window, cancellation stops renewal and keeps your paid access. Contact support for exceptional refunds."),
         item("How do I cancel?",
           "Go to <b>Subscription &rarr; Cancel</b>. Inside a refund window you'll be offered a full refund with access ending now; otherwise your renewal is switched off and access runs to the paid-through date."),
         item("Do I lose my child's data if I cancel?",
@@ -3235,7 +3235,7 @@
       // promotion cannot replace the extra months promised to an existing
       // monthly subscriber.
       var usesUpgradeOffer = enabled && (off > 0 || Boolean(String(up.note || "").trim()) || Number(up.bonusMonths || 0) > 0);
-      var price = upgradePrice > 0 ? upgradePrice : base;
+      var price = off > 0 ? upgradePrice : base;
       var effectiveOff = base > 0 && price < base ? Math.round((base - price) * 100) / 100 : 0;
       // What a year on this plan costs versus twelve monthly charges — the
       // headline reason to upgrade when no bonus months are configured.
@@ -3245,7 +3245,7 @@
         : 0;
       return {
         enabled: enabled,
-        bonusMonths: enabled ? Math.max(0, Number(up.bonusMonths || 0)) : 0,
+        bonusMonths: enabled ? Math.min(24, Math.max(0, Math.trunc(Number(up.bonusMonths || 0)))) : 0,
         annualSavings: annualSavings,
         discountAmount: effectiveOff || off,
         basePrice: base,
@@ -3352,6 +3352,7 @@
     function openUpgradeModal() {
       var o = yearlyUpgradeOffer();
       var trialing = onStripeTrial();
+      var quote = parentEntitlement && parentEntitlement.upgradeQuote;
       var perks = document.getElementById("upgrade-perks");
       if (perks) {
         perks.innerHTML = trialing
@@ -3371,9 +3372,12 @@
       }
       var noteEl = document.getElementById("upgrade-modal-note");
       if (noteEl) {
-        noteEl.textContent = trialing
-          ? "Your first yearly charge starts when the trial ends on " + trialEndsText() + "."
-          : o.note || "";
+        noteEl.textContent = quote
+          ? (trialing ? "No charge today. " : "Charge today: $" + moneyStr(quote.amountCents / 100) + ". ") +
+            (trialing ? "First charge: $" + moneyStr(quote.amountCents / 100) + " on " + trialEndsText() + ". " : "") +
+            "Next renewal: " + new Date(quote.endsAt * 1000).toLocaleDateString() +
+            " at $" + moneyStr(quote.renewalAmount) + " for 12 months. Bonus months apply to this first term only."
+          : (trialing ? "Your trial end date is unchanged." : o.note || "");
         noteEl.hidden = false;
       }
       var modal = document.getElementById("upgrade-modal");
@@ -3390,7 +3394,7 @@
       if (billingCooldownUntil) {
         var cooldownDate = until ? new Date(until) : null;
         billingCooldownUntil.textContent = cooldownDate && !isNaN(cooldownDate.getTime())
-          ? "You can manage billing again after " + cooldownDate.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + "."
+          ? "You can purchase or upgrade again after " + cooldownDate.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + "."
           : "";
       }
       if (billingCooldownModal) billingCooldownModal.hidden = false;
@@ -5092,7 +5096,8 @@
       };
       if (action === "partial_refund") {
         payload.paymentIntentId = stripePaymentId(family);
-        payload.amountCents = Math.max(1, amountCents || 1000);
+        payload.amountCents = amountCents;
+        payload.requestId = family.pendingRefundOperation || (exceptionAmount.dataset.refundRequestId ||= crypto.randomUUID());
       }
       if (action === "credit_next_invoice") payload.creditCents = Math.max(1, amountCents || 1500);
       if (action === "add_free_months") payload.months = Math.max(1, Number(exceptionMonths.value || 1));
@@ -5323,7 +5328,7 @@
     function reconciliationIssues(family) {
       var issues = [];
       if (!family) return issues;
-      if ((family.paymentStatus === "refunded" || family.paymentStatus === "partial_refunded") && familySubscriptionActive(family)) {
+      if (family.paymentStatus === "refunded" && familySubscriptionActive(family)) {
         issues.push("Refunded payment with active access");
       }
       if (familyDeleted(family) && (family.stripeSubscriptionId || family.subscriptionStatus === "active")) {
@@ -5403,23 +5408,29 @@
     }
 
     function paymentDetailRow(family, action, paymentId, amountCents) {
+      var alreadyRefunded = (family.refunds || []).filter(function (r) { return r.paymentId === paymentId && r.status === "succeeded"; }).reduce(function (sum, r) { return sum + Number(r.amountCents || 0); }, 0);
+      var remaining = Math.max(0, amountCents - alreadyRefunded);
       var templates = paymentEmailTemplates(family);
       var selected = action === "refund" ? templates.refund : paymentStatus(family) === "failed" ? templates.retry : templates.receipt;
       return "<tr class='payment-detail-row'><td colspan='8'>" +
         "<div class='payment-detail-panel'>" +
           "<div class='payment-detail-head'><div><span>" + (action === "refund" ? "Refund workflow" : "Email workflow") + "</span><strong>" + escapeHtml(family.parentName) + "</strong><small>" + escapeHtml(family.email) + " · " + escapeHtml(paymentId) + "</small></div>" +
           "<button type='button' class='table-action' data-payment-close>Close</button></div>" +
-          "<div class='payment-action-grid'>" +
-            "<section><h3>Email shortcuts</h3><div class='template-button-row'>" +
+          "<div class='payment-action-grid refund-workflow'>" +
+            "<section" + (action === "refund" ? " hidden" : "") + "><h3>Email shortcuts</h3><div class='template-button-row'>" +
               "<button type='button' class='table-action' data-payment-template='receipt' data-family-id='" + familyRowId(family) + "'>Receipt</button>" +
               "<button type='button' class='table-action' data-payment-template='retry' data-family-id='" + familyRowId(family) + "'>Retry</button>" +
               "<button type='button' class='table-action' data-payment-template='refund' data-family-id='" + familyRowId(family) + "'>Refund note</button>" +
               "<button type='button' class='table-action' data-payment-template='save' data-family-id='" + familyRowId(family) + "'>Save offer</button>" +
             "</div><label>Compose email<textarea data-payment-compose='" + familyRowId(family) + "' rows='5'>" + escapeHtml(selected) + "</textarea></label>" +
             "<button type='button' class='button primary' data-payment-send data-family-id='" + familyRowId(family) + "'>Send email</button></section>" +
-            "<section class='refund-confirm-box'><h3>Refund</h3><p>This will create a refund for " + moneyFromCents(amountCents) + " on payment " + escapeHtml(paymentId) + ".</p>" +
-            "<label>Pre-written refund email<textarea data-refund-note='" + familyRowId(family) + "' rows='5'>" + escapeHtml(templates.refund) + "</textarea></label>" +
-            "<button type='button' class='button danger' data-payment-action='refund' data-family-id='" + familyRowId(family) + "' data-payment-id='" + paymentId + "' data-amount-cents='" + amountCents + "'>Issue refund and log email</button></section>" +
+            "<section class='refund-confirm-box'" + (action !== "refund" ? " hidden" : "") + "><h3>Refund payment</h3><p>" + moneyFromCents(amountCents) + " captured on " + escapeHtml(paymentId) + ". " + moneyFromCents(remaining) + " remaining to refund.</p>" +
+            "<label>Refund type<select data-refund-type><option value='full'>Full remaining amount</option><option value='partial'>Partial refund</option></select></label>" +
+            "<label>Partial amount ($)<input data-refund-amount disabled type='number' min='0.01' max='" + remaining / 100 + "' step='0.01' placeholder='0.00'></label>" +
+            "<label>Reason<textarea data-refund-reason rows='2' maxlength='500' placeholder='Reason for this refund' required></textarea></label>" +
+            "<p>A full refund of the current payment ends its access. Refunding a yearly upgrade restores any remaining paid monthly time with renewal off. Partial and historical refunds leave access unchanged.</p>" +
+            "<p data-refund-status role='status'>" + (family.refundPending ? escapeHtml("Refund " + family.refundPending.status + ". Check status before creating another refund.") : "") + "</p>" +
+            "<button type='button' class='button danger' data-payment-action='refund' data-family-id='" + familyRowId(family) + "' data-payment-id='" + paymentId + "' data-amount-cents='" + amountCents + "'>" + (family.pendingRefundOperation ? "Check / retry refund" : "Confirm refund") + "</button></section>" +
           "</div>" +
         "</div>" +
       "</td></tr>";
@@ -6792,19 +6803,28 @@
       renderAbuseTile(families);
       renderCommandAlerts(families);
       setMetric("failed-payment-count", failedPayments.length);
-      setMetric("payment-collected", money(monthlyRevenue));
-      setMetric("payment-failed", money(failedPayments.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
-      setMetric("payment-refunded", money(refunded.reduce(function (total, family) { return total + planNumericAmount(family.plan || moneyPlan()); }, 0)));
-      var collectedCents = paymentsCache.reduce(function (total, payment) {
-        return total + (Number(payment.amountCents || 0) > 0 && payment.status !== "refunded" ? Number(payment.amountCents || 0) : 0);
+      var capturedPayments = paymentsCache.filter(function (p) { return ["paid", "refunded", "partial_refunded"].includes(p.status) && !String(p.type || "").includes("refund"); });
+      var collectedCents = capturedPayments.reduce(function (sum, p) { return sum + Number(p.amountCents || 0); }, 0);
+      var refundIds = new Set();
+      var refundsByPayment = {};
+      var refundedCents = families.reduce(function (sum, f) {
+        return sum + (f.refunds || []).reduce(function (subtotal, r) {
+          if (r.status !== "succeeded" || refundIds.has(r.refundId)) return subtotal;
+          refundIds.add(r.refundId);
+          refundsByPayment[r.paymentId] = true;
+          return subtotal + Number(r.amountCents || 0);
+        }, 0);
       }, 0);
-      var refundedCents = paymentsCache.reduce(function (total, payment) {
-        return total + (payment.status === "refunded" ? Number(payment.amountCents || 0) : 0);
-      }, 0);
+      capturedPayments.forEach(function (p) {
+        if (p.status === "refunded" && !refundsByPayment[p.paymentId]) refundedCents += Number(p.amountCents || 0);
+      });
+      setMetric("payment-collected", moneyFromCents(collectedCents));
+      setMetric("payment-failed", moneyFromCents(paymentsCache.filter(function (p) { return p.status === "failed"; }).reduce(function (sum, p) { return sum + Number(p.amountCents || 0); }, 0)));
+      setMetric("payment-refunded", moneyFromCents(refundedCents));
       setMetric("net-collected", moneyFromCents(Math.max(0, collectedCents - refundedCents)));
       setMetric("billing-net-collected", moneyFromCents(Math.max(0, collectedCents - refundedCents)));
       setMetric("billing-follow-up", failedPayments.length);
-      setMetric("billing-refunded-active", families.filter(function (family) { return (family.paymentStatus === "refunded" || family.paymentStatus === "partial_refunded") && familySubscriptionActive(family); }).length);
+      setMetric("billing-refunded-active", families.filter(function (family) { return family.paymentStatus === "refunded" && familySubscriptionActive(family); }).length);
       setMetric("billing-reconciliation-alerts", reconciliationIssuesForFamilies(families));
       setMetric("billing-alert-count", failedPayments.length + reconciliationIssuesForFamilies(families));
       var allTrials = families.filter(function (family) { return family.subscriptionStatus === "trial" || family.subscriptionStatus === "trialing"; });
@@ -7030,6 +7050,27 @@
         "</tr>";
       }) : ["<tr><td colspan='8'><div class='empty-state'>No trialing accounts.</div></td></tr>"]);
 
+      var refundSearch = (document.getElementById("refund-search").value || "").toLowerCase();
+      var refundFilter = document.getElementById("refund-status-filter").value;
+      var refundRows = families.flatMap(function (f) {
+        var rows = (f.refunds || []).map(function (r) { return { family: f, refund: r }; });
+        if (f.refundPending) rows.unshift({ family: f, refund: f.refundPending });
+        return rows;
+      }).filter(function (item) {
+        var r = item.refund, f = item.family;
+        return (refundFilter === "all" || (refundFilter === "succeeded" ? r.status === "succeeded" : r.status !== "succeeded")) &&
+          [f.parentName, f.email, r.paymentId, r.refundId, r.reason].join(" ").toLowerCase().includes(refundSearch);
+      }).sort(function (a, b) { return Date.parse(b.refund.createdAt || 0) - Date.parse(a.refund.createdAt || 0); });
+      setMetric("payment-toggle-refunds", refundRows.length);
+      renderRows("refund-table", refundRows.length ? refundRows.map(function (item) {
+        var r = item.refund, f = item.family;
+        return "<tr><td>" + rowDateTime(r.createdAt) + "</td><td><strong>" + escapeHtml(f.parentName) + "</strong><small>" + escapeHtml(f.email) +
+          "</small></td><td>" + escapeHtml(r.paymentId || "") + "</td><td>" + moneyFromCents(r.amountCents || 0) +
+          "</td><td>" + statusChip(r.status || "pending") + "</td><td>" + escapeHtml(r.reason || "") +
+          "</td><td>" + (r.status !== "succeeded" ? "<button type='button' class='table-action' data-refund-review='" + familyRowId(f) +
+          "' data-payment-id='" + escapeHtml(r.paymentId || "") + "'>Review / retry</button>" : "") + "</td></tr>";
+      }) : ["<tr><td colspan='7'>No matching refunds.</td></tr>"]);
+
       var paymentRows = filteredPaymentRecords(families);
       setMetric("payment-toggle-payments", paymentRows.length);
       paymentTableButtons.forEach(function (button) {
@@ -7047,7 +7088,7 @@
         var status = payment.status || "paid";
         var amountCents = Number(payment.amountCents || 0);
         var reconciliation = reconciliationIssues(family);
-        var row = "<tr class='" + (expandedPayment && expandedPayment.familyId === rowId ? "is-expanded" : "") + "'>" +
+        var row = "<tr class='" + (expandedPayment && expandedPayment.familyId === rowId && expandedPayment.paymentId === paymentId ? "is-expanded" : "") + "'>" +
           "<td>" + rowDateTime(payment.createdAt) + "</td>" +
           "<td><strong>" + text(family.parentName || payment.email) + "</strong><small>" + text(family.email || payment.email) + "</small></td>" +
           "<td>" + text(plan) + "</td>" +
@@ -7055,9 +7096,9 @@
           "<td>" + statusChip(status) + "</td>" +
           "<td><a class='stripe-link payment-id-link' href='" + stripePaymentUrl(paymentId) + "' target='_blank' rel='noreferrer'>" + paymentId + "</a></td>" +
           "<td>" + (reconciliation.length ? statusChip("warning") + "<small>" + escapeHtml(reconciliation[0]) + "</small>" : "<span class='muted-cell'>Matched</span>") + "</td>" +
-          "<td><div class='row-actions'><button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">View</button><button type='button' class='table-action' data-payment-expand='email' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Email</button><button type='button' class='table-action danger' data-payment-expand='refund' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Refund</button></div></td>" +
+          "<td><div class='row-actions'><button type='button' class='table-action' data-customer-open data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">View</button><button type='button' class='table-action' data-payment-expand='email' data-payment-id='" + escapeHtml(paymentId) + "' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Email</button><button type='button' class='table-action danger' data-payment-expand='refund' data-payment-id='" + escapeHtml(paymentId) + "' data-family-id='" + rowId + "'" + (!family.id ? " disabled" : "") + ">Refund</button></div></td>" +
         "</tr>";
-        if (family.id && expandedPayment && expandedPayment.familyId === rowId) {
+        if (family.id && expandedPayment && expandedPayment.familyId === rowId && expandedPayment.paymentId === paymentId) {
           return [row, paymentDetailRow(family, expandedPayment.action, paymentId, amountCents)];
         }
         return [row];
@@ -7460,6 +7501,23 @@
     [cancellationFrom, cancellationTo, upgradeFrom, upgradeTo, cancelledFrom, cancelledTo, trialsFrom, trialsTo, paymentFrom, paymentTo].forEach(function (input) {
       if (input) input.addEventListener("change", renderAdmin);
     });
+    document.addEventListener("change", function (event) {
+      if (!event.target.matches("[data-refund-type]")) return;
+      var panel = event.target.closest(".refund-confirm-box");
+      panel.querySelector("[data-refund-amount]").disabled = event.target.value === "full";
+    });
+    ["refund-search", "refund-status-filter"].forEach(function (id) {
+      document.getElementById(id).addEventListener(id === "refund-search" ? "input" : "change", renderAdmin);
+    });
+    document.getElementById("refund-table").addEventListener("click", function (event) {
+      var button = event.target.closest("[data-refund-review]");
+      if (!button) return;
+      activePaymentTable = "payments";
+      expandedPayment = { familyId: button.dataset.refundReview, paymentId: button.dataset.paymentId, action: "refund" };
+      if (paymentSearch) paymentSearch.value = "";
+      renderAdmin();
+    });
+
     paymentTableButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         activePaymentTable = button.dataset.paymentTable || "payments";
@@ -7819,7 +7877,7 @@
             body: JSON.stringify(payload)
           });
           var emailResult = null;
-          if (exceptionSendEmail && exceptionSendEmail.checked && payload.action !== "send_save_email") {
+          if (exceptionSendEmail && exceptionSendEmail.checked && !["send_save_email", "partial_refund"].includes(payload.action)) {
             emailResult = await fetchJson("/api/admin/billing-exception", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -7835,7 +7893,7 @@
           await loadBackendState();
           if (exceptionResult && emailResult) exceptionResult.followUpEmail = emailResult.email || emailResult.message;
           writeDevOutput("Billing exception", exceptionResult);
-          writeExceptionOutput("Billing exception applied", exceptionResult, "Done");
+          writeExceptionOutput(exceptionResult.status && exceptionResult.status !== "succeeded" ? "Refund needs attention" : "Billing exception applied", exceptionResult, exceptionResult.status && exceptionResult.status !== "succeeded" ? "Pending" : "Done");
           renderAdmin();
         } catch (error) {
           writeDevOutput("Billing exception failed", error);
@@ -7993,11 +8051,12 @@
           if (!expandFamily) return;
           var nextExpansion = {
             familyId: familyRowId(expandFamily),
-            action: paymentExpandButton.dataset.paymentExpand
+            action: paymentExpandButton.dataset.paymentExpand,
+            paymentId: paymentExpandButton.dataset.paymentId
           };
           expandedPayment = expandedPayment &&
             expandedPayment.familyId === nextExpansion.familyId &&
-            expandedPayment.action === nextExpansion.action ? null : nextExpansion;
+            expandedPayment.action === nextExpansion.action && expandedPayment.paymentId === nextExpansion.paymentId ? null : nextExpansion;
           renderAdmin();
           return;
         }
@@ -8196,37 +8255,28 @@
         if (!refundFamily) return;
         refundButton.disabled = true;
         try {
-          var refundNoteBox = document.querySelector("[data-refund-note='" + familyRowId(refundFamily) + "']");
+          var refundPanel = refundButton.closest(".refund-confirm-box");
+          var reason = refundPanel.querySelector("[data-refund-reason]").value.trim();
+          var full = refundPanel.querySelector("[data-refund-type]").value === "full";
+          var amount = Math.round(Number(refundPanel.querySelector("[data-refund-amount]").value) * 100);
+          if (!reason) throw new Error("Enter a refund reason.");
+          if (!full && (!Number.isSafeInteger(amount) || amount <= 0)) throw new Error("Enter a positive partial refund amount.");
+          refundPanel.querySelector("[data-refund-status]").textContent = "Processing refund...";
           var refundPayload = await fetchJson("/api/stripe/refund", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              paymentIntentId: refundButton.dataset.paymentId,
-              amountCents: Number(refundButton.dataset.amountCents),
-              email: refundFamily.email
-            })
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentIntentId: refundButton.dataset.paymentId,
+              fullRefund: full, amountCents: amount, email: refundFamily.email, reason: reason,
+              requestId: refundButton.dataset.requestId ||= crypto.randomUUID(),
+              operationId: refundFamily.pendingRefundOperation || "" })
           });
-          var refundEmailPayload = null;
-          if (refundNoteBox && refundNoteBox.value.trim()) {
-            try {
-              refundEmailPayload = await fetchJson("/api/admin/trigger-email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  to: refundFamily.email,
-                  template: "Refund note",
-                  message: refundNoteBox.value.trim()
-                })
-              });
-            } catch (emailError) {
-              refundEmailPayload = { error: emailError.message || "Refund email failed" };
-            }
-          }
           await loadBackendState();
-          writeDevOutput("Refund payment", { refund: refundPayload, email: refundEmailPayload || "not sent" });
-          expandedPayment = null;
           renderAdmin();
+          var statusEl = document.querySelector("[data-refund-status]");
+          if (statusEl) statusEl.textContent = refundPayload.message || "Refund status: " + refundPayload.status;
+          writeDevOutput("Refund payment", refundPayload);
         } catch (error) {
+          var statusEl = document.querySelector("[data-refund-status]");
+          if (statusEl) statusEl.textContent = error.message || "Refund needs attention. Retry safely.";
           writeDevOutput("Refund failed", error);
         } finally {
           refundButton.disabled = false;

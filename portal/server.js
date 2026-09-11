@@ -9,7 +9,7 @@
 // root: that module exports an object, and Vercel would reject it as an
 // entrypoint ("The default export must be a function or server").
 const express = require("express");
-const { app, initPersistence, flushPending, runLifecycleSweep } = require("./lib/app");
+const { app, initPersistence, flushPending, runLifecycleSweep, drainEmailOutbox } = require("./lib/app");
 const { createPersistenceReady } = require("./lib/persistence-ready");
 
 const port = Number(process.env.PORT || 3000);
@@ -31,7 +31,16 @@ server.use((req, res, next) => {
     () => {
       // Vercel may suspend the instance once a response finishes, so make sure
       // any queued Postgres write has landed first. No-op for the file driver.
-      res.on("finish", () => { flushPending().catch(() => {}); });
+      const end = res.end;
+      res.end = function (...args) {
+        res.end = end;
+        flushPending()
+          .then(() => req.method === "GET" ? 0 : drainEmailOutbox())
+          .then(flushPending)
+          .catch(error => console.error("Response persistence/email flush failed:", error.message))
+          .finally(() => end.apply(res, args));
+        return res;
+      };
       next();
     },
     (error) => {
