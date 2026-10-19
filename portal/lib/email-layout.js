@@ -15,7 +15,8 @@ function renderEmailLayout(o, base) {
   const steps = (o.steps || []).map(s => typeof s === "string" ? { title: s, text: "" } : s);
   const rows = steps.map((s, i) => `<tr><td style="width:24px;vertical-align:top;padding:0 12px 18px 0;color:#777;font-size:13px">${i + 1}.</td><td style="padding:0 0 18px;font-size:14px;line-height:1.6;color:#555"><strong style="color:#222">${esc(s.title)}</strong>${s.text ? `<br>${esc(s.text)}` : ""}</td></tr>`).join("");
   const code = o.code ? `<div style="margin:26px 0 24px;padding:24px 0;border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;text-align:center"><div style="font-size:12px;color:#666;margin-bottom:14px">${esc(o.codeLabel || "Your verification code")}</div><table role="presentation" align="center" style="margin:0 auto;border-collapse:separate;border-spacing:4px"><tr>${Array.from(String(o.code)).map(c => `<td width="36" height="50" style="width:36px;height:50px;border:1px solid #e6e6e6;background:#f4f4f4;border-radius:4px;text-align:center;font-size:28px;font-weight:700;font-family:Consolas,monospace;color:#1b1b1b">${esc(c)}</td>`).join("")}</tr></table><p style="margin:14px 0 0;font-size:12px;color:#686868">Enter in KiddieGPT${o.codeExpiry ? ` &middot; ${esc(o.codeExpiry)}` : ""}</p></div>` : "";
-  const paragraphs = (o.paragraphs || []).map(p => `<p style="font-size:15px;line-height:1.65;color:#555;margin:0 0 14px">${p}</p>`).join("");
+  const paragraphs = (o.paragraphs || []).map(p => `<p style="font-size:15px;line-height:1.65;color:#555;margin:0 0 14px">${p}</p>`).join("")
+    + (o.unsubscribeUrl ? `<p style="font-size:12px;color:#666"><a href="${esc(o.unsubscribeUrl)}" style="color:#555">Unsubscribe from promotional emails</a></p>` : "");
   const url = o.ctaUrl || base;
   const cta = o.ctaText ? `<table role="presentation" style="margin:10px 0 24px;border-collapse:separate"><tr><td bgcolor="#202020" style="background:#202020;border-radius:6px;text-align:center"><a href="${esc(url)}" style="display:inline-block;padding:14px 22px;color:#fff;text-decoration:none;font-size:14px;font-weight:700">${esc(o.ctaText)} &rarr;</a></td></tr></table>` : "";
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(o.title)}</title></head><body style="margin:0;background:#efefef;font-family:Arial,Helvetica,sans-serif;color:#202020">
@@ -33,7 +34,7 @@ ${o.signoff ? `<p style="font-size:14px;line-height:1.65;color:#222;margin:26px 
     ...steps.map((s, i) => `${i + 1}. ${s.title}${s.text ? `\n${s.text}` : ""}`),
     o.ctaText ? `${o.ctaText}: ${url}` : "", o.code ? "Keep this code private. If you didn't request it, ignore this email." : "",
     o.signoff ? "Here for every little breakthrough,\nThe KiddieGPT Team" : "", "Questions? support@kiddiegpt.com"]
-    .filter(Boolean).join("\n\n");
+    .filter(Boolean).join("\n\n") + (o.unsubscribeUrl ? `\n\nUnsubscribe from promotional emails: ${o.unsubscribeUrl}` : "");
   return { html, text };
 }
 

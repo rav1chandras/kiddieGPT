@@ -37,6 +37,14 @@ All templates use the shared grayscale HTML layout and a plain-text alternative.
 | trial_ended | No-card trial expires |
 | op_new_paid | First positive paid invoice per family |
 | op_new_support | New parent support message |
+| payment_verification | Stripe invoice requires action or yearly upgrade awaits bank verification; links to the hosted invoice |
+| refund_pending | Refund operation transitions to pending |
+| op_refund_failed | Refund operation fails or is cancelled at Stripe; admin review needed |
+| yearly_upgrade_failed | Confirmed declined upgrade payment, not user abandonment |
+| op_billing_stuck | Billing operation error; deduplicated per family/issue/day |
+| support_received | Parent submits a support message; includes ticket reference |
+| op_dispute | Dispute status changes; deduplicated by dispute ID/status |
+| access_restored | Positive paid invoice after payment failure/dunning |
 
 ## Delivery
 
@@ -47,10 +55,15 @@ All templates use the shared grayscale HTML layout and a plain-text alternative.
 - Sent Postgres entries retain deduplication IDs but clear recipient/body payloads. Old queued learning notifications are suppressed after anonymization.
 - Delivery is at-least-once: a provider accepting an email followed by a lost response or process crash can still cause a duplicate. It is not an exactly-once guarantee.
 - Operator notices use `ADMIN_NOTIFY_EMAIL`, falling back to `ADMIN_EMAIL`.
-- Configure Postmark token, verified sender, correct `PUBLIC_ORIGIN`, and cron before live validation. Engagement/winback traffic must use an appropriate provider stream and consent/preferences policy before commercial launch.
+- Configure Postmark token, verified sender, correct `PUBLIC_ORIGIN`, and cron before live validation.
+- Winback, low-usage and setup promotions require `family.marketingConsent.acceptedAt`, no `revokedAt`, and a distinct `POSTMARK_BROADCAST_STREAM`. Existing accounts are NOT opted in automatically. Consent collection UI remains a prerequisite to enabling promotional campaigns.
+- Promotions include Postmark's managed unsubscribe placeholder in HTML and plain text; Postmark maintains stream-specific suppression. These cannot fall back to SMTP or the transactional stream. `POSTMARK_MESSAGE_STREAM` continues to handle transactional messages. See https://postmarkapp.com/support/article/1208-how-to-add-an-unsubscribe-link.
+- Cancellation, trial and payment notices cannot be disabled through template toggles. Optional summaries, goal messages and promotions can be disabled.
+- Stale pending-refund and verification notices are suppressed at delivery after resolution. Provider acceptance followed by a lost response can still cause duplicate delivery.
+- Renewal/trial reminders use a Stripe upcoming-invoice preview when available; otherwise they direct the parent to billing rather than inventing a price. Paid-upgrade offer expiry comes from the accepted upgrade record.
 
 ## Verification
 
 `node --test scripts/email-templates.test.js scripts/email-events.test.js scripts/email-integration.test.js`
 
-These tests do not contact Postmark or live Stripe. The integration test uses an isolated temporary file database and mock webhooks. Real inbox/client rendering and a real Postgres delivery acceptance test remain release checks.
+The library contains 41 templates. These tests do not contact Postmark or live Stripe. The integration test uses an isolated temporary file database and mock webhooks. Real inbox/client rendering and a real Postgres delivery acceptance test remain release checks.

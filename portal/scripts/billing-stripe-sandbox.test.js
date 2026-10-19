@@ -49,6 +49,18 @@ test("Stripe sandbox: paid upgrade, refund restoration, trial offer and standard
     assert.equal((await stripe.subscriptions.retrieve(paid.sub.id)).status, "active");
     await stripe.subscriptions.update(paid.sub.id, { cancel_at_period_end: false });
     assert.equal((await stripe.subscriptions.retrieve(paid.sub.id)).cancel_at_period_end, false);
+    const authMonthly = await createMonthly(false);
+    const authMethod = await stripe.paymentMethods.attach("pm_card_authenticationRequired", { customer: authMonthly.customer.id });
+    const authOp = { id: tag+"auth", familyId: tag+"auth", createdAt: new Date().toISOString(), terms,
+      customerId: authMonthly.customer.id, monthlySubscriptionId: authMonthly.sub.id, paymentMethod: authMethod.id };
+    const authResult = await executeUpgrade({ stripe, op: authOp, save: async () => {} }); prices.push(authOp.priceId);
+    assert.equal(authResult.requiresAction, true);
+    assert.ok(authResult.paymentUrl.startsWith("https://"));
+    assert.equal((await stripe.subscriptions.retrieve(authMonthly.sub.id)).cancel_at_period_end, false);
+    // An abandoned authentication can be cancelled without collecting the offer.
+    await require("../lib/billing-stop").stopBilling({ stripe, subscriptionIds: [authOp.subscriptionId], invoiceId: authOp.invoiceId });
+    assert.equal((await stripe.invoices.retrieve(authOp.invoiceId)).status, "void");
+    assert.equal((await stripe.subscriptions.retrieve(authMonthly.sub.id)).status, "active");
     const trial = await createMonthly(true);
     const trialTerms = upgradeTerms({ subscriptionStatus: "trialing", trialEndsAt: new Date(trial.sub.trial_end*1000).toISOString() }, pricing, now*1000);
     const trialOp = { id: tag+"trial", familyId: tag+"trial", createdAt: new Date().toISOString(), terms: trialTerms, customerId: trial.customer.id, monthlySubscriptionId: trial.sub.id, paymentMethod: trial.pm.id };

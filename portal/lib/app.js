@@ -1747,6 +1747,18 @@ async function loadBillingOperation(id) {
 async function saveBillingOperation(op) {
   if (pgPool) await pgPool.query("INSERT INTO billing_operations(id,data) VALUES ($1,$2::jsonb) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data, updated_at=now()", [op.id, JSON.stringify(op)]);
   else mutateDb(db => { db.billingOperations ||= {}; db.billingOperations[op.id] = op; });
+  const notice = op.type === "refund" && op.state === "pending" ? "refund_pending"
+    : op.type === "refund" && op.state === "failed" ? "op_refund_failed"
+    : op.type === "upgrade" && op.state === "requires_action" ? "payment_verification"
+    : op.type === "upgrade" && op.state === "failed" && op.paymentDeclined ? "yearly_upgrade_failed" : "";
+  if (notice) mutateDb(db => {
+    const family = db.families.find(f => f.id === op.familyId);
+    if (!family) return;
+    queueTemplate(db, notice, { email: family.email, parentName: family.parentName, amountCents: op.amountCents,
+      currency: op.refund?.currency || family.lastPaymentCurrency || "usd", operationId: op.id, refundId: op.refund?.id,
+      paymentUrl: op.paymentUrl, invoiceId: op.invoiceId, upgrade: op.type === "upgrade", operator: notice.startsWith("op_") },
+      `${notice}:${op.invoiceId || op.refund?.id || op.id}`, family.id);
+  });
 }
 function billingKey(...parts) { return "kg_" + crypto.createHash("sha256").update(parts.join(":")).digest("hex"); }
 
@@ -1861,7 +1873,7 @@ async function refundFamilyPayment(family, options = {}) {
           } else if (f.stripePaymentId === paymentId) f.paymentStatus = operation.fullRefund ? "refunded" : "partial_refunded";
           f.refundedAt = nowIso();
           audit(db, "refund.create", { familyId: f.id, email: f.email, refundId: operation.refund.id, amountCents: operation.amountCents, fullRefund: operation.fullRefund, revertedToMonthlyUntil: restored ? f.currentPeriodEnd : "" });
-          if (restored) queueTemplate(db, "monthly_restored", { parentName: f.parentName, nextDate: emailDate(f.currentPeriodEnd) }, "restore:" + operation.refund.id, f.id);
+          if (restored) queueTemplate(db, "monthly_restored", { email: f.email, parentName: f.parentName, nextDate: emailDate(f.currentPeriodEnd) }, "restore:" + operation.refund.id, f.id);
         }
         delete f.pendingRefundOperation;
         return { mode: mock ? "mock" : "stripe", refunded: true, refundId: operation.refund.id, status: "succeeded",
@@ -1882,7 +1894,12 @@ async function refundFamilyPayment(family, options = {}) {
 }
 
 function monitorBillingFailure(email, title, error) {
-  mutateDb(db => monitor(db, "error", "billing", title, { email, detail: error.message }, email));
+  mutateDb(db => {
+    monitor(db, "error", "billing", title, { email, detail: error.message }, email);
+    const family = db.families.find(f => f.email === email);
+    queueTemplate(db, "op_billing_stuck", { email, issue: title, operator: true },
+      `billing-alert:${family?.id || email}:${title}:${new Date().toISOString().slice(0, 10)}`, family?.id);
+  });
 }
 
 function stripeClient() {
@@ -2481,7 +2498,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     }
   }
   if (webhookFamily?.pendingUpgradeOperation && !event.type.startsWith("charge.dispute")) {
-    return res.status(503).json({ error: "Upgrade is being reconciled; retry this event." });
+    try {
+      const op = await loadBillingOperation(webhookFamily.pendingUpgradeOperation);
+      // Do not attempt collection while the bank is asking for consent.
+      if (op && ["invoice.paid", "invoice.payment_succeeded"].includes(event.type)
+          && webhookObject.id === op.invoiceId && Number(webhookObject.amount_paid) > 0) await advanceUpgrade(op);
+      if (readDb().families.find(f => f.id === webhookFamily.id)?.pendingUpgradeOperation) {
+        return res.status(503).json({ error: "Upgrade is being reconciled; retry this event." });
+      }
+    } catch (error) { return res.status(503).json({ error: "Upgrade reconciliation needs retry." }); }
   }
 
   // A chargeback ends the relationship: stop the Stripe subscription so it cannot
@@ -2492,7 +2517,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   let disputeCancellationResult = [];
   if (event.type === "charge.dispute.created" && stripe && process.env.STRIPE_SECRET_KEY) {
     const disputedFamily = findFamilyForStripeObject(readDb(), webhookObject);
-    disputeCancellationResult = await cancelStripeSubscriptionsNow(stripe, disputedFamily);
+    try {
+      const pending = disputedFamily?.pendingUpgradeOperation ? await loadBillingOperation(disputedFamily.pendingUpgradeOperation) : null;
+      const ids = [disputedFamily?.stripeSubscriptionId, disputedFamily?.yearlyUpgrade?.yearlySubscriptionId,
+        ...(disputedFamily?.yearlyUpgrade?.monthlySubscriptionIds || []), pending?.subscriptionId];
+      await require("./billing-stop").stopBilling({ stripe, subscriptionIds: ids, invoiceId: pending?.invoiceId });
+      if (pending) { pending.state = "failed"; await saveBillingOperation(pending); }
+      if (disputedFamily) mutateDb(db => { delete db.families.find(f => f.id === disputedFamily.id).pendingUpgradeOperation; });
+      disputeCancellationResult = ids.filter(Boolean).map(id => ({ id, status: "canceled" }));
+    } catch (error) { return res.status(503).json({ error: "Dispute billing stop needs retry." }); }
   }
 
   // checkout.session.completed carries only a subscription id, but whether that
@@ -2555,6 +2588,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     const incomingSubId = event.type.startsWith("customer.subscription.") ? object.id : stripeId(object.subscription);
     const currentSubId = effectiveFamilySubscriptionId(family);
+    const wasPaymentRestricted = Boolean(family.dunning || ["past_due", "unpaid"].includes(family.subscriptionStatus) || family.paymentStatus === "failed");
+    if (incomingSubId && family.dispute?.subscriptionCancelled && incomingSubId === family.dispute.subscriptionId) {
+      // Late active/payment events cannot revive the subscription we stopped.
+      if (event.type.startsWith("invoice.")) recordStripePayment(db, event, object, null);
+      return family;
+    }
     // Former monthly/yearly events must never overwrite the current subscription.
     if (incomingSubId && currentSubId && incomingSubId !== currentSubId && event.type !== "checkout.session.completed") {
       if (event.type.startsWith("invoice.")) recordStripePayment(db, event, object, null);
@@ -2682,6 +2721,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         reason: object.reason || "",
         amountCents: Number(object.amount || 0),
         chargeId: stripeId(object.charge) || "",
+        subscriptionId: family.dispute?.subscriptionId || effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "",
         openedAt: family.dispute?.openedAt || nowIso(),
         updatedAt: nowIso()
       };
@@ -2695,10 +2735,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         family.paymentStatus = "disputed";
         family.dispute.subscriptionCancelled = true;
       } else if (won) {
-        // Bank found for us: put the family back where they were.
-        family.subscriptionStatus = "active";
+        // Winning returns funds, not a cancelled Stripe subscription.
+        if (family.dispute.subscriptionId === effectiveFamilySubscriptionId(family)) {
+          markSubscriptionEndedNow(family, "Dispute resolved; choose a plan to restart", effectiveFamilySubscriptionId(family) || "", "other");
+        }
         family.paymentStatus = "paid";
-        delete family.dispute;
+        family.dispute.subscriptionCancelled = true;
+        family.dispute.resolvedAt = nowIso();
       } else if (lost) {
         family.paymentStatus = "disputed";
         markSubscriptionEndedNow(family, "Chargeback lost", effectiveFamilySubscriptionId(family) || family.stripeSubscriptionId || "", "other");
@@ -2706,7 +2749,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       monitor(db, "error", "billing",
         won ? "Chargeback resolved in our favour" : lost ? "Chargeback lost — subscription ended" : "Chargeback opened — access suspended",
         { email: family.email, reason: object.reason || "", amountCents: Number(object.amount || 0) }, family.email);
-      audit(db, "stripe.dispute", { familyId: family.id, email: family.email, type: event.type, status: object.status || "", stripeCancellation: disputeCancellationResult }, "stripe");
+      audit(db, "stripe.dispute", { familyId: family.id, email: family.email, disputeId: object.id, type: event.type, status: object.status || "", stripeCancellation: disputeCancellationResult }, "stripe");
     }
     if (refundWebhook) {
       // Only a FULL refund ends the subscription. A partial/goodwill refund
@@ -2737,7 +2780,10 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     if (["invoice.paid", "invoice.payment_succeeded"].includes(event.type) && Number(object.amount_paid) > 0) {
       queueTemplate(db, "payment_receipt", { ...mailData, amount: emailAmount(object.amount_paid, object.currency), date: emailDate(unixToIso(object.status_transitions?.paid_at || object.created)), currency: object.currency }, `receipt:${object.id}`, family.id);
       queueTemplate(db, "op_new_paid", { ...mailData, operator: true }, `first-paid:${family.id}`, family.id);
+      if (wasPaymentRestricted) queueTemplate(db, "access_restored", mailData, `access-restored:${object.id}`, family.id);
     }
+    if (event.type === "invoice.payment_action_required") queueTemplate(db, "payment_verification",
+      { ...mailData, invoiceId: object.id, paymentUrl: object.hosted_invoice_url }, `payment_verification:${object.id}`, family.id);
     if (event.type === "invoice.payment_failed") queueTemplate(db, "payment_failed", mailData, `payment-failed:${object.id}`, family.id);
     if (event.type === "customer.subscription.deleted") queueTemplate(db, "subscription_ended", mailData, `subscription_ended:${family.id}:${object.id}`, family.id);
     if (event.type === "customer.subscription.updated" && object.cancel_at_period_end) queueTemplate(db, "cancellation_scheduled", { ...mailData, nextDate: family.cancelAccessUntil }, `cancellation_scheduled:${family.id}:${family.cancelAccessUntil}`, family.id);
@@ -2811,7 +2857,7 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
-async function sendEmail({ to, template, message, subject: subjectArg, html }) {
+async function sendEmail({ to, template, message, subject: subjectArg, html, key }) {
   const recipient = normalizeEmail(to || process.env.TEST_EMAIL_TO || "");
   if (!isAllowedParentEmail(recipient)) {
     throw new Error(parentEmailError(recipient));
@@ -2819,6 +2865,9 @@ async function sendEmail({ to, template, message, subject: subjectArg, html }) {
   const templateName = template || "Welcome parent";
   const subject = subjectArg || templateName || "KiddieGPT";
   const text = message || `KiddieGPT: ${templateName}`;
+  const templateKey = key || EMAIL_TEMPLATES.find(t => t.name === templateName)?.key;
+  const promotional = require("./email-delivery-policy").isPromotional(templateKey);
+  if (promotional && !postmarkConfigured()) throw new Error("Promotional delivery requires the configured Postmark broadcast stream.");
 
   if (postmarkConfigured()) {
     const response = await fetch("https://api.postmarkapp.com/email", {
@@ -2835,7 +2884,7 @@ async function sendEmail({ to, template, message, subject: subjectArg, html }) {
         Subject: subject,
         TextBody: text,
         ...(html ? { HtmlBody: html } : {}),
-        MessageStream: process.env.POSTMARK_MESSAGE_STREAM || "outbound",
+        MessageStream: require("./email-delivery-policy").messageStream(templateKey),
         Tag: templateName.slice(0, 100),
         Metadata: {
           app: "kiddiegpt",
@@ -2951,16 +3000,16 @@ const EMAIL_TEMPLATES = [
 
   { key: "payment_receipt", name: "Payment receipt", stage: "Payments & billing", subject: () => "Your KiddieGPT receipt",
     build: (d) => ({ chip: "Receipt", title: "Payment received", greeting: `Hi ${d.parentName},`, paragraphs: [`Thanks! We received your payment of <b>${escHtml(d.amount)}</b> for <b>${escHtml(d.planName)}</b> on ${escHtml(d.date)}.`, "Your child's access stays unlocked. Manage billing anytime from the parent portal."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
-  { key: "yearly_upgrade", name: "Yearly upgrade confirmed", stage: "Payments & billing", subject: () => "You're on the yearly plan",
-    build: (d) => ({ chip: "Upgraded", title: "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've switched to the yearly plan${Number(d.bonusMonths) > 0 ? ` with <b>${escHtml(String(d.bonusMonths))} bonus month${Number(d.bonusMonths) === 1 ? "" : "s"}</b>` : ""}. View your plan details in the parent portal.`, d.nextDate ? `Your plan renews on ${escHtml(emailDate(d.nextDate))}.` : "Check your billing page for your next renewal."], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
+  { key: "yearly_upgrade", name: "Yearly upgrade confirmed", stage: "Payments & billing", subject: d => d.trialing ? "Yearly billing selected for after your trial" : "You're on the yearly plan",
+    build: (d) => ({ chip: d.trialing ? "Scheduled" : "Upgraded", title: d.trialing ? "Yearly selected. Your trial continues." : "You're on the yearly plan", greeting: `Hi ${d.parentName},`, paragraphs: [`You've selected the yearly plan${Number(d.bonusMonths) > 0 ? ` with <b>${escHtml(String(d.bonusMonths))} bonus month${Number(d.bonusMonths) === 1 ? "" : "s"}</b>` : ""}.`, d.trialing ? `Your original trial ends on ${escHtml(emailDate(d.trialEndsAt))}. The yearly offer is charged then unless you cancel. No yearly payment has been collected yet.` : (d.nextDate ? `Your plan renews on ${escHtml(emailDate(d.nextDate))}.` : "Check your billing page for your next renewal.")], ctaText: "View billing", ctaUrl: emailBaseUrl() }) },
   { key: "payment_failed", name: "Payment failed", stage: "Payments & billing", subject: () => "Your KiddieGPT payment didn't go through",
     build: (d) => ({ chip: "Action needed", title: "Your payment didn't go through", greeting: `Hi ${d.parentName},`, paragraphs: [`We couldn't process your payment for <b>${escHtml(d.planName)}</b>. Please update your payment method to keep your child's access.`], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
   { key: "payment_retry", name: "Payment retry reminder", stage: "Payments & billing", subject: () => "Reminder: update your payment method",
-    build: (d) => ({ chip: "Reminder", title: "Still can't reach your card", greeting: `Hi ${d.parentName},`, paragraphs: ["We tried your payment again and it didn't go through. Update your card soon to avoid losing access."], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Reminder", title: "Your payment still needs attention", greeting: `Hi ${d.parentName},`, paragraphs: ["Your subscription payment is still unresolved. Review your payment method to avoid an interruption to access."], ctaText: "Update payment", ctaUrl: emailBaseUrl() }) },
   { key: "access_paused", name: "Access paused — unpaid", stage: "Payments & billing", subject: () => "Your KiddieGPT access is paused",
     build: (d) => ({ chip: "Paused", title: "Your access is paused", greeting: `Hi ${d.parentName},`, paragraphs: ["Because the payment is still unpaid, we've paused access for now. Update your payment method to turn everything back on right away."], ctaText: "Restore access", ctaUrl: emailBaseUrl() }) },
   { key: "renewal_reminder", name: "Renewal reminder", stage: "Payments & billing", subject: () => "Your KiddieGPT plan renews soon",
-    build: (d) => ({ chip: "Heads up", title: "Your plan renews soon", greeting: `Hi ${d.parentName},`, paragraphs: [`A quick heads-up: your <b>${escHtml(d.planName)}</b> renews on ${escHtml(d.nextDate)}. No action needed — we'll charge your card on file.`], ctaText: "Manage plan", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Heads up", title: "Your plan renews soon", greeting: `Hi ${d.parentName},`, paragraphs: [`Your <b>${escHtml(d.planName)}</b> renews on ${escHtml(emailDate(d.nextDate))}.`, d.upcomingAmount ? `Your upcoming payment is <b>${escHtml(d.upcomingAmount)}</b>.` : "Review your billing page for the upcoming amount, including any applicable discounts and taxes.", d.offerEndsAt ? `Your introductory offer ends on ${escHtml(emailDate(d.offerEndsAt))}.` : "", "We'll charge your card on file unless you cancel before renewal."].filter(Boolean), ctaText: "Manage plan", ctaUrl: emailBaseUrl() }) },
 
   { key: "weekly_summary", name: "Weekly progress summary", stage: "Engagement", subject: (d) => `${d.childName}'s week on KiddieGPT`,
     build: (d) => ({ chip: "Weekly", title: `${d.childName}'s week on KiddieGPT`, greeting: `Hi ${d.parentName},`, paragraphs: [`Here's how ${escHtml(d.childName)} did this week:`], steps: [{ title: "Flashcards & quizzes", text: "Reviewed and practiced across the week." }, { title: "Math problems solved", text: "Worked through problems step by step." }, { title: "Goals in progress", text: "Making steady progress toward rewards." }], ctaText: "See full progress", ctaUrl: emailBaseUrl() }) },
@@ -2981,7 +3030,7 @@ const EMAIL_TEMPLATES = [
   { key: "support_reply", name: "Support reply", stage: "Support & account", subject: () => "Reply from KiddieGPT support",
     build: (d) => ({ chip: "Support", title: "Reply from KiddieGPT support", greeting: `Hi ${d.parentName},`, paragraphs: [escHtml(d.supportReply), "Just reply to this email if you need anything else."], ctaText: "Open support", ctaUrl: emailBaseUrl() }) },
   { key: "deletion_requested", name: "Deletion requested", stage: "Support & account", subject: () => "We received your deletion request",
-    build: (d) => ({ chip: "Account", title: "We received your request", greeting: `Hi ${d.parentName},`, paragraphs: ["We've received your account deletion request. Extension access is now locked while we process it. Billing records are kept only as required for support and tax.", "If this was a mistake, contact support and we'll stop the deletion."], ctaText: "Contact support", ctaUrl: emailBaseUrl() }) },
+    build: (d) => ({ chip: "Account", title: "We received your request", greeting: `Hi ${d.parentName},`, paragraphs: ["Future subscription billing has stopped and extension access is locked while we process your deletion request. Previous payments are not automatically refunded; contact support for refund assistance.", "If this was a mistake, contact support. Stopping deletion does not automatically restart your subscription."], ctaText: "Contact support", ctaUrl: "mailto:support@kiddiegpt.com" }) },
 
   { key: "trial_started", name: "Free trial started", stage: "Free trial", subject: (d) => `Your ${d.trialDays}-day KiddieGPT trial is live`,
     build: (d) => ({ chip: "Trial", title: `Your ${escHtml(String(d.trialDays))}-day trial starts now`, greeting: `Hi ${d.parentName},`, paragraphs: [`Full access to every KiddieGPT tool is unlocked until <b>${escHtml(emailDate(d.trialEndsAt))}</b>.`, d.cardOnFile ? "Your card will be charged after the trial unless you cancel before it ends." : "Choose a plan before your trial ends to keep access.", "Add your child's profile and set a learning goal to get the most out of it."], steps: ["Sign in to the parent portal", "Add a student profile", "Install the Chrome extension"], ctaText: "Start setting up", ctaUrl: emailBaseUrl() }) },
@@ -2992,17 +3041,21 @@ const EMAIL_TEMPLATES = [
   { key: "op_new_paid", name: "New paid family (internal)", stage: "Operator", subject: () => "New paid family on KiddieGPT",
     build: (d) => ({ chip: "New", title: "New paid family", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) just subscribed to <b>${escHtml(d.planName)}</b>.`], ctaText: "Open admin", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
   { key: "op_new_support", name: "New support message (internal)", stage: "Operator", subject: () => "New support message",
-    build: (d) => ({ chip: "Support", title: "New support message", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) sent a new support message. Open the admin console to reply.`], ctaText: "Open support", ctaUrl: `${emailBaseUrl()}/admin.html` }) }
+    build: (d) => ({ chip: "Support", title: "New support message", paragraphs: [`<b>${escHtml(d.parentName)}</b> (${escHtml(d.email)}) sent a new support message. Open the admin console to reply.`], ctaText: "Open support", ctaUrl: `${emailBaseUrl()}/admin.html` }) },
+  ...require("./email-billing-templates")({ escHtml, emailBaseUrl, emailAmount })
 ];
 
 function queueTemplate(db, key, data, identity, familyId) {
   if (!emailTemplateEnabled(db, key)) return false;
+  const policy = require("./email-delivery-policy");
+  if (policy.isPromotional(key) && !policy.promotionalAllowed(db.families.find(f => f.id === familyId))) return false;
   const to = data.operator ? (process.env.ADMIN_NOTIFY_EMAIL || process.env.ADMIN_EMAIL) : data.email;
   if (!to) return false;
   const rendered = renderTemplate(key, data);
   if (!rendered) throw new Error(`Unknown email template: ${key}`);
   return require("./email-outbox").enqueueEmail(db, {
     id: identity, familyId, key, to, supportMessageId: data.supportMessageId, template: rendered.name,
+    invoiceId: data.invoiceId, upgrade: data.upgrade, operationId: data.operationId,
     subject: rendered.subject, html: rendered.html, message: rendered.text
   });
 }
@@ -3019,6 +3072,13 @@ async function drainEmailOutbox(limit = 5) {
       const db = readDb();
       const family = db.families.find(f => f.id === item.familyId);
       if (!emailTemplateEnabled(db, item.key)) return;
+      const policy = require("./email-delivery-policy");
+      if (policy.isPromotional(item.key) && !policy.promotionalAllowed(family)) return;
+      // Pending payment notices become obsolete when their operation resolves.
+      if (item.key === "refund_pending" && (!family?.pendingRefundOperation || (item.operationId && family.pendingRefundOperation !== item.operationId)
+          || ["failed", "canceled"].includes(family.refundPending?.status))) return;
+      if (item.key === "payment_verification" && ((item.upgrade && (!family?.pendingUpgradeOperation || (item.operationId && family.pendingUpgradeOperation !== item.operationId)))
+          || db.payments.some(p => p.paymentId === item.invoiceId && ["paid", "refunded", "partial_refunded"].includes(p.status)))) return;
       if (family?.anonymizedAt && item.key !== "deletion_completed") return;
       if (family?.deletionRequestedAt && ["Engagement", "Cancellation & winback", "Free trial"].includes(EMAIL_TEMPLATES.find(t => t.key === item.key)?.stage)) return;
       const result = await sendEmail(item);
@@ -3063,12 +3123,19 @@ function renderTemplate(key, data) {
     cardOnFile: false, supportReply: "", ...(data || {})
   };
   const opts = t.build(d);
+  if (["trial_started", "trial_ending"].includes(key) && d.cardOnFile) {
+    opts.paragraphs.push(d.upcomingAmount ? `Your upcoming payment is <b>${escHtml(d.upcomingAmount)}</b>.`
+      : "Review your billing page for the amount due after your trial, including any applicable discounts and taxes.");
+  }
+  if (key === "yearly_upgrade" && Number.isFinite(d.effectivePrice)) opts.paragraphs.push(
+    `${d.trialing ? "Your selected yearly offer" : "Your yearly upgrade payment"}: <b>${escHtml(emailAmount(Math.round(d.effectivePrice * 100), d.currency || "usd"))}</b>.`);
   if (key === "weekly_summary" && d.summaryText) {
     opts.title = "Your family's learning summary";
     opts.paragraphs = [escHtml(d.summaryText).replace(/\n/g, "<br>")];
     opts.steps = [];
   }
   opts.eyebrow = t.stage.toUpperCase();
+  if (require("./email-delivery-policy").isPromotional(key)) opts.unsubscribeUrl = "{{{ pm:unsubscribe }}}";
   if (opts.code) {
     opts.codeLabel = key === "sign_in_code" ? "Your sign-in code" : key === "password_reset" ? "Your password reset code" : "Your verification code";
     opts.codeExpiry = `Expires in ${process.env.EMAIL_OTP_TTL_MINUTES || 10} minutes`;
@@ -3077,12 +3144,9 @@ function renderTemplate(key, data) {
   return { key: t.key, name: t.name, stage: t.stage, subject: key === "weekly_summary" && d.summaryText ? "Your family's KiddieGPT summary" : t.subject(d), ...require("./email-layout").renderEmailLayout(opts, emailBaseUrl()) };
 }
 
-// Only lifecycle/marketing emails can be switched off — the Engagement,
-// Cancellation & winback, and Free trial stages. Account/security (sign-in
-// codes, password resets) and billing emails are never gate-able, so a toggle
-// can never silently break login, recovery, or payment notices. Default: on.
-const TOGGLEABLE_EMAIL_STAGES = new Set(["Engagement", "Cancellation & winback", "Free trial"]);
-const TOGGLEABLE_TEMPLATE_KEYS = new Set(EMAIL_TEMPLATES.filter((t) => TOGGLEABLE_EMAIL_STAGES.has(t.stage)).map((t) => t.key));
+// Optional engagement emails can be disabled. Trial, cancellation and billing
+// notices remain on even if an old stage-level toggle was saved.
+const TOGGLEABLE_TEMPLATE_KEYS = new Set(["weekly_summary", "goal_completed", "finish_setup", "low_usage", "winback"]);
 function emailTemplateEnabled(db, key) {
   if (!TOGGLEABLE_TEMPLATE_KEYS.has(key)) return true; // always-on stages
   return (db?.emailToggles || {})[key] !== false;
@@ -3990,7 +4054,32 @@ app.post("/api/account/confirm-email-change", requireParent, (req, res) => {
   res.json({ ok: true, token, user: { id: updated.user.id, role: updated.user.role, name: updated.user.name, email: updated.user.email }, message: "Email updated." });
 });
 
-app.post("/api/account/delete-request", requireParent, (req, res) => {
+app.post("/api/account/delete-request", requireParent, billingGuard, async (req, res) => {
+  const existing = readDb().families.find(f => f.email === req.auth.email);
+  if (!existing) return res.status(404).json({ error: "Family account not found." });
+  try {
+    const op = existing.pendingUpgradeOperation ? await loadBillingOperation(existing.pendingUpgradeOperation) : null;
+    const stripe = stripeClient();
+    if (stripe && existing.pendingCheckout) {
+      if (!existing.pendingCheckout.sessionId) throw new Error("Checkout creation must be reconciled before deletion.");
+      const session = await stripe.checkout.sessions.retrieve(existing.pendingCheckout.sessionId);
+      if (session.status === "open") await stripe.checkout.sessions.expire(session.id);
+      if (session.status === "complete" && stripeId(session.subscription) !== existing.stripeSubscriptionId) {
+        throw new Error("Checkout payment must be reconciled before deletion.");
+      }
+    }
+    if (op && !op.subscriptionId && op.state !== "failed") {
+      throw new Error("The pending upgrade must be reconciled before deletion. Please retry or contact support.");
+    }
+    await require("./billing-stop").stopBilling({ stripe: stripeClient(),
+      subscriptionIds: [existing.stripeSubscriptionId, effectiveFamilySubscriptionId(existing),
+        existing.yearlyUpgrade?.yearlySubscriptionId, ...(existing.yearlyUpgrade?.monthlySubscriptionIds || []), op?.subscriptionId],
+      invoiceId: op?.invoiceId });
+    if (op && op.state !== "completed") { op.state = "failed"; op.stoppedForDeletion = true; await saveBillingOperation(op); }
+  } catch (error) {
+    monitorBillingFailure(existing.email, "Deletion billing stop needs attention", error);
+    return res.status(502).json({ error: "We could not confirm billing has stopped. Your account remains accessible. Please retry deletion or contact support." });
+  }
   const result = mutateDb((db) => {
     const user = db.users.find((item) => item.id === req.auth.sub && item.role === "parent");
     if (!user) return null;
@@ -3999,17 +4088,18 @@ app.post("/api/account/delete-request", requireParent, (req, res) => {
     db.sessions = (db.sessions || []).filter((session) => session.userId !== user.id);
     const family = db.families.find((item) => item.id === user.familyId || item.email === user.email);
     if (family) {
+      markSubscriptionEndedNow(family, "Account deletion requested", effectiveFamilySubscriptionId(family) || "", "parent");
+      delete family.pendingUpgradeOperation;
+      delete family.pendingCheckout;
       family.deletionRequestedAt = user.deletionRequestedAt;
       family.accountLocked = true;
-      // accountLocked is the single access control; the billing status is left
-      // alone so the operator can still see what the account was.
     }
     audit(db, "account.delete.request", { userId: user.id, familyId: family?.id || "", email: user.email }, user.email);
     monitor(db, "warning", "account", "Parent requested account deletion", { email: user.email, familyId: family?.id || "" }, user.email);
     return { user, family };
   });
   if (!result) return res.status(404).json({ error: "Parent account not found." });
-  res.json({ ok: true, message: "Account deletion request recorded. Access is locked while you review the request." });
+  res.json({ ok: true, message: "Billing has stopped and your deletion request is recorded. Access is locked while our team completes the request." });
 });
 
 app.get("/api/admin/state", requireAdmin, (req, res) => {
@@ -5883,7 +5973,7 @@ app.post("/api/admin/users/:id/anonymize", requireAdmin, (req, res) => {
   res.json(result);
 });
 
-app.get("/api/entitlements/me", (req, res) => {
+app.get("/api/entitlements/me", async (req, res) => {
   const auth = authFromRequest(req);
   if (process.env.REQUIRE_AUTH === "true" && !auth) {
     mutateDb((db) => monitor(db, "warning", "entitlement", "Extension entitlement check missing auth", { path: "/api/entitlements/me" }));
@@ -5894,6 +5984,7 @@ app.get("/api/entitlements/me", (req, res) => {
     mutateDb((db) => monitor(db, "warning", "entitlement", "Entitlement check blocked by email domain", { email }, email));
     return res.status(400).json({ active: false, reason: "email_domain_blocked", error: parentEmailError(email) });
   }
+  if (auth?.role === "parent") await recoverBillingOperations(email);
   const family = readDb().families.find((item) => item.email === email);
   if (!family) {
     mutateDb((db) => monitor(db, "warning", "entitlement", "Entitlement check could not find family", { email }, email));
@@ -6639,14 +6730,27 @@ app.post("/api/stripe/request-cancellation", requireParent, billingGuard, async 
   const reason = String(req.body?.reason || "Parent requested cancellation");
   if (!email) return res.status(400).json({ error: "Missing parent email." });
 
-  const existingFamily = readDb().families.find((item) => item.email === email);
+  let existingFamily = readDb().families.find((item) => item.email === email);
   if (!existingFamily) return res.status(404).json({ error: "Family account not found." });
   if (existingFamily?.pendingUpgradeOperation) {
     try {
       const op = await loadBillingOperation(existingFamily.pendingUpgradeOperation);
-      if (op && op.state !== "failed") await advanceUpgrade(op);
-        else if (op?.state === "failed") mutateDb(db => { const item = db.families.find(x => x.id === op.familyId); delete item.pendingUpgradeOperation; item.failedUpgradeAt = op.createdAt; });
-      if (op?.state === "failed") mutateDb(db => { delete db.families.find(f => f.email === email).pendingUpgradeOperation; });
+      if (op && op.state !== "failed") {
+        if (op.invoiceId && !op.terms.trialing) {
+          const stripe = stripeClient();
+          const invoice = await stripe.invoices.retrieve(op.invoiceId);
+          if (invoice.status === "paid") await advanceUpgrade(op);
+          else {
+            await require("./billing-stop").stopBilling({ stripe, subscriptionIds: [op.subscriptionId], invoiceId: op.invoiceId });
+            op.state = "failed";
+            await saveBillingOperation(op);
+          }
+        } else await advanceUpgrade(op);
+      }
+      if (op?.state === "failed") mutateDb(db => {
+        const item = db.families.find(f => f.email === email);
+        delete item.pendingUpgradeOperation; item.failedUpgradeAt = op.createdAt;
+      });
       existingFamily = readDb().families.find(f => f.email === email);
     } catch (error) {
       return res.status(502).json({ error: "We could not confirm the pending payment with Stripe. No additional purchase was created. Please retry cancellation or contact support." });
@@ -6878,6 +6982,7 @@ async function advanceUpgrade(op) {
         invoice: op.terms.trialing ? null : { id: "in_mock_" + op.id, payment_intent: "pi_mock_" + op.id,
           amount_paid: op.terms.amountCents, currency: "usd", created: Math.floor(Date.now()/1000), status: "paid" } };
     } else applied = await require("./billing-upgrade").executeUpgrade({ stripe: stripeClient(), op, save: saveBillingOperation });
+    if (applied.requiresAction) return applied;
     op.result = mutateDb(db => {
       const f = db.families.find(f => f.id === op.familyId);
       const trial = op.terms.trialing;
@@ -7819,9 +7924,10 @@ async function sendLifecycleEmail(family, template, message) {
 // lapsed cancellations, and sends convert-nudge / win-back / weekly-summary
 // emails — all idempotent via per-family stage/timestamp tracking.
 const SWEEP_EMAIL_CAP = 300; // safety cap on emails sent per sweep
-async function recoverBillingOperations() {
+async function recoverBillingOperations(email) {
   const deadline = Date.now() + 15000;
-  for (const snapshot of readDb().families.filter(f => f.pendingRefundOperation || f.pendingUpgradeOperation).slice(0, 5)) {
+  const candidates = require("./billing-stop").recoveryCandidates(readDb().families, Date.now(), email);
+  for (const snapshot of candidates.slice(0, 5)) {
     if (Date.now() > deadline) break;
     const release = await acquireBillingLock(billingLockPool, snapshot.email);
     if (!release) continue;
@@ -7831,6 +7937,10 @@ async function recoverBillingOperations() {
         stateCache = (await pgPool.query("SELECT data FROM app_state WHERE id=1")).rows[0].data;
       }
       const f = readDb().families.find(f => f.id === snapshot.id);
+      if (!f) continue;
+      if (Date.now() - (Date.parse(f.billingRecoveryAttemptAt) || 0) < 60000) continue;
+      mutateDb(db => { db.families.find(x => x.id === f.id).billingRecoveryAttemptAt = nowIso(); });
+      await flushPending();
       if (f.pendingRefundOperation) {
         const op = await loadBillingOperation(f.pendingRefundOperation);
         if (op && op.state !== "failed") await refundFamilyPayment(f, { operationId: op.id, paymentId: op.paymentId, admin: true, reason: op.reason });
@@ -7847,6 +7957,23 @@ async function recoverBillingOperations() {
 
 async function runLifecycleSweep(trigger = "cron") {
   await recoverBillingOperations();
+  const upcoming = new Map();
+  const stripe = stripeClient();
+  if (stripe) {
+    const previewDeadline = Date.now() + 5000;
+    const soon = readDb().families.filter(f => {
+      const date = Date.parse(f.subscriptionStatus === "trialing" ? f.trialEndsAt : f.currentPeriodEnd);
+      return f.stripeSubscriptionId && !f.stripeSubscriptionId.startsWith("sub_mock") && !f.cancelAtPeriodEnd
+        && date > Date.now() && date - Date.now() <= 3 * 86400000;
+    }).slice(0, 20);
+    for (const f of soon) {
+      if (Date.now() >= previewDeadline) break;
+      try {
+        const invoice = await stripe.invoices.retrieveUpcoming({ subscription: f.stripeSubscriptionId }, { timeout: 2500, maxNetworkRetries: 0 });
+        if (Number.isFinite(invoice.amount_due)) upcoming.set(f.id, emailAmount(invoice.amount_due, invoice.currency));
+      } catch (_) { /* A missing preview must not invent an upcoming charge. */ }
+    }
+  }
   let reconciled = 0;
   try {
     reconciled = (await reconcileWithStripe()).reconciled || 0;
@@ -7995,7 +8122,7 @@ async function runLifecycleSweep(trigger = "cron") {
       }
     });
     for (const { family, key, message } of emailsToSend) {
-      queueTemplate(db, key, { email: family.email, parentName: family.parentName, childName: family.children?.[0]?.studentName || "Your child", planName: family.plan, nextDate: family.currentPeriodEnd, trialEndsAt: family.trialEndsAt, cardOnFile: Boolean(family.stripeSubscriptionId), summaryText: key === "weekly_summary" ? message : undefined }, `${key}:${family.id}:${key === "renewal_reminder" ? family.currentPeriodEnd : now}`, family.id);
+      queueTemplate(db, key, { email: family.email, parentName: family.parentName, childName: family.children?.[0]?.studentName || "Your child", planName: family.plan, nextDate: family.currentPeriodEnd, trialEndsAt: family.trialEndsAt, cardOnFile: Boolean(family.stripeSubscriptionId), upcomingAmount: upcoming.get(family.id), offerEndsAt: family.yearlyUpgrade?.status === "scheduled" ? unixToIso(family.yearlyUpgrade.yearlyNextRenewalAt) : "", summaryText: key === "weekly_summary" ? message : undefined }, `${key}:${family.id}:${key === "renewal_reminder" ? family.currentPeriodEnd : now}`, family.id);
     }
     monitor(db, "info", "autopilot", "Lifecycle sweep ran", { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries });
     return { trigger, reconciled, remindersSent, suspended, cancelsFinalised, nudged, winbacks, summaries, trialsEnded, trialNotices, emailsQueued: emailsToSend.length };

@@ -41,7 +41,7 @@ test("real routes queue signup, billing, goals, security and deletion notices wi
     fs.writeFileSync(process.env.DATA_PATH, JSON.stringify(scheduleDb));
     await runLifecycleSweep("test");
     assert.equal(mail("renewal_reminder").length, 1);
-    assert.equal(mail("low_usage").length, 1);
+    assert.equal(mail("low_usage").length, 0, "Promotional messages require recorded consent");
     assert.equal(mail("weekly_summary").length, 1);
     assert.doesNotMatch(mail("weekly_summary")[0].message, /Reviewed and practiced across the week/);
     await runLifecycleSweep("test");
@@ -51,6 +51,15 @@ test("real routes queue signup, billing, goals, security and deletion notices wi
     await call("/api/parent/family/profile", profile, token, "PUT");
     await call("/api/parent/family/profile", profile, token, "PUT");
     assert.equal(mail("goal_completed").length, 1);
+    await call("/api/support/message", { message: "Please help with my plan", category: "Billing" }, token);
+    assert.equal(mail("support_received").length, 1);
+    assert.match(mail("support_received")[0].message, /Reference:/);
+    const actionInvoice = { ...invoice, id: "in_verify", hosted_invoice_url: "https://invoice.stripe.com/test" };
+    for (const id of ["evt_action_1", "evt_action_2"]) await call("/api/stripe/webhook", { id, type: "invoice.payment_action_required", data: { object: actionInvoice } });
+    assert.equal(mail("payment_verification").length, 1);
+    await call("/api/stripe/webhook", { id: "evt_failed", type: "invoice.payment_failed", data: { object: { ...actionInvoice, amount_paid: 0 } } });
+    await call("/api/stripe/webhook", { id: "evt_recovered", type: "invoice.paid", data: { object: actionInvoice } });
+    assert.equal(mail("access_restored").length, 1);
     ({ token } = await call("/api/account/change-password", { currentPassword: "test-password", newPassword: "test-password-new" }, token));
     assert.equal(mail("password_changed").length, 1);
     await call("/api/account/request-email-change", { newEmail: "integration.new@gmail.com" }, token);

@@ -1501,7 +1501,7 @@
     }
 
     async function requestAccountDeletion() {
-      if (!window.confirm("Request account deletion and lock extension access while admin reviews it?")) return;
+      if (!window.confirm("Stop future billing and request account deletion? Access ends once billing is stopped. Previous payments are not automatically refunded; contact support for refund assistance.")) return;
       showAccountStatus("Recording", "warning");
       var response = await parentAuthFetch("/api/account/delete-request", {
         method: "POST",
@@ -3420,6 +3420,13 @@
         });
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Yearly upgrade failed");
+        if (result.requiresAction) {
+          paymentState.textContent = "Payment verification needed";
+          completionText.textContent = result.message;
+          if (result.paymentUrl) window.location.assign(result.paymentUrl);
+          else throw new Error("Payment verification is needed. Contact support to retrieve the secure payment link.");
+          return;
+        }
         var trialingResult = Boolean(result.trialing);
         invalidateEntitlementSync();
         yearlyUpgradeInfo = {
@@ -7236,7 +7243,7 @@
       }) : ["<tr><td colspan='7'><div class='empty-state'>No trial accounts yet.</div></td></tr>"]);
 
       renderMarkup("privacy-rules", [
-        ruleMarkup("Lock account first", "Parent deletion request locks extension access immediately while admin reviews billing.", "active", "lock"),
+        ruleMarkup("Stop billing before locking", "Deletion requests stop subscription billing before locking access for admin review.", "active", "lock"),
         ruleMarkup("Handle Stripe separately", "Cancel subscription, refund, or export Stripe receipts before anonymizing local data.", "ready", "credit-card"),
         ruleMarkup("Anonymize local PII", "Admin action replaces parent email with the next deleted_user_xxxxx@deleted.local address.", "active", "shield-user"),
         ruleMarkup("Keep audit trail", "Logs and payments remain for business records after direct identifiers are scrubbed.", "ready", "list-checks")

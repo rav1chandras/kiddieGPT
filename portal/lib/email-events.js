@@ -6,6 +6,7 @@ function emailEvents(action, p, family = {}, eventId) {
     planName: family.plan, nextDate: family.cancelAccessUntil || family.currentPeriodEnd || "",
     trialEndsAt: family.trialEndsAt, cardOnFile: Boolean(family.stripeSubscriptionId),
     bonusMonths: family.yearlyUpgrade?.bonusMonths || 0, ...p };
+  data.trialing = family.yearlyUpgrade?.status === "trialing";
   const result = [];
   const add = (key, identity = eventId, extra = {}) => result.push({ key, id: `${key}:${id}:${identity}`, data: { ...data, ...extra } });
   switch (action) {
@@ -46,7 +47,10 @@ function emailEvents(action, p, family = {}, eventId) {
     case "refund.mock": add(p.fullRefund === false ? "refund_partial" : "refund_full", p.refundId || eventId); break;
     case "billing_exception.partial_refund": add("refund_partial", p.refundId); break;
     case "trial.create": add("trial_started", family.trialEndsAt, { trialDays: p.days }); break;
-    case "support.message": add("op_new_support", p.id, { operator: true }); break;
+    case "support.message":
+      add("op_new_support", p.id, { operator: true });
+      add("support_received", p.id, { ticketId: p.id }); break;
+    case "stripe.dispute": add("op_dispute", `${p.disputeId}:${p.status}`, { operator: true, disputeStatus: p.status }); break;
     case "goal.completed": add("goal_completed", p.goalId); break;
   }
   return result;

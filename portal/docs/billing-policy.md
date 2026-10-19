@@ -19,6 +19,12 @@ The extended paid term uses a one-time invoice item and defers the standard recu
 
 Refunds stop renewal first, but access is not removed until Stripe confirms refund success and the necessary cancellation succeeds. Pending/failed operations remain visible for admin review. The lifecycle sweep retries recoverable operations. An ambiguous request older than Stripe's idempotency retention window requires reconciliation instead of a new charge/refund.
 
+Upgrades requiring bank authentication return Stripe's hosted invoice link instead of treating verification as a decline. Monthly billing is unchanged until payment is confirmed. Payment webhooks and authenticated entitlement refreshes can reconcile the pending upgrade; cancellation voids an unpaid upgrade invoice before stopping its schedule.
+
+Deletion requests stop the known subscriptions (including any retained monthly subscription) and expire an open checkout before revoking access. A Stripe failure leaves login available and returns a retryable error. Deletion does not automatically refund prior payments. Winning a dispute does not reactivate the subscription cancelled when the dispute opened.
+
+Recovery prioritizes accounts least recently attempted, with a one-minute per-account retry throttle. The Vercel Hobby-compatible cron remains daily; webhook/parent refresh recovery avoids waiting for that cron during active use. Unattended recovery is still daily unless an authorized external scheduler calls `/api/cron/sweep` more frequently. Configure `CRON_SECRET` before doing so; an hourly or five-minute Vercel cron requires a compatible hosting plan.
+
 Admin > Billing > Payments supports full-remaining and partial refunds with a required reason. Billing > Refunds provides searchable history, pending statuses and review/retry. Refund notices are queued only after completion. Both admin refund entry points use the same service as parent cancellation.
 
 ## Verification
@@ -34,3 +40,5 @@ Optional tests:
 Verified on September 10, 2026: isolated service/route tests, two-server Postgres locking, desktop/mobile refund controls, and real Stripe test-mode paid upgrades, repeat-request invoice deduplication, full upgrade refunds with the monthly subscription retained, trial conversion at the original deadline, and the scheduled standard yearly renewal price/date.
 
 Before production rollout, complete sandbox acceptance for zero-price offers, payments requiring authentication, declined cards, partial/pending refunds, delayed webhooks, month-end carry-over, and collection of the eventual standard renewal. Some of these paths have local fake-service coverage, but that does not certify Stripe account configuration, tax settings or actual payment processing.
+
+September 26 update: Stripe test mode verified the authentication-required hosted payment link and cancellation of the unpaid invoice without ending monthly access. Completing the bank's challenge is simulated in the service regression tests, not automated against Stripe's hosted UI. Regression tests also cover pending-upgrade cancellation, deletion failure/retry, dispute resolution and late active events, fair recovery ordering, and the parent verification redirect.

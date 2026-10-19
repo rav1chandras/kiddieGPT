@@ -35,7 +35,9 @@ test("Postgres advisory locks and two server instances preserve upgrade/refund s
     assert.equal(result.status, 200);
     const data = async () => (await pool.query("SELECT data FROM app_state WHERE id=1")).rows[0].data;
     const code = (await data()).emailLogs[0].preview.match(/\b\d{6}\b/)[0];
-    const token = (await call(first, "/api/auth/verify-otp", { email, otp: code })).data.token;
+    const verified = await call(first, "/api/auth/verify-otp", { email, otp: code });
+    assert.equal(verified.status, 200, JSON.stringify(verified.data));
+    const token = verified.data.token;
     const db = await data();
     const f = db.families.find(f => f.email === email);
     Object.assign(f, { subscriptionStatus: "active", paymentStatus: "paid", plan: "Family Monthly", stripeSubscriptionId: "sub_mock_pg", stripePaymentId: "pi_mock_pg", lastPaymentAt: new Date(Date.now()-5*86400000).toISOString(), lastPaymentAmountCents: 1900, currentPeriodEnd: new Date(Date.now()+20*86400000).toISOString() });

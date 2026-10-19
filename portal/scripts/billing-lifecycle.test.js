@@ -90,6 +90,46 @@ test("parent and admin routes preserve trials, rollback monthly access, enforce 
     });
     await runLifecycleSweep("test");
     assert.equal(family().subscriptionStatus, "cancelled");
+    // A recovered operation must not throw when cancellation refreshes family state.
+    seedMonthly();
+    edit(db => {
+      const f = db.families.find(f => f.email === "billing@gmail.com");
+      f.yearlyUpgrade = null; f.pendingUpgradeOperation = "recovered";
+      db.billingOperations.recovered = { id: "recovered", familyId: f.id, state: "completed", terms: {}, result: { ok: true } };
+    });
+    await call("/api/stripe/request-cancellation", {}, token);
+    assert.equal(family().subscriptionStatus, "cancel_scheduled");
+    edit(db => { delete db.families.find(f => f.email === "billing@gmail.com").pendingUpgradeOperation; });
+    // A won dispute never resurrects a subscription cancelled when it opened.
+    for (const [type, status] of [["created", "needs_response"], ["closed", "won"]]) {
+      await call("/api/stripe/webhook", { id: "evt_dispute_" + type, type: "charge.dispute." + type,
+        data: { object: { id: "dp_test", metadata: { familyId: family().id }, status, amount: 1900 } } });
+    }
+    assert.equal(family().subscriptionStatus, "cancelled");
+    assert.equal(family().dispute.status, "won");
+    await call("/api/stripe/webhook", { id: "evt_dispute_late_active", type: "customer.subscription.updated",
+      data: { object: { id: "sub_mock_month", metadata: { familyId: family().id }, status: "active" } } });
+    assert.equal(family().subscriptionStatus, "cancelled");
+    // Failed Stripe termination must not lock the parent out or revoke the token.
+    seedMonthly();
+    const stop = require("../lib/billing-stop");
+    const originalStop = stop.stopBilling;
+    try {
+      stop.stopBilling = async () => { throw Error("Stripe unavailable"); };
+      await call("/api/account/delete-request", {}, token, 502);
+      assert.ok(!family().accountLocked);
+      assert.ok(!family().deletionRequestedAt);
+      let stopped = false;
+      stop.stopBilling = async input => {
+        assert.ok(!family().accountLocked);
+        assert.ok(input.subscriptionIds.includes("sub_mock_month"));
+        stopped = true;
+      };
+      await call("/api/account/delete-request", {}, token);
+      assert.equal(stopped, true);
+      assert.equal(family().accountLocked, true);
+      assert.equal(family().subscriptionStatus, "cancelled");
+    } finally { stop.stopBilling = originalStop; }
   } finally {
     await new Promise(r => server.close(r)); fs.rmSync(dir, { recursive: true, force: true });
   }

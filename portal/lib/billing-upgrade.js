@@ -65,18 +65,31 @@ async function executeUpgrade({ stripe, op, save }) {
   if (!invoiceId) throw new Error("The yearly invoice is not ready. Retry to check payment.");
   op.invoiceId = invoiceId;
   await save(op);
-  let invoice = await stripe.invoices.retrieve(invoiceId);
+  let invoice = await stripe.invoices.retrieve(invoiceId, { expand: ["payment_intent"] });
+  const authenticationRequired = async current => {
+    if (current.status === "paid" || current.payment_intent?.status !== "requires_action") return null;
+    op.state = "requires_action";
+    op.paymentUrl = current.hosted_invoice_url;
+    await save(op);
+    return { requiresAction: true, paymentUrl: current.hosted_invoice_url,
+      message: "Your bank needs payment verification. Complete it in Stripe, then return here. Your monthly plan stays unchanged until payment succeeds." };
+  };
+  const pendingAction = await authenticationRequired(invoice);
+  if (pendingAction) return pendingAction;
   if (invoice.status === "draft") invoice = await stripe.invoices.finalizeInvoice(invoiceId, {}, request("finalize"));
   if (invoice.status === "open") {
     try { invoice = await stripe.invoices.pay(invoiceId, {}, request("pay")); }
     catch (error) {
       // Re-read after an uncertain response. A declined payment must not leave
       // another subscription waiting to bill the parent later.
-      invoice = await stripe.invoices.retrieve(invoiceId);
+      invoice = await stripe.invoices.retrieve(invoiceId, { expand: ["payment_intent"] });
+      const action = await authenticationRequired(invoice);
+      if (action) return action;
       if (invoice.status !== "paid" && (error.type === "StripeCardError" || error.type === "card_error")) {
         await stripe.subscriptionSchedules.cancel(op.scheduleId);
         if (invoice.status === "open") await stripe.invoices.voidInvoice(invoiceId);
         op.state = "failed";
+        op.paymentDeclined = true;
         await save(op);
       }
       if (invoice.status !== "paid") throw error;
