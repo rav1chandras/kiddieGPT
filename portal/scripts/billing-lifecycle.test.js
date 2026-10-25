@@ -22,6 +22,16 @@ test("parent and admin routes preserve trials, rollback monthly access, enforce 
     const code = state().emailLogs[0].preview.match(/\b\d{6}\b/)[0];
     const { token } = await call("/api/auth/verify-otp", { email: "billing@gmail.com", otp: code });
     const family = () => state().families.find(f => f.email === "billing@gmail.com");
+    const adminLogin = await call("/api/auth/login", { email: "admin@gmail.com", password: "test-password", role: "admin" });
+    await call(`/api/admin/users/${family().id}/subscription-toggle`, { action: "start" }, adminLogin.token);
+    const entitlementResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/entitlements/me`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    assert.equal(entitlementResponse.status, 200);
+    const entitlement = await entitlementResponse.json();
+    assert.equal(entitlement.active, true, "Admin-started access must be visible to the parent");
+    assert.equal(entitlement.status, "active");
+    assert.equal(entitlement.manualAccess, true, "An admin grant is not a paid Stripe subscription");
     const seedMonthly = () => edit(db => {
       const f = db.families.find(f => f.email === "billing@gmail.com");
       Object.assign(f, { plan: "Family Monthly", subscriptionStatus: "active", paymentStatus: "paid", stripeSubscriptionId: "sub_mock_month", stripePaymentId: "pi_mock_month", lastPaymentAmountCents: 1900, lastPaymentAt: new Date(Date.now()-10*86400000).toISOString(), currentPeriodEnd: new Date(Date.now()+20*86400000).toISOString(), trialUsedAt: new Date().toISOString() });

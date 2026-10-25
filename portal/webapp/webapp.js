@@ -1213,6 +1213,22 @@
       return form.elements[name] ? form.elements[name].value : "";
     }
 
+    function showParentIdentity(name, email) {
+      var parentName = String(name || "").trim() || "Parent";
+      if (form.elements.parentName) form.elements.parentName.value = parentName;
+      if (form.elements.email && email) form.elements.email.value = email;
+      if (panels.some(function (panel) { return panel.dataset.parentPanel === "overview" && (panel.classList.contains("active") || panel.classList.contains("is-active")); })) {
+        var title = document.getElementById("live-page-title");
+        if (title) title.textContent = "Good evening, " + parentName.split(/\s+/)[0];
+      }
+      var supportName = document.getElementById("support-account-name");
+      var supportEmail = document.getElementById("support-account-email");
+      var supportInitials = document.getElementById("support-account-initials");
+      if (supportName) supportName.textContent = parentName;
+      if (supportEmail) supportEmail.textContent = email || formValue("email");
+      if (supportInitials) supportInitials.textContent = parentName.split(/\s+/).map(function (part) { return part.charAt(0); }).join("").slice(0, 2).toUpperCase();
+    }
+
     function resetSubscriptionPanel() {
       if (cancelFlow) cancelFlow.classList.add("hidden");
       if (subscriptionMain) subscriptionMain.classList.remove("hidden");
@@ -1223,9 +1239,8 @@
       if (!user) return;
       signedInParentEmail = normalizeEmail(user.email || "");
       resetSubscriptionPanel();
-      if (form.elements.email) form.elements.email.value = user.email || form.elements.email.value;
-      if (form.elements.parentName) form.elements.parentName.value = user.name || form.elements.parentName.value;
-      if (parentAccountName) parentAccountName.textContent = user.name || "Parent";
+      showParentIdentity(family?.parentName || user.name, family?.email || user.email);
+      if (parentAccountName) parentAccountName.textContent = formValue("parentName");
       validateParentEmail();
       setParentalConsentState(family && family.parentalConsent);
       // Load the family's saved children. On session restore the family is
@@ -1980,7 +1995,8 @@
 
     function renderSubscriptionState() {
       var plan = paid ? activePlan() : selectedPlan();
-      if (subscriptionTitle) subscriptionTitle.textContent = (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
+      var manualAccess = Boolean(parentEntitlement && parentEntitlement.manualAccess);
+      if (subscriptionTitle) subscriptionTitle.textContent = manualAccess ? "Your family access" : (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
       // A comped (no-card) trial is entitled but not subscribed: keep the plan
       // tiles and checkout button on screen. A paid monthly subscriber, including
       // a card-based trial, gets a dedicated yearly upgrade tile beside the
@@ -1993,7 +2009,7 @@
       // remove the yearly upgrade path. A parent can still change their mind
       // and make an explicit yearly purchase before monthly access ends.
       var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" &&
-        !yearlyUpgradeScheduled;
+        !yearlyUpgradeScheduled && !manualAccess;
       // Both states use the SAME two-card layout: base plan in the white card on
       // the left, best-value plan in the green card on the right. For a signup the
       // left card is the Monthly option rather than a current package, so the two
@@ -2066,6 +2082,7 @@
       var visibleCurrentPlanKey = needsCheckout ? "monthly" : plan.key;
       if (currentPackageMode) currentPackageMode.textContent = needsCheckout
         ? (onNoCardTrial() ? "Trial plan" : "Pay monthly")
+        : manualAccess ? "Complimentary access"
         : onStripeTrial()
         ? "Trial · pay monthly"
         : visibleCurrentPlanKey === "yearly" ? "Pay yearly" : "Pay monthly";
@@ -2077,7 +2094,11 @@
         var journeyTitle = "";
         var journeyCopy = "";
         var journeyNote = "";
-        if (needsCheckout && onNoCardTrial()) {
+        if (manualAccess) {
+          journeyTitle = "Your family has access";
+          journeyCopy = "KiddieGPT has enabled learning access for your family. No card is charged and there is no automatic renewal.";
+          journeyNote = "Courtesy access";
+        } else if (needsCheckout && onNoCardTrial()) {
           journeyTitle = "Free trial active";
           journeyCopy = "Your child has access now. Choose a plan before the trial ends to keep learning going.";
           journeyNote = "Choose when ready";
@@ -2122,7 +2143,7 @@
       // view. Keep the paid-through access and show only the restore action;
       // offering another cancellation tile invites a second, confusing flow.
       if (cancelSubscription) {
-        cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled);
+        cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled || manualAccess);
         // The action ends the PLAN (not just the renewal) whenever cancelling
         // gives a full refund and ends access now — i.e. during a trial, or
         // inside the refund window (24h of a charge, or 7 days of a brand-new
@@ -2147,16 +2168,18 @@
           new Date(cancellationAccessUntil).getTime() > Date.now();
         resumeSubscription.hidden = !canResume;
       }
-      if (currentPackageName) currentPackageName.textContent = plan.name;
-      if (currentPackagePrice) currentPackagePrice.textContent = "$" + (plan.amount || "—");
+      if (currentPackageName) currentPackageName.textContent = manualAccess ? "Family access" : plan.name;
+      if (currentPackagePrice) currentPackagePrice.textContent = manualAccess ? "Included" : "$" + (plan.amount || "—");
       var currentPackageInterval = document.getElementById("current-package-interval");
       // Pricing stores "mo"/"yr", so an exact "year" match always fell through to
       // "month" — a yearly plan rendered as "$149 / month".
-      if (currentPackageInterval) currentPackageInterval.textContent = "/ " + (String(plan.interval || "").charAt(0) === "y" ? "year" : "month");
+      if (currentPackageInterval) currentPackageInterval.textContent = manualAccess ? "" : "/ " + (String(plan.interval || "").charAt(0) === "y" ? "year" : "month");
       if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", !needsCheckout && plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
-        currentPackageNote.textContent = onStripeTrial()
+        currentPackageNote.textContent = manualAccess
+          ? "Access was granted by KiddieGPT. No subscription or renewal is scheduled."
+          : onStripeTrial()
           ? (cancellationScheduled
             ? "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEndsText()) + ". Access continues until then, and you will not be charged."
             : "Your child has access during the trial. Billing starts on " + trialEndsText() + " unless cancelled.")
@@ -2185,7 +2208,7 @@
       renderRailPromo();
       if (paid) {
         var chipTrialing = onStripeTrial();
-        paymentState.textContent = chipTrialing
+        paymentState.textContent = manualAccess ? "Access granted" : chipTrialing
           ? (cancellationScheduled ? "Trial ends " + parentDate(cancellationAccessUntil || trialEndsText()) : "Free trial · ends " + trialEndsText())
           : yearlyUpgradeScheduled
           ? "Yearly upgrade confirmed"
@@ -2425,14 +2448,17 @@
           var planName = entitlement.plan || activePlan().name;
           // During a trial the parent needs the end date and when billing starts
           // — a bare "Subscription active" hides the fact a charge is coming.
-          var title = cancellationScheduled
+          var title = entitlement.manualAccess ? "Access granted"
+            : cancellationScheduled
             ? (trialing ? "Trial ending" : "Cancellation scheduled")
             : compedTrial ? "Free trial active"
             : trialing ? "Free trial active"
             : yearlyUpgradeScheduled ? "Yearly upgrade confirmed"
             : "Subscription active";
           var detail;
-          if (cancellationScheduled && trialing) {
+          if (entitlement.manualAccess) {
+            detail = "KiddieGPT has enabled access for your family. No card is charged and there is no automatic renewal.";
+          } else if (cancellationScheduled && trialing) {
             detail = "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEnds) + ". Access continues until then, and you will not be charged.";
           } else if (cancellationScheduled) {
             detail = "Your subscription is scheduled to cancel on " + parentDate(cancellationAccessUntil) + ". Your child can keep using the extension until then.";
@@ -2633,12 +2659,7 @@
       // The parent's name/email are authoritative on the family record; the auth
       // token may not carry them. Populate the (required) fields so a later save
       // isn't silently blocked by an empty parentName the parent never sees.
-      if (family.parentName && form.elements.parentName && !form.elements.parentName.value.trim()) {
-        form.elements.parentName.value = family.parentName;
-      }
-      if (family.email && form.elements.email && !form.elements.email.value.trim()) {
-        form.elements.email.value = family.email;
-      }
+      showParentIdentity(family.parentName, family.email);
       if (!Array.isArray(family.children) || !family.children.length) return;
       var baseSlide = studentSlides()[0];
       if (!baseSlide) return;
@@ -2686,6 +2707,8 @@
         var res = await parentAuthFetch("/api/auth/me");
         var data = await res.json();
         if (res.ok && data.family) {
+          showParentIdentity(data.family.parentName || data.user?.name, data.family.email || data.user?.email);
+          preview();
           setParentalConsentState(data.family.parentalConsent);
           if (data.family.parentalConsent && data.family.parentalConsent.acceptedAt) hydrateChildren(data.family);
         }
@@ -3307,7 +3330,7 @@
       var newUserEl = document.getElementById("rail-new-user-promo");
       if (!el || !newUserEl) return;
       var noCardTrial = onNoCardTrial();
-      var monthlySubscriber = paid && activePlanKey === "monthly" && !noCardTrial;
+      var monthlySubscriber = paid && activePlanKey === "monthly" && !noCardTrial && !parentEntitlement?.manualAccess;
       var entitlementStatus = String(parentEntitlement && parentEntitlement.status || "").toLowerCase();
       var blockedState = ["past_due", "locked"].indexOf(entitlementStatus) >= 0;
       // A newly created family is reported as `pending`, while a family whose

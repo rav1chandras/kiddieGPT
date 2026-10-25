@@ -1007,6 +1007,14 @@ async function flushPending() {
   await pgWriteChain;
 }
 
+async function refreshSharedState() {
+  if (DB_DRIVER !== "postgres") return;
+  await flushPending();
+  const { rows } = await pgPool.query("SELECT data FROM app_state WHERE id = 1");
+  if (!rows[0]) throw new Error("Application state is missing");
+  stateCache = rows[0].data;
+}
+
 function readDb() {
   const db = persistReadRaw();
   let changed = false;
@@ -3787,7 +3795,9 @@ app.post("/api/auth/reset-password", (req, res) => {
   return res.json({ ok: true, token, user: { id: reset.user.id, role: reset.user.role, name: reset.user.name, email: reset.user.email } });
 });
 
-app.get("/api/auth/me", (req, res) => {
+app.get("/api/auth/me", async (req, res) => {
+  try { await refreshSharedState(); }
+  catch (error) { return res.status(503).json({ error: "Account data is temporarily unavailable. Please try again." }); }
   const auth = authFromRequest(req);
   if (!auth) return res.status(401).json({ error: "Not signed in." });
   if (auth.role === "parent") {
@@ -5023,6 +5033,11 @@ function trialStillActive(family) {
   return Number.isFinite(endsAt) && endsAt > Date.now();
 }
 
+function hasActiveOverride(family) {
+  const until = Date.parse(family?.entitlementOverrideUntil || "");
+  return Number.isFinite(until) && until > Date.now();
+}
+
 function isFamilyEntitled(family) {
   if (!family || family.accountLocked) return false;
   return family.subscriptionStatus === "active" || cancellationStillActive(family) || trialStillActive(family) || stripeTrialActive(family) || hasActiveOverride(family);
@@ -5966,6 +5981,8 @@ app.post("/api/admin/users/:id/anonymize", requireAdmin, (req, res) => {
 });
 
 app.get("/api/entitlements/me", async (req, res) => {
+  try { await refreshSharedState(); }
+  catch (error) { return res.status(503).json({ active: false, error: "Subscription data is temporarily unavailable. Please try again." }); }
   const auth = authFromRequest(req);
   if (process.env.REQUIRE_AUTH === "true" && !auth) {
     mutateDb((db) => monitor(db, "warning", "entitlement", "Extension entitlement check missing auth", { path: "/api/entitlements/me" }));
@@ -5995,6 +6012,7 @@ app.get("/api/entitlements/me", async (req, res) => {
     status: family.subscriptionStatus,
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
+    manualAccess: Boolean(family.manualSubscriptionStartedAt && !family.stripeSubscriptionId && family.subscriptionStatus === "active"),
     familyId: family.id,
     // The extension builds its student picker from this. Children are stored with
     // `studentName`/`grade`; expose the { id, name, grade } shape it expects.
