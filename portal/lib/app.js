@@ -3488,9 +3488,6 @@ app.post("/api/auth/signup", async (req, res) => {
   const name = String(req.body?.name || req.body?.parentName || "Parent").trim() || "Parent";
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
-  if (req.body?.parentalConsent !== true) {
-    return res.status(400).json({ ok: false, error: "Parent or guardian consent is required before creating a child learning profile." });
-  }
   if (!isAllowedParentEmail(email)) {
     return res.status(400).json({ ok: false, error: parentEmailError(email) });
   }
@@ -3519,7 +3516,7 @@ app.post("/api/auth/signup", async (req, res) => {
     } else {
       family.parentName = name || family.parentName;
     }
-    family.parentalConsentPending = true;
+    family.parentalConsentPending = !family.parentalConsent?.acceptedAt;
 
     const parentUser = existingUser || {
       id: makeId("usr"),
@@ -3623,13 +3620,8 @@ app.post("/api/auth/verify-otp", (req, res) => {
     const family = db.families.find((item) => item.email === email);
     if (family) {
       family.emailVerified = true;
-      family.parentalConsent = {
-        acceptedAt: nowIso(),
-        policyVersion: PARENTAL_CONSENT_VERSION,
-        parentEmail: email,
-        scope: "child_profiles_and_learning_tools"
-      };
-      family.parentalConsentPending = false;
+      // Email verification establishes account ownership, not child-data consent.
+      family.parentalConsentPending = !family.parentalConsent?.acceptedAt;
     }
     db.emailOtps = (db.emailOtps || []).filter((item) => item.id !== record.id);
     audit(db, "auth.signup.otp_verified", { userId: user.id, familyId: family?.id || "", email }, email);
@@ -3898,13 +3890,13 @@ app.put("/api/parent/family/profile", requireParent, (req, res) => {
   return res.json({ ok: true, family: saved });
 });
 
-// Existing verified accounts created before parental consent was added can
-// accept the same policy before adding their first child profile.
+// Parents explicitly consent in the portal before adding a child profile.
 app.post("/api/parent/consent", requireParent, (req, res) => {
   if (req.body?.accepted !== true) return res.status(400).json({ error: "Consent must be accepted." });
   const saved = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
     if (!family) return null;
+    if (family.parentalConsent?.acceptedAt) return family.parentalConsent;
     family.parentalConsent = {
       acceptedAt: nowIso(),
       policyVersion: PARENTAL_CONSENT_VERSION,

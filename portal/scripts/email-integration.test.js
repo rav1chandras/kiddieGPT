@@ -14,18 +14,37 @@ test("real routes queue signup, billing, goals, security and deletion notices wi
   const base = `http://127.0.0.1:${server.address().port}`;
   const state = () => JSON.parse(fs.readFileSync(process.env.DATA_PATH, "utf8"));
   const mail = key => (state().emailOutbox || []).filter(e => e.key === key);
-  const call = async (url, body, token, method = "POST") => {
-    const res = await fetch(base + url, { method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+  const call = async (url, body, token, method = "POST", status = 200) => {
+    const res = await fetch(base + url, { method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(method !== "GET" ? { body: JSON.stringify(body) } : {}) });
     const data = await res.json();
-    assert.equal(res.status, 200, JSON.stringify(data));
+    assert.equal(res.status, status, JSON.stringify(data));
     return data;
   };
   const code = () => state().emailLogs[0].preview.match(/\b\d{6}\b/)[0];
   try {
-    await call("/api/auth/signup", { email: "integration@gmail.com", name: "Integration Parent", password: "test-password", parentalConsent: true });
+    await call("/api/auth/signup", { email: "integration@gmail.com", name: "Integration Parent", password: "test-password" });
     let { token } = await call("/api/auth/verify-otp", { email: "integration@gmail.com", otp: code() });
     const family = state().families.find(f => f.email === "integration@gmail.com");
     assert.equal(mail("welcome").length, 1);
+    assert.equal(mail("consent_receipt").length, 0);
+    assert.equal(family.parentalConsent?.acceptedAt, undefined);
+    assert.equal(family.parentalConsentPending, true);
+    const readFamily = () => state().families.find(f => f.id === family.id);
+    const beforeConsent = await call("/api/auth/me", undefined, token, "GET");
+    assert.equal(beforeConsent.family.parentalConsent, null);
+    await call("/api/parent/family/profile", { children: [{ studentName: "Student", grade: 5 }] }, token, "PUT", 403);
+    await call("/api/parent/consent", { accepted: false }, token, "POST", 400);
+    await call("/api/parent/consent", {}, token, "POST", 400);
+    assert.equal(readFamily().parentalConsent?.acceptedAt, undefined);
+    await call("/api/parent/consent", { accepted: true }, token);
+    const acceptedConsent = readFamily().parentalConsent;
+    assert.ok(acceptedConsent.acceptedAt);
+    assert.equal(acceptedConsent.policyVersion, "v1");
+    assert.equal(readFamily().parentalConsentPending, false);
+    await call("/api/parent/consent", { accepted: true }, token);
+    assert.deepEqual(readFamily().parentalConsent, acceptedConsent, "Repeated acceptance preserves original evidence");
+    await call("/api/auth/login", { email: "integration@gmail.com", password: "test-password", role: "parent" });
+    assert.deepEqual(readFamily().parentalConsent, acceptedConsent, "Login preserves existing consent");
     assert.equal(mail("consent_receipt").length, 1);
     const invoice = { id: "in_test", object: "invoice", metadata: { familyId: family.id }, amount_paid: 1900, currency: "usd", created: 1780000000, period_end: 1810000000 };
     for (const type of ["invoice.paid", "invoice.payment_succeeded"]) await call("/api/stripe/webhook", { id: `evt_${type}`, type, data: { object: invoice } });

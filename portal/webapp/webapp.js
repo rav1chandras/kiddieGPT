@@ -1261,7 +1261,10 @@
         });
         var payload = await response.json();
         if (!response.ok) throw payload;
-        setParentalConsentState(payload.parentalConsent || { acceptedAt: new Date().toISOString() });
+        if (!payload.parentalConsent || !payload.parentalConsent.acceptedAt) {
+          throw new Error("Consent was not recorded. Please try again.");
+        }
+        setParentalConsentState(payload.parentalConsent);
         await loadParentFamily();
         if (parentalConsentStatus) parentalConsentStatus.textContent = "Consent recorded. Add a learning profile when you are ready.";
       } catch (error) {
@@ -1352,8 +1355,7 @@
         body: JSON.stringify({
           name: parentLoginForm.elements.parentName ? parentLoginForm.elements.parentName.value.trim() : "Parent",
           email: email,
-          password: parentLoginForm.elements.password.value,
-          parentalConsent: Boolean(parentLoginForm.elements.parentalConsent && parentLoginForm.elements.parentalConsent.checked)
+          password: parentLoginForm.elements.password.value
         })
       });
       var payload = await response.json();
