@@ -8843,6 +8843,22 @@ body[data-page="parent"] .billing-management-action:hover {
   background: var(--parent-soft);
 }
 
+body[data-page="parent"] .billing-management-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+body[data-page="parent"] .billing-management-action:disabled:hover {
+  border-color: var(--parent-line);
+  background: #fff;
+}
+
+body[data-page="parent"] .billing-card-status {
+  margin: 8px 0 0;
+  color: #a85449;
+  font-size: 0.78rem;
+}
+
 body[data-page="parent"] .billing-management-action > svg:first-child {
   width: 17px;
   color: var(--parent-green);

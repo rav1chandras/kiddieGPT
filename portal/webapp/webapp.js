@@ -2139,6 +2139,15 @@
       }
       renderPromotionOffer();
       if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !(paid || pastDueNow));
+      if (updatePaymentMethod) {
+        var billingAvailable = Boolean(parentEntitlement && parentEntitlement.billingPortalAvailable);
+        updatePaymentMethod.disabled = !billingAvailable;
+        updatePaymentMethod.title = billingAvailable ? "Open secure Stripe billing portal" : "No Stripe billing card is on file";
+        var billingDescription = updatePaymentMethod.querySelector("small");
+        if (billingDescription) billingDescription.textContent = billingAvailable
+          ? "Open the secure Stripe billing portal"
+          : "No billing card on file for this access";
+      }
       // A cancellation request is already complete from the parent's point of
       // view. Keep the paid-through access and show only the restore action;
       // offering another cancellation tile invites a second, confusing flow.
@@ -3217,16 +3226,18 @@
     }
 
     updatePaymentMethod.addEventListener("click", async function () {
+      var billingCardStatus = document.getElementById("billing-card-status");
+      if (billingCardStatus) {
+        billingCardStatus.textContent = "";
+        billingCardStatus.classList.add("hidden");
+      }
       paymentState.textContent = "Opening billing portal";
       paymentState.className = "state-chip warning";
       try {
-        var response = await fetch("/api/stripe/create-customer-portal-session", {
+        var response = await parentAuthFetch("/api/stripe/create-customer-portal-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: formValue("email"),
-            returnUrl: window.location.origin + "/index.html"
-          })
+          body: JSON.stringify({ returnUrl: window.location.origin + "/index.html" })
         });
         var result = await response.json();
         if (!response.ok) throw new Error(result.error || "Unable to open billing portal");
@@ -3243,6 +3254,10 @@
         paymentState.className = "state-chip error";
         completionTitle.textContent = "Payment method";
         completionText.textContent = error.message;
+        if (billingCardStatus) {
+          billingCardStatus.textContent = error.message;
+          billingCardStatus.classList.remove("hidden");
+        }
       }
       preview();
     });

@@ -6013,6 +6013,7 @@ app.get("/api/entitlements/me", async (req, res) => {
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
     manualAccess: Boolean(family.manualSubscriptionStartedAt && !family.stripeSubscriptionId && family.subscriptionStatus === "active"),
+    billingPortalAvailable: Boolean(process.env.STRIPE_SECRET_KEY && family.stripeCustomerId),
     familyId: family.id,
     // The extension builds its student picker from this. Children are stored with
     // `studentName`/`grade`; expose the { id, name, grade } shape it expects.
@@ -6525,8 +6526,8 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
   }
 });
 
-app.post("/api/stripe/create-customer-portal-session", async (req, res) => {
-  const email = normalizeEmail(req.body?.email || req.body?.parentEmail || "");
+app.post("/api/stripe/create-customer-portal-session", requireParent, async (req, res) => {
+  const email = normalizeEmail(req.auth.email);
   if (email && !isAllowedParentEmail(email)) {
     return res.status(400).json({ error: parentEmailError(email) });
   }
@@ -6537,12 +6538,8 @@ app.post("/api/stripe/create-customer-portal-session", async (req, res) => {
     return res.status(404).json({ error: "Family account not found." });
   }
 
-  if (!process.env.STRIPE_SECRET_KEY || !family.stripeCustomerId) {
-    return res.json({
-      mode: "mock",
-      message: "Stripe Customer Portal would open here when a Stripe customer exists for this family."
-    });
-  }
+  if (!family.stripeCustomerId) return res.status(409).json({ error: "There is no billing card for this account yet. A Stripe billing account is created when you subscribe." });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: "Billing management is temporarily unavailable. Please try again later." });
 
   try {
     const stripe = stripeClient();

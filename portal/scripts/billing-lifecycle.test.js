@@ -32,6 +32,12 @@ test("parent and admin routes preserve trials, rollback monthly access, enforce 
     assert.equal(entitlement.active, true, "Admin-started access must be visible to the parent");
     assert.equal(entitlement.status, "active");
     assert.equal(entitlement.manualAccess, true, "An admin grant is not a paid Stripe subscription");
+    assert.equal(entitlement.billingPortalAvailable, false, "Complimentary access has no Stripe card to manage");
+    await call("/api/stripe/create-customer-portal-session", { email: "billing@gmail.com" }, null, 401);
+    await call("/api/stripe/create-customer-portal-session", { email: "someone-else@gmail.com" }, token, 409);
+    edit(db => { db.families.find(f => f.email === "billing@gmail.com").stripeCustomerId = "cus_test_billing"; });
+    await call("/api/stripe/create-customer-portal-session", {}, token, 503);
+    edit(db => { db.families.find(f => f.email === "billing@gmail.com").stripeCustomerId = ""; });
     const seedMonthly = () => edit(db => {
       const f = db.families.find(f => f.email === "billing@gmail.com");
       Object.assign(f, { plan: "Family Monthly", subscriptionStatus: "active", paymentStatus: "paid", stripeSubscriptionId: "sub_mock_month", stripePaymentId: "pi_mock_month", lastPaymentAmountCents: 1900, lastPaymentAt: new Date(Date.now()-10*86400000).toISOString(), currentPeriodEnd: new Date(Date.now()+20*86400000).toISOString(), trialUsedAt: new Date().toISOString() });
