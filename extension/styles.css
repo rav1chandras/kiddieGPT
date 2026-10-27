@@ -1192,6 +1192,33 @@ body{background:#f6f8f5}
     .dash-tool-flow .tool-flow-step span{font-size:11px;max-width:96px}
     .dash-tool-flow .tool-flow-step b{font-size:9px;max-width:104px}
     .dash-detail-launch{width:100%;margin-top:11px;height:40px}
+    .goals-hero{height:189px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
+    @media(max-width:420px){.goals-hero{height:331px}}
+    .goals-hero .dashboard-status{display:flex;justify-content:space-between;align-items:center;gap:8px;flex:0 0 auto}
+    .goals-hero h2{font-size:20px;margin:0 0 2px}
+    .goals-heading{font-size:12px;color:#fff}
+    .goals-hero .stars-card{display:flex;gap:5px;width:auto;min-height:0;padding:6px 8px;border-radius:6px;box-shadow:none}
+    .goals-hero .stars-card span,.goals-hero .stars-card strong{font-size:18px}
+    .goals-hero .stars-card small{font-size:9px}
+    .student-goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;flex:1;min-height:0;position:relative;z-index:1}
+    .student-goal{border-radius:8px;padding:9px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;color:#004f48}
+    .goal-lime{background:#e3f578}
+    .goal-white{background:#fff}
+    .student-goal h3{font-size:13px;font-weight:600;line-height:1.25;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+    .student-goal p{font-size:11px;line-height:1.25;margin:4px 0;color:#415c51;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .goal-actions{display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap}
+    .goal-actions span{font-size:10px;color:#415c51}
+    .goal-actions button{font-size:11px;padding:4px 7px;min-height:26px;border:0;border-radius:5px;background:#004f48;color:white;cursor:pointer}
+    .goal-actions button:disabled{opacity:.6}
+    .goal-actions button:focus-visible{outline:2px solid #004f48;outline-offset:2px}
+    .goals-empty{grid-column:1/-1;align-self:center;color:white;font-size:13px}
+    .goals-adventure{align-self:stretch;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:5px;background:var(--lime2);color:var(--green);padding:10px 12px;border-radius:8px;min-height:0}
+    .goals-adventure h3{font-size:14px;line-height:1.25;color:var(--green);margin:0;font-weight:600}
+    .goals-adventure p{font-size:11px;line-height:1.35;color:#415c51;margin:0}
+    .goals-adventure button{border:0;background:transparent;padding:2px 0;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;text-align:left}
+    .goals-adventure button:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+    .goal-message{font-size:11px;color:white}
+    .goal-message:empty{display:none}
     .dashboard-status{display:grid;grid-template-columns:1fr 112px;gap:12px;align-items:center}
     .stars-card{width:112px;min-height:112px;border-radius:18px;background:#fff;color:#0b2d43;display:grid;place-items:center;text-align:center;padding:12px;box-shadow:0 12px 28px rgba(0,0,0,.12)}
     .stars-card span{font-size:24px;line-height:1;color:#a7bd28}
@@ -1483,6 +1510,9 @@ body{background:#f6f8f5}
 .plan-banner-cta{flex:0 0 auto;padding:7px 12px;border-radius:999px;background:#8a5a00;color:#fff;
   text-decoration:none;font-size:11px;font-weight:800;white-space:nowrap}
 .plan-banner-cta:hover{background:#6f4800}
+.plan-banner-refresh{flex:0 0 auto;padding:7px 10px;border:1px solid #8a5a00;border-radius:6px;background:transparent;color:#6f4800;font-size:12px;cursor:pointer}
+.plan-banner-refresh:disabled{opacity:.6;cursor:wait}
+.plan-banner-refresh:focus-visible{outline:2px solid #004f48;outline-offset:2px}
 .plan-banner-cta:focus-visible{outline:2px solid #004f48;outline-offset:2px}
 @media (max-width:420px){
   .plan-banner{flex-wrap:wrap}

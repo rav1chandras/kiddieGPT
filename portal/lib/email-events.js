@@ -16,6 +16,7 @@ function emailEvents(action, p, family = {}, eventId) {
       if (family.parentalConsent?.acceptedAt) add("consent_receipt", family.parentalConsent.acceptedAt, family.parentalConsent);
       break;
     case "privacy.parental_consent.accepted": add("consent_receipt", family.parentalConsent?.acceptedAt, family.parentalConsent); break;
+    case "privacy.parental_consent.withdrawn": add("consent_withdrawn", family.parentalConsent?.withdrawnAt, family.parentalConsent); break;
     case "auth.password_reset.complete":
     case "account.password.change": add("password_changed"); break;
     case "account.email_change.complete": add("email_changed", eventId, { email: p.oldEmail }); break;

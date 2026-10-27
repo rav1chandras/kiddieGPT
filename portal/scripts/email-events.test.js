@@ -2,10 +2,10 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { emailEvents } = require("../lib/email-events");
 const { enqueueEmail, retryDelay, drainPostgres } = require("../lib/email-outbox");
-const family = { id: "f1", email: "parent@example.com", parentName: "Parent", plan: "Family Monthly", currentPeriodEnd: "2027-01-01", parentalConsent: { acceptedAt: "2026-01-01", policyVersion: "v1" } };
+const family = { id: "f1", email: "parent@example.com", parentName: "Parent", plan: "Family Monthly", currentPeriodEnd: "2027-01-01", parentalConsent: { acceptedAt: "2026-01-01", policyVersion: "v2" } };
 
 test("account and billing audit events map to the intended templates", () => {
-  for (const [action, key] of Object.entries({ "account.password.change": "password_changed", "auth.password_reset.complete": "password_changed", "privacy.parental_consent.accepted": "consent_receipt", "account.delete.request": "deletion_requested", "subscription.resume": "renewal_resumed", "subscription.upgrade_yearly": "yearly_upgrade", "subscription.cancel_requested": "cancellation_scheduled", "goal.completed": "goal_completed", "support.message": "op_new_support" })) {
+  for (const [action, key] of Object.entries({ "account.password.change": "password_changed", "auth.password_reset.complete": "password_changed", "privacy.parental_consent.accepted": "consent_receipt", "privacy.parental_consent.withdrawn": "consent_withdrawn", "account.delete.request": "deletion_requested", "subscription.resume": "renewal_resumed", "subscription.upgrade_yearly": "yearly_upgrade", "subscription.cancel_requested": "cancellation_scheduled", "goal.completed": "goal_completed", "support.message": "op_new_support" })) {
     assert.equal(emailEvents(action, {}, family, "event")[0].key, key);
   }
   assert.deepEqual(emailEvents("auth.signup.otp_verified", {}, family, "event").map(x => x.key), ["welcome", "consent_receipt"]);

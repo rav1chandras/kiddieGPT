@@ -138,6 +138,7 @@
         <div class="payment-table-toggle" role="tablist" aria-label="Family views">
           <button class="active" type="button" data-family-table="accounts">Accounts</button>
           <button type="button" data-family-table="signups">Signups</button>
+          <button type="button" data-family-table="ended">Ended</button>
           <button type="button" data-family-table="deletions">Deleted</button>
           <button type="button" data-family-table="trials">Free Trial</button>
           <button type="button" data-family-table="consent">Consent</button>
@@ -196,10 +197,10 @@
               <div><p class="eyebrow">Privacy</p><h2>Parental consent</h2></div>
               <div class="admin-filters"><button class="table-action" type="button" data-export-table="consent-table" data-export-name="kiddiegpt-parental-consent">Export CSV</button></div>
             </div>
-            <p class="admin-table-note">Consent is recorded during verified parent signup or from the consent gate before a child profile is added.</p>
+            <p class="admin-table-note">Parents record consent in the portal before child learning tools can be used.</p>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Parent</th><th>Email</th><th>Status</th><th>Consented</th><th>Policy version</th><th>Scope</th><th>Students</th></tr></thead>
+                <thead><tr><th>Parent</th><th>Email</th><th>Status</th><th>Consented</th><th>Policy version</th><th>Students</th></tr></thead>
                 <tbody id="consent-table"></tbody>
               </table>
             </div>
@@ -226,6 +227,30 @@
               <table>
                 <thead><tr><th>Name</th><th>Email</th><th>Login type</th><th>Students</th><th>Status</th><th>Registered</th><th>Days since</th><th>Last login</th><th>Next step</th><th>Actions</th></tr></thead>
                 <tbody id="signup-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div data-family-table-panel="ended" hidden>
+          <article class="admin-table-card">
+            <div class="admin-card-head">
+              <div><p class="eyebrow">Former subscribers</p><h2>Ended plans and trials</h2></div>
+              <div class="admin-filters">
+                <input id="ended-search" type="search" placeholder="Search parent, email, student" aria-label="Search ended accounts">
+                <select id="ended-history-filter" aria-label="Filter by plan history">
+                  <option value="all">All histories</option>
+                  <option value="trial">Trial only</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+                <button class="table-action" type="button" data-export-table="ended-table" data-export-name="kiddiegpt-ended-accounts">Export CSV</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Parent</th><th>Email</th><th>Students</th><th>History</th><th>Status</th><th>Ended</th><th>Last login</th><th>Actions</th></tr></thead>
+                <tbody id="ended-table"></tbody>
               </table>
             </div>
           </article>
@@ -1004,6 +1029,6 @@
     <div class="customer-drawer-body" id="customer-drawer-body"></div>
   </aside>
 
-  <script src="/webapp/webapp.js?v=236"></script>
+  <script src="/webapp/webapp.js?v=238"></script>
 </body>
 </html>

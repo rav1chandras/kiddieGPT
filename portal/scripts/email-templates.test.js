@@ -13,8 +13,8 @@ const render = (key, data) => box.renderTemplate(key, data);
 const sample = vm.runInContext("EMAIL_SAMPLE", box);
 const keys = vm.runInContext("EMAIL_TEMPLATES.map(t => t.key)", box);
 
-test("all 41 templates render HTML and meaningful plain text", () => {
-  assert.equal(keys.length, 41);
+test("all 42 templates render HTML and meaningful plain text", () => {
+  assert.equal(keys.length, 42);
   for (const key of keys) {
     const result = render(key, sample);
     assert.ok(result.text.length > 100, key);

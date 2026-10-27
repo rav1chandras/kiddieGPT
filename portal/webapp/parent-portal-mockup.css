@@ -109,8 +109,22 @@ body.parent-mockup .parent-portal-live .consent-accept {
   font-weight: 700;
 }
 body.parent-mockup .parent-portal-live .consent-accept input { width: 18px; height: 18px; accent-color: var(--mock-green); }
+body.parent-mockup .parent-portal-live .consent-accept[hidden],
+body.parent-mockup .parent-portal-live #accept-parental-consent[hidden] { display: none; }
 body.parent-mockup .parent-portal-live #accept-parental-consent { grid-column: 2; justify-self: start; }
 body.parent-mockup .parent-portal-live .consent-status { grid-column: 2; font-size: 12px; }
+body.parent-mockup .parent-portal-live .privacy-screen { padding-top: 14px; }
+body.parent-mockup .parent-portal-live .privacy-settings { padding: 24px; }
+body.parent-mockup .parent-portal-live .privacy-settings-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+body.parent-mockup .parent-portal-live .privacy-settings h3 { margin: 4px 0 0; font-size: 18px; }
+body.parent-mockup .parent-portal-live .privacy-consent-status { padding: 5px 10px; border-radius: 7px; background: var(--mock-green-soft); color: var(--mock-green); font-weight: 700; }
+body.parent-mockup .parent-portal-live #privacy-consent-detail { color: var(--mock-muted); }
+body.parent-mockup .parent-portal-live .privacy-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+body.parent-mockup .parent-portal-live .privacy-actions .text-button { display: inline-flex; align-items: center; gap: 6px; }
+body.parent-mockup .parent-portal-live .privacy-actions svg { width: 16px; height: 16px; }
+body.parent-mockup .parent-portal-live .privacy-data { display: grid; gap: 8px; margin-top: 16px; }
+body.parent-mockup .parent-portal-live .privacy-child { padding: 12px; border: 1px solid var(--mock-line); border-radius: 8px; }
+body.parent-mockup .parent-portal-live .privacy-child p { margin: 4px 0 0; color: var(--mock-muted); }
 
 @media (max-width: 720px) {
   body.parent-mockup .parent-portal-live .consent-panel { grid-template-columns: 1fr; padding: 28px 24px; }

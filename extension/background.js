@@ -29,7 +29,7 @@ async function adoptPortalToken(token, origin) {
     [TOKEN_KEY]: token,
     ...(ent?.email ? { [EMAIL_KEY]: ent.email } : {})
   });
-  return { active: Boolean(ent?.active), email: ent?.email || "" };
+  return { active: Boolean(ent?.childAccessAllowed), email: ent?.email || "" };
 }
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
@@ -40,6 +40,11 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
   // The portal pings before offering the button. Answer it, or a listener that
   // returns without responding closes the channel and looks like "not installed".
   if (message?.type === "KIDDIEGPT_PING") { sendResponse({ ok: true, version: chrome.runtime.getManifest().version }); return false; }
+  if (message?.type === "KIDDIEGPT_ACCESS_CHANGED") {
+    chrome.runtime.sendMessage({ type: "KIDDIEGPT_ACCESS_CHANGED" }).catch(() => {});
+    sendResponse({ ok: true });
+    return false;
+  }
   if (message?.type !== "KIDDIEGPT_SIGN_IN") return false;
   const token = String(message.token || "");
   if (!token) { sendResponse({ ok: false, error: "no_token" }); return false; }

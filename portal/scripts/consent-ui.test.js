@@ -12,7 +12,10 @@ function consentUi() {
   const context = {
     studentWorkspace: { classList: { toggle: () => {} } },
     parentalConsentPanel: {}, parentalConsentCheckbox: {}, acceptParentalConsent: {},
-    parentalConsentStatus: {}, addChild: {}, finish: {},
+    parentalConsentStatus: {}, parentalConsentTitle: {},
+    privacyConsentStatus: {}, privacyConsentDetail: {}, privacyActionStatus: {}, privacyData: {},
+    document: { getElementById: () => null },
+    addChild: {}, finish: {},
     loadParentFamily: async () => {}
   };
   vm.createContext(context);
@@ -20,7 +23,7 @@ function consentUi() {
   return context;
 }
 
-test("portal shows consent and blocks profile controls until accepted", () => {
+test("portal blocks profile controls until consent is recorded", () => {
   const ui = consentUi();
   ui.setParentalConsentState(null);
   assert.equal(ui.parentalConsentPanel.hidden, false);
@@ -28,13 +31,16 @@ test("portal shows consent and blocks profile controls until accepted", () => {
   assert.equal(ui.acceptParentalConsent.disabled, true);
   assert.equal(ui.addChild.disabled, true);
   assert.equal(ui.finish.disabled, true);
-  ui.setParentalConsentState({ acceptedAt: "2026-10-24T12:00:00Z" });
+  ui.setParentalConsentState({ status: "reconsent_required", acceptedAt: "2026-10-24T12:00:00Z" });
+  assert.equal(ui.parentalConsentPanel.hidden, false);
+  assert.equal(ui.addChild.disabled, true);
+  ui.setParentalConsentState({ status: "accepted", acceptedAt: "2026-10-24T12:00:00Z" });
   assert.equal(ui.parentalConsentPanel.hidden, true);
   assert.equal(ui.addChild.disabled, false);
   assert.equal(ui.finish.disabled, false);
 });
 
-test("portal requires explicit checkbox and server evidence to unlock profiles", async () => {
+test("portal unlocks profile controls after a recorded choice", async () => {
   const ui = consentUi();
   ui.setParentalConsentState(null);
   ui.parentAuthFetch = async () => assert.fail("Unchecked consent must not be sent");
@@ -45,8 +51,9 @@ test("portal requires explicit checkbox and server evidence to unlock profiles",
   assert.equal(ui.parentalConsentPanel.hidden, false);
   assert.equal(ui.addChild.disabled, true);
   assert.match(ui.parentalConsentStatus.textContent, /not recorded/);
-  ui.parentAuthFetch = async () => ({ ok: true, json: async () => ({ parentalConsent: { acceptedAt: "2026-10-24T12:00:00Z" } }) });
+  ui.parentAuthFetch = async () => ({ ok: true, json: async () => ({ parentalConsent: { status: "accepted", acceptedAt: "2026-10-24T12:00:00Z" } }) });
   await ui.acceptParentalConsentAndContinue();
   assert.equal(ui.parentalConsentPanel.hidden, true);
   assert.equal(ui.addChild.disabled, false);
+  assert.match(ui.parentalConsentStatus.textContent, /Consent recorded/);
 });

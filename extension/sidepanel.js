@@ -126,11 +126,12 @@ async function loadPortalToken() {
   };
 }
 
-async function portalFetch(path, { method = "GET", body, raw = false } = {}) {
+async function portalFetch(path, { method = "GET", body, raw = false, signal } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (portalToken) headers.Authorization = `Bearer ${portalToken}`;
   const response = await fetch(`${portalBaseUrl()}${path}`, {
     method,
+    signal,
     headers,
     body: body ? JSON.stringify(body) : undefined
   });
@@ -295,7 +296,9 @@ function normalizeChildren(list) {
       id: String(child.id || child.childId || `child_${index + 1}`),
       // Portal stores the name as `studentName`; also accept name/firstName.
       name: String(child.name || child.studentName || child.firstName || `Student ${index + 1}`),
-      grade: String(child.grade || child.gradeBand || "")
+      grade: String(child.grade || child.gradeBand || ""),
+      goals: Array.isArray(child.goals) ? child.goals : [],
+      goalStars: Math.max(0, Number(child.goalStars) || 0)
     }))
     .filter(child => child.id);
 }
@@ -316,6 +319,7 @@ async function persistDefaultChild(storedChildId) {
 }
 
 async function refreshEntitlement() {
+  const requestToken = portalToken;
   if (!portalToken) { portalSession = null; renderPlanBanner(); return null; }
   const stored = await storageGet([PORTAL_EMAIL_KEY, PORTAL_CHILD_KEY]);
   if (portalToken === OTP_TEST_TOKEN) {
@@ -330,12 +334,14 @@ async function refreshEntitlement() {
     return portalSession;
   }
   try {
-    const ent = await portalFetch("/api/entitlements/me");
+    const ent = await portalFetch("/api/entitlements/me", { signal: AbortSignal.timeout(15000) });
+    if (portalToken !== requestToken) return portalSession;
+    entitlementCheckFailed = false;
     const children = normalizeChildren(ent.children);
     portalSession = {
       email: stored[PORTAL_EMAIL_KEY] || "",
-      entitled: Boolean(ent.active),
-      status: ent.status || ent.reason || "",
+      entitled: Boolean(ent.childAccessAllowed),
+      status: ent.active && !ent.childAccessAllowed ? "parental_consent_required" : ent.status || ent.reason || "",
       plan: ent.plan || null,
       familyId: ent.familyId || "",
       children,
@@ -359,7 +365,13 @@ async function refreshEntitlement() {
     renderPlanBanner();
     return portalSession;
   } catch (error) {
+    if (portalToken !== requestToken) return portalSession;
     if (error.status === 401) { portalSession = null; renderPlanBanner(); return null; }
+    if (![402, 403, 423].includes(error.status)) {
+      entitlementCheckFailed = true;
+      renderPlanBanner();
+      return portalSession;
+    }
     // Family exists but not active, locked, or blocked — keep a marker so the
     // gate can explain it rather than silently failing.
     portalSession = {
@@ -372,6 +384,32 @@ async function refreshEntitlement() {
     renderPlanBanner();
     return portalSession;
   }
+}
+
+let entitlementCheckFailed = false;
+let entitlementRefreshPending = null;
+function markSubscriptionInactive() {
+  if (portalSession) portalSession.entitled = false;
+  mathBackgroundPaused = true;
+  renderPlanBanner();
+  renderPortalGate("inactive", "Your plan has ended. Manage your plan to generate more study material.");
+}
+async function syncOpenPanelAccess() {
+  if (!portalToken || entitlementRefreshPending) return entitlementRefreshPending;
+  entitlementRefreshPending = (async () => {
+    entitlementCheckFailed = false;
+    const session = await refreshEntitlement();
+    if (entitlementCheckFailed) return;
+    if (session?.entitled) {
+      hidePortalGate();
+      renderChildSelect();
+    } else if (session) {
+      mathBackgroundPaused = true;
+    }
+    renderAuthButton();
+    renderPlanBanner();
+  })().finally(() => { entitlementRefreshPending = null; });
+  return entitlementRefreshPending;
 }
 
 async function getUsageLimits() {
@@ -643,6 +681,15 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function selectedStudentGradeBand() {
+  const grade = String(portalSession?.children?.find(c => c.id === portalSession.childId)?.grade || "").trim();
+  if (/^(K|kindergarten)(?:\s*[-–]\s*2)?$/i.test(grade)) return "K-2";
+  if (["3-5", "6-8", "9-12"].includes(grade)) return grade;
+  const number = Number(grade.match(/\d+/)?.[0]);
+  if (!Number.isFinite(number) || number < 0 || number > 12) return "6-8";
+  return number <= 2 ? "K-2" : number <= 5 ? "3-5" : number <= 8 ? "6-8" : "9-12";
+}
+
 function getSettings() {
   return new Promise(resolve => {
     const localDefaults = globalThis.KIDDIEGPT_LOCAL_SETTINGS || {};
@@ -651,6 +698,7 @@ function getSettings() {
       extensionApi.storage.local.get(defaults, data => {
         resolve({
           ...data,
+          gradeBand: selectedStudentGradeBand(),
           openaiApiKey: data.openaiApiKey || localDefaults.openaiApiKey || "",
           openaiDemoEnabled: Boolean(data.openaiApiKey || localDefaults.openaiApiKey) ? true : Boolean(data.openaiDemoEnabled),
           openaiModel: data.openaiModel || localDefaults.openaiModel || MODELS.defaultText,
@@ -663,13 +711,14 @@ function getSettings() {
       const data = { ...defaults, ...JSON.parse(localStorage.getItem(storageFallback) || "{}") };
       resolve({
         ...data,
+        gradeBand: selectedStudentGradeBand(),
         openaiApiKey: data.openaiApiKey || localDefaults.openaiApiKey || "",
         openaiDemoEnabled: Boolean(data.openaiApiKey || localDefaults.openaiApiKey) ? true : Boolean(data.openaiDemoEnabled),
         openaiModel: data.openaiModel || localDefaults.openaiModel || MODELS.defaultText,
         openaiModelAdv: data.openaiModelAdv || localDefaults.openaiModelAdv || ""
       });
     } catch {
-      resolve(defaults);
+      resolve({ ...defaults, gradeBand: selectedStudentGradeBand() });
     }
   });
 }
@@ -1001,17 +1050,6 @@ function renderDashboardToolDetail(detail, name) {
     </div>
     <button class="small-button primary-action dash-detail-launch" data-launch="${escapeHtml(name)}" type="button">Launch ${escapeHtml(detail.title)}</button>
   `;
-}
-
-function setGrade(button) {
-  markSettingsDirty();
-  button.parentElement.querySelectorAll("button").forEach(tab => tab.classList.toggle("active", tab === button));
-  tutorGradeBand = button.textContent.trim();
-  saveSettings({ gradeBand: tutorGradeBand });
-  updateTutorDepthUi(); // Deep Dive availability + K-2 exclusion depend on the band
-  // Grade band changes the lesson/voice — cancel any in-flight Tutor request and
-  // drop the now-stale player so it regenerates for the new band.
-  if (tutorController || tutorQueue) { cancelTutorRequest(); resetTutorPlayer(); showTutorPlayer(false); }
 }
 
 function setPreferenceTab(button) {
@@ -1558,7 +1596,6 @@ async function saveSettingsForm() {
   // a message pretending one happened.
   const data = await getSettings();
   await saveSettings({
-    gradeBand: data.gradeBand,
     explanationStyle: data.explanationStyle,
     mathAnswerGate: data.mathAnswerGate,
     studentVoice: data.studentVoice
@@ -1612,6 +1649,7 @@ async function testOpenAIKey() {
 const PORTAL_ERROR_MESSAGES = {
   cap_reached: "You've reached today's KiddieGPT limit. It resets tomorrow.",
   subscription_inactive: "This KiddieGPT plan isn't active. Manage the subscription in the parent portal.",
+  parental_consent_required: "Ask your parent to record consent in the parent portal before using learning tools.",
   voice_disabled: "Tutor voice is turned off for this account.",
   ai_not_configured: "KiddieGPT AI isn't set up yet. Please try again later.",
   input_too_large: "That problem is too large to process at once. Capture or upload one problem at a time.",
@@ -1697,7 +1735,10 @@ function friendlyError(error) {
 // preferences (gradeBand, voice, etc.) are carried through unchanged.
 async function getOpenAISettings() {
   const settings = await getSettings();
-  if (!portalToken || !portalSession?.entitled) return null;
+  if (!portalToken || !portalSession?.entitled) {
+    showPortalGateForTool();
+    return null;
+  }
   return { ...settings, portal: true };
 }
 
@@ -1753,6 +1794,7 @@ async function callOpenAISpeech({ settings, text, voice, gradeBand = "6-8", mode
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     const code = detail.error || "openai_error";
+    if (code === "subscription_inactive") markSubscriptionInactive();
     if (code === "ai_not_configured") reportIssue("api_key", "AI not configured (voice)");
     else if (!["cap_reached", "subscription_inactive", "voice_disabled", "auth_required"].includes(code)) reportIssue("extension_error", "Voice request failed: " + code);
     throw new PortalError(code, response.status, detail);
@@ -1866,6 +1908,7 @@ async function callOpenAIJson({ settings, instructions, text, parts = [], tool, 
   if (response.status === 401) { await portalSignOut(); throw new PortalError("auth_required", 401); }
   if (!response.ok) {
     const code = data.error || "openai_error";
+    if (code === "subscription_inactive") markSubscriptionInactive();
     if (code === "ai_not_configured") reportIssue("api_key", "AI not configured (tutor request)");
     else if (!["cap_reached", "subscription_inactive", "voice_disabled", "auth_required"].includes(code)) reportIssue("extension_error", "AI request failed: " + code);
     throw new PortalError(code, response.status, data);
@@ -1953,17 +1996,23 @@ const PLAN_BANNERS = {
 };
 
 function renderPlanBanner() {
+  renderStudentGoals();
   const el = document.getElementById("planBanner");
   if (!el) return;
   const status = String(portalSession?.status || "").toLowerCase().replace(/[\s-]+/g, "_");
   // Only while the session is real and still entitled. Without a plan, or once
   // entitlement is gone, the sign-in gate is already saying it louder.
-  const notice = portalSession?.entitled ? PLAN_BANNERS[status] : null;
+  const notice = entitlementCheckFailed
+    ? { title: "Connection unavailable", text: "Couldn't verify your plan. We'll try again shortly." }
+    : portalToken && portalSession && !portalSession.entitled
+      ? { title: "Tools paused", text: "Your plan or account needs attention. You can still read your saved work." }
+      : portalSession?.entitled ? PLAN_BANNERS[status] : null;
   if (!notice) { el.hidden = true; return; }
   document.getElementById("planBannerTitle").textContent = notice.title;
   document.getElementById("planBannerText").textContent = notice.text;
   const cta = document.getElementById("planBannerCta");
   if (cta) cta.href = portalBaseUrl();
+  if (cta) cta.textContent = "Manage plan";
   el.hidden = false;
 }
 
@@ -2138,6 +2187,7 @@ function renderPortalGate(mode, message) {
   const el = portalGateEl();
   const base = portalBaseUrl();
   const inactive = mode === "inactive";
+  const consentHold = inactive && portalSession?.status === "parental_consent_required";
   const codeStep = !inactive && otpState.step === "code";
   const usePassword = !inactive && !codeStep && gateMethod === "password";
   el.innerHTML = `
@@ -2145,9 +2195,9 @@ function renderPortalGate(mode, message) {
       <form class="kg-gate-card" id="kg-gate-form">
         <button type="button" class="kg-gate-close" id="kg-gate-close" aria-label="Close and go to Home">×</button>
         <img src="icons/kiddiegpt_logo.svg" alt="" class="kg-gate-logo">
-        <h2>${inactive ? "Subscription needed" : codeStep ? "Enter your code" : "Account sign in"}</h2>
+        <h2>${consentHold ? "Parent consent needed" : inactive ? "Subscription needed" : codeStep ? "Enter your code" : "Account sign in"}</h2>
         <p>${inactive
-          ? "This account doesn't have an active KiddieGPT plan yet."
+          ? consentHold ? "Ask a parent to record consent in the parent portal before using learning tools." : "This account doesn't have an active KiddieGPT plan yet."
           : codeStep
             ? `Enter the code we sent to <b>${escapeHtml(otpState.email)}</b>.`
             : "Sign in with your account email. We'll send you a one-time code."}</p>
@@ -2167,7 +2217,7 @@ function renderPortalGate(mode, message) {
         ${usePassword ? "" : `<p class="kg-gate-note">We&rsquo;ll send a 6-digit code. No password to remember.</p>`}
         <div class="kg-gate-newacct">New to KiddieGPT? <a href="${base}/?signup=1" target="_blank" rel="noopener">Set up an account &rarr;</a></div>`}
         ${inactive ? `
-        <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">Manage subscription</a>
+        <a class="kg-gate-primary" href="${base}" target="_blank" rel="noopener">${consentHold ? "Open parent portal" : "Manage subscription"}</a>
         <button type="button" class="kg-gate-link" id="kg-gate-signout">Use a different account</button>` : ""}
         <p class="kg-gate-status" id="kg-gate-status">${message || ""}</p>
         ${codeStep && otpState.sentCode && isReviewEmail(otpState.email) ? `<div class="kg-gate-footer"><span>Review test account — your code is</span><b>${escapeHtml(otpState.sentCode)}</b></div>` : ""}
@@ -6895,8 +6945,15 @@ async function handleParentPinAction(event) {
 
 // ---- Student selector: the children a parent set up on the portal ----
 function renderChildSelect() {
+  const band = selectedStudentGradeBand();
+  if (tutorGradeBand !== band) {
+    tutorGradeBand = band;
+    cancelTutorRequest();
+    resetTutorPlayer();
+    showTutorPlayer(false);
+    updateTutorDepthUi();
+  }
   const select = document.getElementById("childSelect");
-  const badge = document.getElementById("settingsStudentBadge");
   if (!select) return;
   // Session children come from the portal; fall back to the local-settings list
   // so a configured dev/test list always shows even if the session path missed it.
@@ -6916,7 +6973,6 @@ function renderChildSelect() {
     select.disabled = true;
   }
   const current = children.find(child => child.id === active);
-  if (badge) badge.textContent = current?.name || "Student";
 }
 
 async function onChildSelectChange(event) {
@@ -6925,6 +6981,7 @@ async function onChildSelectChange(event) {
   await storageSet({ [PORTAL_CHILD_KEY]: id });
   await switchLearningOwner();
   renderChildSelect();
+  renderStudentGoals();
   renderStars();
 }
 
@@ -6978,25 +7035,62 @@ let starsTotal = 0;
 const starsStorageKey = "kiddiegptStars";
 
 async function loadStars() {
-  try {
-    const data = await storageGet([starsStorageKey]);
-    starsTotal = Number(data[starsStorageKey]) || 0;
-  } catch { starsTotal = 0; }
   renderStars();
 }
 
 function awardStars(count) {
-  const n = Math.round(Number(count) || 0);
-  if (n <= 0) return;
-  starsTotal += n;
-  storageSet({ [starsStorageKey]: starsTotal });
+  // Stars now represent parent-confirmed goals, never generated tool activity.
   renderStars();
 }
 
 function renderStars() {
+  starsTotal = portalSession?.children?.find(c => c.id === portalSession.childId)?.goalStars || 0;
   const el = document.getElementById("starsCount");
   if (el) el.textContent = String(starsTotal);
 }
+
+function renderStudentGoals() {
+  const container = document.getElementById("studentGoals");
+  if (!container) return;
+  const child = portalSession?.children?.find(c => c.id === portalSession.childId);
+  const all = child?.goals || [];
+  const goals = all.filter(g => g.status !== "completed").slice(0, 2);
+  const labels = { ready: "Ready", in_progress: "In progress", pending_review: "Waiting for parent", completed: "Completed" };
+  container.innerHTML = goals.length ? goals.map((goal, i) => `<article class="student-goal ${i === 0 ? "goal-lime" : "goal-white"}">
+    <div class="goal-copy"><h3 title="${escapeHtml(goal.goal)}">${escapeHtml(goal.goal)}</h3><p title="${escapeHtml(goal.reward || "")}">${goal.reward ? `Reward: ${escapeHtml(goal.reward)}` : "One goal, one star"}</p></div>
+    <div class="goal-actions"><span>${labels[goal.status] || "Ready"}</span>${goal.status === "ready" || goal.status === "in_progress" ? `<button type="button" data-goal-id="${escapeHtml(goal.id)}" data-goal-status="${goal.status === "ready" ? "in_progress" : "pending_review"}">${goal.status === "ready" ? "Start" : "I'm done"}</button>` : ""}</div>
+  </article>`).join("") : child ? `<div class="goals-empty goals-adventure">
+    <h3>Your next adventure is up to you</h3>
+    <p>No goals waiting. Pick something you’re curious about and give it a try.</p>
+    <button type="button" data-choose-challenge>Choose a challenge <span aria-hidden="true">→</span></button>
+  </div>` : `<div class="goals-empty">${portalToken ? "Select a student to see their goals." : "Sign in to see your goals."}</div>`;
+  renderStars();
+}
+
+document.getElementById("studentGoals")?.addEventListener("click", async event => {
+  if (event.target.closest("[data-choose-challenge]")) {
+    const tools = document.getElementById("homeLearningTools");
+    tools?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    tools?.focus({ preventScroll: true });
+    return;
+  }
+  const button = event.target.closest("[data-goal-id]");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  const childId = portalSession?.childId;
+  const token = portalToken;
+  const status = document.getElementById("studentGoalStatus");
+  status.textContent = "";
+  try {
+    const result = await portalFetch("/api/student/goals/status", { method: "POST", body: { childId, goalId: button.dataset.goalId, status: button.dataset.goalStatus } });
+    if (token !== portalToken || childId !== portalSession?.childId) return;
+    const child = portalSession.children.find(c => c.id === childId);
+    if (child) child.goals = result.goals;
+    renderStudentGoals();
+  } catch (error) {
+    if (token === portalToken && childId === portalSession?.childId) status.textContent = "Couldn't update your goal. Try again.";
+  } finally { button.disabled = false; }
+});
 
 function initSettingsTool() {
   document.getElementById("saveSettingsButton")?.addEventListener("click", saveSettingsForm);
@@ -7812,8 +7906,6 @@ document.addEventListener("click", event => {
   const launch = event.target.closest("[data-launch]");
   if (launch) showPanel(launch.dataset.launch);
 
-  const gradeTab = event.target.closest(".grade-tabs button");
-  if (gradeTab) setGrade(gradeTab);
   const preferenceTab = event.target.closest("[data-preference-group] button");
   if (preferenceTab) setPreferenceTab(preferenceTab);
 
@@ -7839,6 +7931,10 @@ document.addEventListener("click", event => {
 });
 
 extensionApi?.runtime?.onMessage?.addListener((message) => {
+  if (message?.type === "KIDDIEGPT_ACCESS_CHANGED") {
+    void syncOpenPanelAccess();
+    return;
+  }
   // The portal handed us a session while the panel was open: pick it up and
   // drop the gate, rather than leaving a sign-in screen over a signed-in state.
   if (message?.type === "KIDDIEGPT_SESSION_ADOPTED") {
@@ -7856,6 +7952,24 @@ extensionApi?.runtime?.onMessage?.addListener((message) => {
     else finishMathRegionCapture(message.rect);
   }
 });
+
+window.addEventListener("focus", () => { void syncOpenPanelAccess(); });
+document.getElementById("planBannerRefresh")?.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Checking…";
+  try {
+    await syncOpenPanelAccess();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Refresh";
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void syncOpenPanelAccess();
+});
+setInterval(() => { void syncOpenPanelAccess(); }, 60000);
 
 renderActivityDashboard();
 loadStars();
@@ -7889,10 +8003,7 @@ globalThis.kiddieGPTDemo = {
 getSettings().then(data => {
   showPanel(data.activeView || "dashboard");
   if (data.gradeBand) {
-    tutorGradeBand = data.gradeBand;
-    document.querySelectorAll(".grade-tabs button").forEach(button => {
-      button.classList.toggle("active", button.textContent.trim() === data.gradeBand);
-    });
+    tutorGradeBand = selectedStudentGradeBand();
   }
   document.querySelectorAll("[data-preference-group]").forEach(group => {
     const value = data[group.dataset.preferenceGroup];

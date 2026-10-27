@@ -35,3 +35,4 @@ node_modules/
 extension/dist/
 .vercel
 .env*
+portal/env.vercel-import.local

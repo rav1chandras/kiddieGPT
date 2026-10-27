@@ -25,22 +25,23 @@
       <div class="plan-banner" id="planBanner" role="status" hidden>
         <span class="plan-banner-icon" aria-hidden="true">!</span>
         <div class="plan-banner-copy"><b id="planBannerTitle"></b><small id="planBannerText"></small></div>
+        <button type="button" class="plan-banner-refresh" id="planBannerRefresh" aria-label="Refresh plan access" title="Refresh plan access">Refresh</button>
         <a class="plan-banner-cta" id="planBannerCta" href="#" target="_blank" rel="noopener">Open parent portal</a>
       </div>
       <section class="view-panel active" id="dashboardPanel">
         <div class="dashboard-compact">
-          <section class="panel panel-pad motivation-hero">
+          <section class="panel panel-pad motivation-hero goals-hero">
             <div class="dashboard-status">
               <div>
-                <div class="mockup-kicker">Today’s mission</div>
                 <h2>Welcome back.</h2>
-                <p>Read first, then turn the mission into cards and quiz practice.</p>
-                <button class="small-button primary-action dash-start-button" data-view="pdf" type="button">Start Mission</button>
+                <span class="goals-heading">Your goals</span>
               </div>
               <div class="stars-card"><span>★</span><strong id="starsCount">0</strong><small>stars earned</small></div>
             </div>
+            <div class="student-goals" id="studentGoals"></div>
+            <span id="studentGoalStatus" role="status" class="goal-message"></span>
           </section>
-          <section class="dash-learning-panel" aria-label="Learning tools">
+          <section class="dash-learning-panel" id="homeLearningTools" aria-label="Learning tools" tabindex="-1">
             <div class="section-title"><h3>Learning Tools</h3><a>Choose a tool</a></div>
             <div class="dash-study-layout">
               <div class="dash-tool-grid">
@@ -598,12 +599,8 @@
           </div>
           <div class="settings-note settings-status-line" id="settingsStatus" hidden></div>
           <section class="panel panel-pad" id="settings-student">
-            <div class="settings-section-head"><h3>Student</h3><span class="status" id="settingsStudentBadge">Student</span></div>
+            <div class="settings-section-head"><h3>Student</h3></div>
             <div class="settings-form">
-              <div class="settings-row">
-                <div class="settings-row-label"><b>Grade band</b><small>Tunes difficulty and vocabulary.</small></div>
-                <div class="grade-tabs"><button type="button">K-2</button><button type="button">3-5</button><button class="active" type="button">6-8</button><button type="button">9-12</button></div>
-              </div>
               <div class="settings-row">
                 <div class="settings-row-label"><b>Explanation style</b><small>How detailed KiddieGPT should sound.</small></div>
                 <div class="style-tabs" data-preference-group="explanationStyle"><button type="button" data-preference-value="Simple">Simple</button><button class="active" type="button" data-preference-value="Balanced">Balanced</button><button type="button" data-preference-value="Challenge">Challenge</button></div>

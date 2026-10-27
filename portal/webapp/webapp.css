@@ -2240,6 +2240,21 @@ body[data-page="parent"] .flat-child-profile {
   gap: 8px;
 }
 
+.goal-limit-warning {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid #e9d592;
+  border-radius: 6px;
+  background: #fff9e9;
+  color: #5d4a16;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.goal-limit-warning[hidden] {
+  display: none;
+}
+
 .goal-reward-row {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr) minmax(0, 0.85fr) 38px;
@@ -5825,6 +5840,38 @@ body[data-page="admin"] .billing-health-strip {
 
 .drawer-quick-actions {
   padding-bottom: 2px;
+}
+
+.drawer-email-compose,
+.drawer-renewal-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #dce9e1;
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.drawer-email-compose[hidden],
+.drawer-renewal-confirm[hidden] {
+  display: none;
+}
+
+.drawer-renewal-confirm > p {
+  margin: 0;
+  color: #4d645b;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.drawer-email-status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #21574b;
+}
+
+.drawer-email-status:empty {
+  display: none;
 }
 
 .drawer-section {
@@ -10131,6 +10178,8 @@ body.parent-mockup .parent-portal-live .polished-plan-card .plan-features li > s
 body.parent-mockup .parent-portal-live .polished-plan-card .plan-cta-note { position: relative; z-index: 1; margin: 8px 0 0; color: var(--mock-muted); font-size: 9px; text-align: center; }
 body.parent-mockup .parent-portal-live .yearly-plan-card .plan-cta-note { color: rgba(255,255,255,.68); }
 body.parent-mockup .parent-portal-live .polished-plan-card #upgrade-yearly { width: 100%; min-height: 41px; margin-top: auto; border-radius: 11px; }
+body.parent-mockup .parent-portal-live .polished-plan-card #upgrade-yearly:disabled { cursor: default; background: #e5f0e9; color: #246652; box-shadow: none; }
+body.parent-mockup .parent-portal-live .yearly-plan-card #upgrade-yearly-tile-button:disabled { cursor: default; background: rgba(255,255,255,.78); color: #32695d; box-shadow: none; }
 body.parent-mockup .parent-portal-live .polished-plan-card .resume-plan-pill { align-self: flex-start; margin-top: 10px; }
 body.parent-mockup .parent-portal-live .yearly-plan-card .live-plan-card-top .free-trial-flag { background: var(--mock-yellow); color: var(--mock-green); }
 body.parent-mockup .parent-portal-live .yearly-plan-card .free-trial-flag { background: var(--mock-yellow); color: var(--mock-green); }

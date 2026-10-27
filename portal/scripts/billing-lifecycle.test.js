@@ -23,6 +23,7 @@ test("parent and admin routes preserve trials, rollback monthly access, enforce 
     const { token } = await call("/api/auth/verify-otp", { email: "billing@gmail.com", otp: code });
     const family = () => state().families.find(f => f.email === "billing@gmail.com");
     const adminLogin = await call("/api/auth/login", { email: "admin@gmail.com", password: "test-password", role: "admin" });
+    await call("/api/parent/consent", { accepted: true }, token);
     await call(`/api/admin/users/${family().id}/subscription-toggle`, { action: "start" }, adminLogin.token);
     const entitlementResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/entitlements/me`, {
       headers: { Authorization: "Bearer " + token }
@@ -96,6 +97,8 @@ test("parent and admin routes preserve trials, rollback monthly access, enforce 
     assert.equal(family().subscriptionStatus, "cancelled");
     const checkout = await call("/api/stripe/create-checkout-session", { parentEmail: "billing@gmail.com", planName: "Family Monthly" }, token);
     assert.equal(checkout.trialDays, 0);
+    await call("/api/stripe/confirm-checkout-session", { sessionId: checkout.sessionId });
+    assert.equal(family().pendingCheckout, undefined, "Completed checkout must not be reused");
     seedMonthly();
     edit(db => {
       const f = db.families.find(f => f.email === "billing@gmail.com");

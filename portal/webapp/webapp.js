@@ -90,6 +90,11 @@
     return localStorage.getItem(PARENT_TOKEN_KEY) || "";
   }
 
+  function moneyFromCents(amountCents) {
+    var amount = Number(amountCents || 0) / 100;
+    return "$" + amount.toFixed(amount % 1 === 0 ? 0 : 2);
+  }
+
   function authedHeaders(headers) {
     var next = Object.assign({}, headers || {});
     var token = adminToken();
@@ -184,7 +189,7 @@
         yearlyAmount: 75,
         planKey: "monthly",
         price: "",
-        description: "Limited-time family starter offer",
+        description: "Intro price on the first payment only; standard rate applies at renewal.",
         showAfterDays: 3,
         durationDays: 7
       },
@@ -674,6 +679,11 @@
     var parentalConsentCheckbox = document.getElementById("parental-consent-checkbox");
     var acceptParentalConsent = document.getElementById("accept-parental-consent");
     var parentalConsentStatus = document.getElementById("parental-consent-status");
+    var parentalConsentTitle = document.getElementById("parental-consent-title");
+    var privacyConsentStatus = document.getElementById("privacy-consent-status");
+    var privacyConsentDetail = document.getElementById("privacy-consent-detail");
+    var privacyActionStatus = document.getElementById("privacy-action-status");
+    var privacyData = document.getElementById("privacy-data");
     var addChild = document.getElementById("add-child");
     var previousChild = document.getElementById("previous-child");
     var nextChild = document.getElementById("next-child");
@@ -719,6 +729,7 @@
     var subscriptionJourneyTitle = document.getElementById("subscription-journey-title");
     var subscriptionJourneyCopy = document.getElementById("subscription-journey-copy");
     var subscriptionJourneyNote = document.getElementById("subscription-journey-note");
+    var retrySubscriptionCheck = document.getElementById("retry-subscription-check");
     var subscriptionFineprint = document.querySelector(".subscription-fineprint");
     var upgradeYearly = document.getElementById("upgrade-yearly");
     var promoRow = document.getElementById("promo-offer-card");
@@ -777,6 +788,7 @@
     var activePlanKey = localStorage.getItem(ACTIVE_PLAN_KEY) || "monthly";
     var signedInParentEmail = "";
     var parentEntitlement = null;
+    var entitlementLoadError = "";
     var parentRenewalAt = "";
     var retentionOfferAccepted = false;
     var yearlyUpgradeScheduled = false;
@@ -917,6 +929,7 @@
         if (subtitle) subtitle.textContent = pageCopy[1];
       }
       if (name === "overview" || name === "progress") { loadProgress(); }
+      if (name === "subscription" && parentToken()) syncSubscriptionFromEntitlement().catch(function () {});
       if (name === "support") { loadSupport(); loadFaq(); }
       renderIcons();
     }
@@ -1237,7 +1250,14 @@
 
     function applySignedInParent(user, family) {
       if (!user) return;
-      signedInParentEmail = normalizeEmail(user.email || "");
+      var nextEmail = normalizeEmail(user.email || "");
+      if (signedInParentEmail !== nextEmail) {
+        invalidateEntitlementSync();
+        parentEntitlement = null;
+        entitlementLoadError = "";
+        paid = false;
+      }
+      signedInParentEmail = nextEmail;
       resetSubscriptionPanel();
       showParentIdentity(family?.parentName || user.name, family?.email || user.email);
       if (parentAccountName) parentAccountName.textContent = formValue("parentName");
@@ -1245,23 +1265,29 @@
       setParentalConsentState(family && family.parentalConsent);
       // Load the family's saved children. On session restore the family is
       // already in the response; on fresh login we fetch it.
-      if (family && family.parentalConsent && family.parentalConsent.acceptedAt) hydrateChildren(family);
+      if (family && family.parentalConsent && family.parentalConsent.status === "accepted") hydrateChildren(family);
       else loadParentFamily();
       preview();
       loadProgress().catch(function () {});
     }
 
     function setParentalConsentState(consent) {
-      var accepted = Boolean(consent && consent.acceptedAt);
+      var state = consent && consent.status || "pending";
+      var accepted = state === "accepted";
       if (studentWorkspace) studentWorkspace.classList.toggle("consent-required", !accepted);
       if (parentalConsentPanel) parentalConsentPanel.hidden = accepted;
+      if (parentalConsentTitle) parentalConsentTitle.textContent = state === "reconsent_required" ? "Review our updated privacy notice" : "Protect your child's learning space";
       if (parentalConsentCheckbox) parentalConsentCheckbox.checked = false;
       if (acceptParentalConsent) {
         acceptParentalConsent.disabled = accepted || !(parentalConsentCheckbox && parentalConsentCheckbox.checked);
       }
       if (addChild) addChild.disabled = !accepted;
       if (finish) finish.disabled = !accepted;
-      if (parentalConsentStatus) parentalConsentStatus.textContent = accepted ? "Consent recorded." : "";
+      if (parentalConsentStatus) parentalConsentStatus.textContent = state === "reconsent_required" ? "The privacy notice changed. Please review and consent again." : state === "withdrawn" ? "Consent was withdrawn. Learning tools are locked." : "";
+      if (privacyConsentStatus) privacyConsentStatus.textContent = { accepted: "Consented", reconsent_required: "Review needed", withdrawn: "Withdrawn", pending: "Pending" }[state] || "Pending";
+      if (privacyConsentDetail) privacyConsentDetail.textContent = accepted ? "Child learning tools are available while your plan is active." : "Child learning tools are locked. Your subscription is managed separately.";
+      var withdrawButton = document.getElementById("withdraw-parental-consent");
+      if (withdrawButton) withdrawButton.disabled = state === "pending" || state === "withdrawn";
     }
 
     async function acceptParentalConsentAndContinue() {
@@ -1281,10 +1307,70 @@
         }
         setParentalConsentState(payload.parentalConsent);
         await loadParentFamily();
-        if (parentalConsentStatus) parentalConsentStatus.textContent = "Consent recorded. Add a learning profile when you are ready.";
+        if (parentalConsentStatus) parentalConsentStatus.textContent = "Consent recorded. You can now add a learning profile.";
       } catch (error) {
         acceptParentalConsent.disabled = false;
         if (parentalConsentStatus) parentalConsentStatus.textContent = error.message || error.error || "Could not save consent. Try again.";
+      }
+    }
+
+    async function reviewChildData() {
+      if (privacyActionStatus) privacyActionStatus.textContent = "Loading child data…";
+      try {
+        var response = await parentAuthFetch("/api/parent/privacy");
+        var payload = await response.json();
+        if (!response.ok) throw payload;
+        if (privacyData) {
+          privacyData.replaceChildren();
+          (payload.children || []).forEach(function (child) {
+            var item = document.createElement("div");
+            item.className = "privacy-child";
+            var heading = document.createElement("strong");
+            heading.textContent = (child.name || "Student") + " · " + (child.grade || "Grade not set");
+            var detail = document.createElement("p");
+            detail.textContent = (child.learningGoals || []).length + " goals · " + (child.progress || []).length + " activity entries";
+            item.append(heading, detail);
+            privacyData.appendChild(item);
+          });
+          if (!(payload.children || []).length) privacyData.textContent = "No child profiles are stored.";
+          privacyData.classList.remove("hidden");
+        }
+        if (privacyActionStatus) privacyActionStatus.textContent = "Your child profiles and learning activity are shown above. Contact support for a complete data copy or deletion request.";
+      } catch (error) {
+        if (privacyActionStatus) privacyActionStatus.textContent = error.message || error.error || "Could not load child data.";
+      }
+    }
+
+    async function downloadChildData() {
+      if (privacyActionStatus) privacyActionStatus.textContent = "Preparing child data…";
+      try {
+        var response = await parentAuthFetch("/api/parent/privacy");
+        var payload = await response.json();
+        if (!response.ok) throw payload;
+        var blobUrl = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+        var link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = "kiddiegpt-child-data.json";
+        link.click();
+        window.setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000);
+        if (privacyActionStatus) privacyActionStatus.textContent = "Child profile and progress data downloaded. Contact support for a complete account data copy.";
+      } catch (error) {
+        if (privacyActionStatus) privacyActionStatus.textContent = error.message || error.error || "Could not download child data.";
+      }
+    }
+
+    async function withdrawParentalConsent() {
+      if (!window.confirm("Withdraw consent for child learning tools? They will stop working immediately. This does not cancel your subscription; manage billing separately on the Subscription page.")) return;
+      if (privacyActionStatus) privacyActionStatus.textContent = "Withdrawing consent…";
+      try {
+        var response = await parentAuthFetch("/api/parent/consent/withdraw", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        var payload = await response.json();
+        if (!response.ok) throw payload;
+        setParentalConsentState(payload.parentalConsent);
+        await syncSubscriptionFromEntitlement();
+        if (privacyActionStatus) privacyActionStatus.textContent = "Consent withdrawn. Child learning tools are locked.";
+      } catch (error) {
+        if (privacyActionStatus) privacyActionStatus.textContent = error.message || error.error || "Could not withdraw consent.";
       }
     }
 
@@ -1906,7 +1992,15 @@
       updatePlanTiles();
     }
 
-      function applySignupPlanCards() {
+    function signupPromotionBillingCopy(promo, firstAmount, regularAmount, interval) {
+      var note = String(promo && promo.description || "").trim();
+      if (note && note !== "Limited-time family starter offer"
+        && note !== "Intro price on the first payment only; standard rate applies at renewal.") return note;
+      return "First payment $" + moneyStr(firstAmount) + "; renews at $" + moneyStr(regularAmount) + "/" + interval + ".";
+    }
+
+      function applySignupPlanCards(force) {
+        if (!force && !needsInitialCheckout()) return;
         var pricingNow = readPricing();
         var monthlyPromo = eligiblePromotion('monthly');
         var yearlyPromo = eligiblePromotion('yearly');
@@ -1932,7 +2026,7 @@
           var billingCopy = trialEligible
             ? (trialDays === 7 ? 'First payment after your free week' : 'First payment after your ' + trialDays + '-day trial')
             : monthlyNow < monthlyBase
-            ? (monthlyPromo && monthlyPromo.description) || 'Limited-time monthly price.'
+            ? signupPromotionBillingCopy(monthlyPromo, monthlyNow, monthlyBase, 'month')
             : 'Flexible family access. Cancel any time.';
           currentPackageNote.innerHTML = "<i data-lucide='clock-3'></i><span>" + text(billingCopy) + "</span>";
           currentPackageNote.hidden = false;
@@ -1979,9 +2073,9 @@
         if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = monthlyBase && yearlyNow
           ? 'Save $' + Math.max(0, Math.round(monthlyBase * 12 - yearlyNow)) + ' vs monthly'
           : 'Best value for steady learning';
-        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = yearlyPromo && yearlyPromo.description
-          ? yearlyPromo.description
-          : 'Includes 3 bonus months for your family';
+        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = yearlyNow < yearlyBase
+          ? signupPromotionBillingCopy(yearlyPromo, yearlyNow, yearlyBase, 'year')
+          : 'Every learning tool included';
         if (upgradeYearlyTileButton) {
           upgradeYearlyTileButton.classList.remove('hidden');
           upgradeYearlyTileButton.innerHTML = "<i data-lucide='arrow-up-right'></i>Choose yearly";
@@ -1993,10 +2087,84 @@
         renderIcons();
       }
 
+    function needsInitialCheckout() {
+      if (!parentEntitlement || parentEntitlement.status === "past_due") return false;
+      return !parentEntitlement.active || onNoCardTrial();
+    }
+
+    function canShowYearlyUpgrade(planKey, manualAccess) {
+      return Boolean(parentEntitlement && parentEntitlement.active && !onNoCardTrial()
+        && planKey === "monthly" && !yearlyUpgradeScheduled && !manualAccess);
+    }
+
     function renderSubscriptionState() {
-      var plan = paid ? activePlan() : selectedPlan();
+      // The radio picker is retained for checkout state, but the visible UI is
+      // always the separate Monthly and Yearly cards, even while loading.
+      if (planTileGrid) planTileGrid.classList.add("hidden");
+      var entitlementKnown = Boolean(parentEntitlement);
+      if (retrySubscriptionCheck) retrySubscriptionCheck.classList.toggle("hidden", entitlementKnown || !entitlementLoadError);
+      if (!entitlementKnown) {
+        if (currentPackageName) currentPackageName.textContent = "Family Monthly";
+        if (currentPackageMode) currentPackageMode.textContent = "Pay monthly";
+        if (currentPackageCard) currentPackageCard.classList.remove("is-yearly");
+        if (upgradeYearlyName) upgradeYearlyName.textContent = "Family Yearly";
+        var unverifiedYearlyNote = document.getElementById("yearly-plan-cta-note");
+        if (unverifiedYearlyNote) unverifiedYearlyNote.textContent = "Best value for families planning the year ahead";
+        var prices = readPricing();
+        var monthlyBase = Number((prices.monthly || {}).amount || 0);
+        var yearlyBase = Number((prices.yearly || {}).amount || 0);
+        var monthlyPromo = configuredPromotionForPlan("monthly");
+        var yearlyPromo = configuredPromotionForPlan("yearly");
+        var monthlyPrice = promotionAmountForPlan(monthlyPromo, "monthly") || monthlyBase;
+        var yearlyPrice = promotionAmountForPlan(yearlyPromo, "yearly") || yearlyBase;
+        var checkFailed = Boolean(entitlementLoadError);
+        if (subscriptionJourneyTitle) subscriptionJourneyTitle.textContent = entitlementLoadError ? "Could not check your subscription" : "Checking your subscription";
+        if (subscriptionJourneyCopy) subscriptionJourneyCopy.textContent = entitlementLoadError || "Your plan and billing details will appear shortly.";
+        if (subscriptionJourneyNote) subscriptionJourneyNote.textContent = entitlementLoadError ? "Needs attention" : "Please wait";
+        if (currentPackagePrice) currentPackagePrice.textContent = monthlyPrice > 0 ? "$" + moneyStr(monthlyPrice) : "Price unavailable";
+        if (upgradeYearlyPrice) upgradeYearlyPrice.textContent = yearlyPrice > 0 ? "$" + moneyStr(yearlyPrice) : "Price unavailable";
+        if (currentPackageNote) currentPackageNote.textContent = checkFailed
+          ? "We couldn't verify your subscription. Retry the check to see your current plan."
+          : "Verifying your current plan and billing date.";
+        var oldYearlyPrice = document.getElementById("upgrade-yearly-old-price");
+        if (oldYearlyPrice) {
+          oldYearlyPrice.textContent = "$" + moneyStr(yearlyBase);
+          oldYearlyPrice.hidden = !(yearlyBase > yearlyPrice && yearlyPrice > 0);
+        }
+        if (upgradeYearlyBonus) upgradeYearlyBonus.textContent = monthlyBase > 0 && yearlyPrice > 0
+          ? "Save $" + moneyStr(Math.max(0, monthlyBase * 12 - yearlyPrice)) + " vs monthly"
+          : "Yearly value for your family";
+        if (upgradeYearlyBillingNote) upgradeYearlyBillingNote.textContent = yearlyPromo && yearlyPrice < yearlyBase
+          ? signupPromotionBillingCopy(yearlyPromo, yearlyPrice, yearlyBase, "year")
+          : "Every learning tool included";
+        var loadingAccessTitle = document.getElementById("upgrade-yearly-access-title");
+        if (loadingAccessTitle) loadingAccessTitle.textContent = "12 months of learning access";
+        if (upgradeYearly) {
+          upgradeYearly.disabled = true;
+          upgradeYearly.classList.remove("hidden");
+          upgradeYearly.innerHTML = checkFailed
+            ? "<i data-lucide='alert-circle'></i>Status unavailable"
+            : "<i data-lucide='clock-3'></i>Verifying subscription";
+        }
+        if (upgradeYearlyTileButton) {
+          upgradeYearlyTileButton.disabled = true;
+          upgradeYearlyTileButton.innerHTML = checkFailed
+            ? "<i data-lucide='alert-circle'></i>Status unavailable"
+            : "<i data-lucide='clock-3'></i>Verifying subscription";
+        }
+        var loadingMonthlyNote = document.getElementById("monthly-plan-cta-note");
+        if (loadingMonthlyNote) loadingMonthlyNote.textContent = checkFailed
+          ? "Your plan has not changed. We just need to refresh its status."
+          : "Your billing details are being checked.";
+        renderIcons();
+        return;
+      }
+      var hasSubscribedPlan = paid || (parentEntitlement.active && !onNoCardTrial());
+      var plan = hasSubscribedPlan
+        ? planByKey(String(parentEntitlement.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly")
+        : selectedPlan();
       var manualAccess = Boolean(parentEntitlement && parentEntitlement.manualAccess);
-      if (subscriptionTitle) subscriptionTitle.textContent = manualAccess ? "Your family access" : (paid && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
+      if (subscriptionTitle) subscriptionTitle.textContent = manualAccess ? "Your family access" : (hasSubscribedPlan && !onNoCardTrial()) ? "Your current package" : "Choose a family plan";
       // A comped (no-card) trial is entitled but not subscribed: keep the plan
       // tiles and checkout button on screen. A paid monthly subscriber, including
       // a card-based trial, gets a dedicated yearly upgrade tile beside the
@@ -2004,28 +2172,30 @@
       // past_due is a billing problem, not a missing subscription: Stripe is still
       // retrying, so show billing actions rather than the signup plan picker.
       var pastDueNow = parentEntitlement && parentEntitlement.status === "past_due";
-      var needsCheckout = (!paid || onNoCardTrial()) && !pastDueNow;
+      var needsCheckout = needsInitialCheckout() && !pastDueNow;
       // A scheduled cancellation removes the cancel tile, but it must not
       // remove the yearly upgrade path. A parent can still change their mind
       // and make an explicit yearly purchase before monthly access ends.
-      var showUpgradeTile = paid && !onNoCardTrial() && plan.key === "monthly" &&
-        !yearlyUpgradeScheduled && !manualAccess;
+      var showUpgradeTile = canShowYearlyUpgrade(plan.key, manualAccess);
+      var yearlyTrial = onStripeTrial() && plan.key === "yearly" && !manualAccess;
       // Both states use the SAME two-card layout: base plan in the white card on
       // the left, best-value plan in the green card on the right. For a signup the
       // left card is the Monthly option rather than a current package, so the two
       // screens no longer look like different products.
       if (currentPackageCard) currentPackageCard.classList.remove("hidden");
-      if (planTileGrid) planTileGrid.classList.add("hidden");
       // Nothing to offer a yearly subscriber, so do not leave an empty "Choose
       // your plan" card sitting next to the current package.
-      if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile));
-      if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
-      if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile || needsCheckout);
-      if (subscriptionGrid) subscriptionGrid.classList.toggle("is-single-plan", !(needsCheckout || showUpgradeTile));
+      if (planSelectionSurface) planSelectionSurface.classList.toggle("hidden", !(needsCheckout || showUpgradeTile || yearlyTrial));
+      if (upgradeYearlyContent) upgradeYearlyContent.classList.toggle("hidden", !(showUpgradeTile || needsCheckout || yearlyTrial));
+      if (upgradePlanSurface) upgradePlanSurface.classList.toggle("is-upgrade-only", showUpgradeTile || needsCheckout || yearlyTrial);
+      if (subscriptionGrid) subscriptionGrid.classList.toggle("is-single-plan", !(needsCheckout || showUpgradeTile || yearlyTrial));
       // Signup keeps both plan CTAs visible; a paid monthly subscriber moves the
       // yearly action into the large right-hand tile only.
       if (upgradeYearly) upgradeYearly.classList.toggle("hidden", !needsCheckout);
-      if (upgradeYearlyTileButton) upgradeYearlyTileButton.classList.toggle("hidden", !(showUpgradeTile || needsCheckout));
+      if (upgradeYearlyTileButton) {
+        upgradeYearlyTileButton.classList.toggle("hidden", !(showUpgradeTile || needsCheckout || yearlyTrial));
+        upgradeYearlyTileButton.disabled = !(showUpgradeTile || needsCheckout);
+      }
       if (upgradePlanTitle) upgradePlanTitle.textContent = showUpgradeTile ? "Upgrade to yearly" : "Choose your plan";
       if (upgradePlanKicker) upgradePlanKicker.innerHTML = "<i data-lucide='star'></i>Best value";
       if (showUpgradeTile) {
@@ -2110,6 +2280,10 @@
           journeyTitle = "Choose the right family plan";
           journeyCopy = "Monthly flexibility or yearly value, with every learning tool included.";
           journeyNote = "Secure checkout";
+        } else if (onStripeTrial()) {
+          journeyTitle = "Your free trial is active";
+          journeyCopy = trialBillingText();
+          journeyNote = "Trial ends " + trialEndsText();
         } else if (showUpgradeTile) {
           journeyTitle = "Plan for the year ahead";
           journeyCopy = "Upgrade once, keep your child’s learning momentum moving, and save against monthly billing.";
@@ -2138,7 +2312,7 @@
         subscriptionJourneyBanner.classList.toggle("is-active", !needsCheckout && !showUpgradeTile);
       }
       renderPromotionOffer();
-      if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !(paid || pastDueNow));
+      if (subscriptionFineprint) subscriptionFineprint.classList.toggle("hidden", !(hasSubscribedPlan || pastDueNow));
       if (updatePaymentMethod) {
         var billingAvailable = Boolean(parentEntitlement && parentEntitlement.billingPortalAvailable);
         updatePaymentMethod.disabled = !billingAvailable;
@@ -2152,7 +2326,7 @@
       // view. Keep the paid-through access and show only the restore action;
       // offering another cancellation tile invites a second, confusing flow.
       if (cancelSubscription) {
-        cancelSubscription.classList.toggle("hidden", !paid || cancellationScheduled || manualAccess);
+        cancelSubscription.classList.toggle("hidden", !hasSubscribedPlan || cancellationScheduled || manualAccess);
         // The action ends the PLAN (not just the renewal) whenever cancelling
         // gives a full refund and ends access now — i.e. during a trial, or
         // inside the refund window (24h of a charge, or 7 days of a brand-new
@@ -2173,17 +2347,20 @@
       // One-click undo while the paid period is still running — the cheapest
       // revenue there is, and the moment a parent is most likely to reconsider.
       if (resumeSubscription) {
-        var canResume = paid && cancellationScheduled && cancellationAccessUntil &&
+        var canResume = hasSubscribedPlan && cancellationScheduled && cancellationAccessUntil &&
           new Date(cancellationAccessUntil).getTime() > Date.now();
         resumeSubscription.hidden = !canResume;
       }
       if (currentPackageName) currentPackageName.textContent = manualAccess ? "Family access" : plan.name;
-      if (currentPackagePrice) currentPackagePrice.textContent = manualAccess ? "Included" : "$" + (plan.amount || "—");
+      var trialFirstChargeCents = onStripeTrial() ? Number(trialInfo() && trialInfo().firstChargeCents || 0) : 0;
+      if (currentPackagePrice) currentPackagePrice.textContent = manualAccess
+        ? "Included"
+        : trialFirstChargeCents > 0 ? moneyFromCents(trialFirstChargeCents) : "$" + (plan.amount || "—");
       var currentPackageInterval = document.getElementById("current-package-interval");
       // Pricing stores "mo"/"yr", so an exact "year" match always fell through to
       // "month" — a yearly plan rendered as "$149 / month".
       if (currentPackageInterval) currentPackageInterval.textContent = manualAccess ? "" : "/ " + (String(plan.interval || "").charAt(0) === "y" ? "year" : "month");
-      if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", !needsCheckout && plan.key !== "monthly");
+      if (currentPackageCard) currentPackageCard.classList.toggle("is-yearly", !needsCheckout && !yearlyTrial && plan.key !== "monthly");
       renderCurrentPackageFacts(plan);
       if (currentPackageNote) {
         currentPackageNote.textContent = manualAccess
@@ -2191,7 +2368,7 @@
           : onStripeTrial()
           ? (cancellationScheduled
             ? "Current plan cancels on " + parentDate(cancellationAccessUntil || trialEndsText()) + ". Access continues until then, and you will not be charged."
-            : "Your child has access during the trial. Billing starts on " + trialEndsText() + " unless cancelled.")
+            : "Your child has access during the trial. " + trialBillingText())
           : yearlyUpgradeScheduled
           ? yearlyUpgradeDetailText(yearlyUpgradeInfo)
           : cancellationScheduled
@@ -2208,14 +2385,22 @@
         currentPackageNote.hidden = !currentPackageNote.textContent;
       }
       if (upgradeYearly) {
-        upgradeYearly.classList.add("hidden");
-        upgradeYearly.textContent = "Upgrade to yearly";
-        renderUpgradeOffer();
+        var currentTrial = onStripeTrial();
+        upgradeYearly.disabled = currentTrial;
+        upgradeYearly.classList.toggle("hidden", !currentTrial && !needsCheckout);
+        if (currentTrial) upgradeYearly.innerHTML = "<i data-lucide='check'></i>Current plan";
       }
       var monthlyCtaNote = document.getElementById("monthly-plan-cta-note");
-      if (monthlyCtaNote) monthlyCtaNote.hidden = !needsCheckout;
+      if (monthlyCtaNote) {
+        monthlyCtaNote.classList.toggle("hidden", !(needsCheckout || onStripeTrial()));
+        if (onStripeTrial()) {
+          var firstCharge = Number(trialInfo() && trialInfo().firstChargeCents || 0);
+          monthlyCtaNote.textContent = "You're currently in a free trial · First billing " + trialEndsText()
+            + (firstCharge > 0 ? " at " + moneyFromCents(firstCharge) : "");
+        }
+      }
       renderRailPromo();
-      if (paid) {
+      if (hasSubscribedPlan) {
         var chipTrialing = onStripeTrial();
         paymentState.textContent = manualAccess ? "Access granted" : chipTrialing
           ? (cancellationScheduled ? "Trial ends " + parentDate(cancellationAccessUntil || trialEndsText()) : "Free trial · ends " + trialEndsText())
@@ -2233,12 +2418,42 @@
       // Last, so the generic current-package rendering above cannot overwrite the
       // signup content.
       if (needsCheckout) applySignupPlanCards();
+      else if (yearlyTrial) {
+        // A yearly trial belongs in the Yearly card, never in the Monthly card.
+        // There is no self-service yearly-to-monthly switch during the trial.
+        applySignupPlanCards(true);
+        if (trialFirstChargeCents > 0 && upgradeYearlyPrice) upgradeYearlyPrice.textContent = moneyFromCents(trialFirstChargeCents);
+        if (currentPackageMode) currentPackageMode.textContent = "Pay monthly";
+        var monthlyBadge = currentPackageCard ? currentPackageCard.querySelector(".plan-badge") : null;
+        if (monthlyBadge) monthlyBadge.textContent = "Monthly option";
+        if (currentPackageNote) currentPackageNote.textContent = "Your yearly trial is active. Contact support to change plans.";
+        if (upgradeYearly) {
+          upgradeYearly.disabled = true;
+          upgradeYearly.innerHTML = "<i data-lucide='lock-keyhole'></i>Yearly trial active";
+        }
+        if (monthlyCtaNote) {
+          monthlyCtaNote.classList.remove("hidden");
+          monthlyCtaNote.textContent = "Monthly checkout is unavailable during your yearly trial.";
+        }
+        if (upgradeYearlyTileButton) {
+          upgradeYearlyTileButton.disabled = true;
+          upgradeYearlyTileButton.innerHTML = "<i data-lucide='check'></i>Current plan · Free trial";
+        }
+        var yearlyCtaNote = document.getElementById("yearly-plan-cta-note");
+        if (yearlyCtaNote) yearlyCtaNote.textContent = "You're currently in a free trial · First billing " + trialEndsText()
+          + (trialFirstChargeCents > 0 ? " at " + moneyFromCents(trialFirstChargeCents) : "");
+      }
       else {
         // Restore the subscriber wording: the signup pass may have run first while
         // the entitlement was still loading, and it rewrites this badge.
         var pkgBadge = currentPackageCard ? currentPackageCard.querySelector(".plan-badge") : null;
         if (pkgBadge) pkgBadge.textContent = "Current package";
       }
+      if (!yearlyTrial) {
+        var standardYearlyCtaNote = document.getElementById("yearly-plan-cta-note");
+        if (standardYearlyCtaNote) standardYearlyCtaNote.textContent = "Best value for families planning the year ahead";
+      }
+      renderIcons();
     }
 
     // Card-upfront Stripe trial state, straight from /api/entitlements/me.
@@ -2255,7 +2470,7 @@
 
     function onStripeTrial() {
       var trial = trialInfo();
-      return Boolean(trial && trial.status === "trialing");
+      return Boolean(trial && trial.status === "trialing" && parentEntitlement.paymentStatus === "trial");
     }
 
     function trialEndsText() {
@@ -2284,6 +2499,18 @@
         duration: "once",
         description: String(promo.description || "Keep your plan and get a discount on your next renewal.")
       };
+    }
+
+    function trialBillingText() {
+      var trial = parentEntitlement && parentEntitlement.trial;
+      var first = Number(trial && trial.firstChargeCents || 0);
+      var regular = Number(trial && trial.regularChargeCents || 0);
+      if (first > 0 && regular > 0) {
+        var interval = isYearlySubscription() ? "year" : "month";
+        return "Your first charge is " + moneyFromCents(first) + " on " + trialEndsText()
+          + "; subsequent renewals are " + moneyFromCents(regular) + "/" + interval + " unless you cancel.";
+      }
+      return "Billing starts on " + trialEndsText() + " unless you cancel.";
     }
 
     // Refunding a yearly UPGRADE reverts to the monthly plan and keeps access to
@@ -2338,7 +2565,8 @@
       // so hide it once used — otherwise it pops on every cancel attempt and
       // the accept just errors.
       var retentionAvailable = !parentEntitlement || parentEntitlement.retentionOfferAvailable !== false;
-      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly && retentionAvailable;
+      var promoAvailable = promo.enabled && promo.amountOff > 0 && !yearly && retentionAvailable
+        && (!trialing || Boolean(parentEntitlement && !parentEntitlement.trial?.launchDiscountApplied));
       if (cancellationYearlyOption) cancellationYearlyOption.classList.toggle("hidden", yearly || refundable);
       if (trialing) {
         if (cancelFlowLabel) cancelFlowLabel.textContent = "Trial";
@@ -2346,7 +2574,7 @@
         if (cancelFlowCopy) {
           cancelFlowCopy.textContent = promoAvailable
             ? "Keep your plan and get $" + promo.amountOff + " off when billing starts on " + trialEndsText() + " — no code needed. If you cancel, your free trial and access end right away and you won't be charged."
-            : "Cancelling ends your free trial and access right away. You have not been charged and won't be. Your profiles and progress are saved, and you can subscribe again anytime (billed immediately, with no new free trial).";
+            : trialBillingText() + " Ending the trial now ends access immediately, with no charge. Your profiles and progress are saved; you can subscribe again later without another free trial.";
         }
         if (acceptDiscount) {
           acceptDiscount.classList.toggle("hidden", !promoAvailable);
@@ -2436,14 +2664,22 @@
     async function syncSubscriptionFromEntitlement() {
       if (!parentToken()) return false;
       var syncGeneration = ++entitlementSyncGeneration;
+      var controller = new AbortController();
+      var timeout = setTimeout(function () { controller.abort(); }, 12000);
       try {
-        var response = await parentAuthFetch("/api/entitlements/me");
+        var response = await parentAuthFetch("/api/entitlements/me", { signal: controller.signal });
         var entitlement = await response.json();
-        if (!response.ok) throw entitlement;
+        if (!response.ok) throw Object.assign({ status: response.status }, entitlement);
         // A billing action may have completed while this request was in flight.
         // Never let an older entitlement response repaint the newer tile state.
         if (syncGeneration !== entitlementSyncGeneration) return false;
         parentEntitlement = entitlement;
+        if (extensionReachable()) {
+          chrome.runtime.sendMessage(KG_EXTENSION_ID, { type: "KIDDIEGPT_ACCESS_CHANGED" }, function () {
+            void chrome.runtime.lastError;
+          });
+        }
+        entitlementLoadError = "";
         parentRenewalAt = entitlement.renewalAt || (entitlement.trial && entitlement.trial.endsAt) || "";
         if (entitlement.active) {
           var key = String(entitlement.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
@@ -2476,7 +2712,7 @@
             // plan to keep access when the trial ends.
             detail = "Your child has full access until " + trialEnds + ". Choose a plan below to keep it going — you can subscribe any time during or after the trial.";
           } else if (trialing) {
-            detail = planName + " · your child has access during the trial. Billing starts on " + trialEnds + " unless cancelled.";
+            detail = planName + " · your child has access during the trial. " + trialBillingText();
           } else if (yearlyUpgradeScheduled) {
             detail = yearlyUpgradeDetailText(yearlyUpgradeInfo);
           } else {
@@ -2509,8 +2745,17 @@
       } catch (error) {
         if (syncGeneration !== entitlementSyncGeneration) return false;
         parentEntitlement = null;
+        entitlementLoadError = error.name === "AbortError"
+          ? "The subscription check took too long. Please retry."
+          : error.error || error.message || "Could not verify subscription status. Please retry.";
         setUnpaidSubscription("Check subscription", error.error || "Could not verify subscription status. Try signing in again.", "Needs attention", true);
+        if (error.status === 401) {
+          localStorage.removeItem(PARENT_TOKEN_KEY);
+          showParentGate("Your session expired. Sign in again to see your subscription.");
+        }
         return false;
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
@@ -2539,6 +2784,11 @@
           });
           var result = await response.json();
           if (response.ok && result.active) {
+            if (extensionReachable() && parentToken()) {
+              chrome.runtime.sendMessage(KG_EXTENSION_ID, { type: "KIDDIEGPT_SIGN_IN", token: parentToken() }, function () {
+                void chrome.runtime.lastError;
+              });
+            }
             var key = String(result.plan || "").toLowerCase().indexOf("year") >= 0 ? "yearly" : "monthly";
             setPaidPlan(key, "Subscription active", (result.plan || activePlan().name) + " is active for this family.");
           }
@@ -2661,6 +2911,26 @@
       slide.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
     }
 
+    function openGoalRowCount(profile) {
+      return Array.from(profile.querySelectorAll(".goal-reward-row")).filter(function (row) {
+        return !row.querySelector('[name="goalComplete"]').checked;
+      }).length;
+    }
+
+    function setGoalLimitWarning(profile, message) {
+      var warning = profile.querySelector(".goal-limit-warning");
+      if (!warning && message) {
+        warning = document.createElement("p");
+        warning.className = "goal-limit-warning";
+        warning.setAttribute("role", "alert");
+        profile.querySelector(".goal-reward-head").after(warning);
+      }
+      if (warning) {
+        warning.textContent = message || "";
+        warning.hidden = !message;
+      }
+    }
+
     // Rebuild the child-profile cards from the family's saved children so the
     // parent sees ALL their students (not just the default first profile).
     function hydrateChildren(family) {
@@ -2682,11 +2952,13 @@
         }
         slide.dataset.slideIndex = String(index);
         var node = slide.querySelector(".child-profile");
+        setGoalLimitWarning(node, "");
         if (child.id) node.dataset.childId = child.id;
+        node.dataset.savedStudentName = child.studentName || "";
         node.dataset.readingLevel = child.readingLevel || "";
         var heading = node.querySelector("h3"); if (heading) heading.textContent = "Child " + (index + 1);
         var nameEl = node.querySelector('[name="studentName"]'); if (nameEl) nameEl.value = child.studentName || "";
-        var gradeEl = node.querySelector('[name="grade"]'); if (gradeEl) gradeEl.value = gradeNumber(child.grade) || "5";
+        var gradeEl = node.querySelector('[name="grade"]'); if (gradeEl) gradeEl.value = gradeNumber(child.grade) || "7";
         var goals = (child.learningGoals && child.learningGoals.length)
           ? child.learningGoals.slice(0, 7)
           : (child.goal ? [{ goal: child.goal, reward: child.reward, completed: false }] : []);
@@ -2705,6 +2977,9 @@
         var progressList = slide.querySelector(".progress-list");
         if (progressList) progressList.innerHTML = '<div class="progress-empty">Your child\'s activity from the KiddieGPT extension will show here.</div>';
         updateGoalRows(node);
+        if (openGoalRowCount(node) > 2) {
+          setGoalLimitWarning(node, "Only 2 open goals are allowed at a time. Complete or remove one before saving.");
+        }
       });
       updateChildCards();
       renderIcons();
@@ -2719,7 +2994,7 @@
           showParentIdentity(data.family.parentName || data.user?.name, data.family.email || data.user?.email);
           preview();
           setParentalConsentState(data.family.parentalConsent);
-          if (data.family.parentalConsent && data.family.parentalConsent.acceptedAt) hydrateChildren(data.family);
+          if (data.family.parentalConsent && data.family.parentalConsent.status === "accepted") hydrateChildren(data.family);
         }
       } catch (error) { /* ignore */ }
     }
@@ -2748,7 +3023,8 @@
       if (addGoal) {
         var atLimit = rows.length >= 7;
         addGoal.disabled = atLimit;
-        addGoal.title = atLimit ? "Maximum of 7 goals and rewards" : "Add goal and reward";
+        addGoal.title = atLimit ? "Maximum of 7 goals and rewards"
+          : openGoalRowCount(profile) >= 2 ? "Only 2 open goals are allowed at a time" : "Add goal and reward";
       }
     }
 
@@ -2819,7 +3095,7 @@
       var firstChild = document.querySelector(".child-profile");
       if (firstChild) {
         firstChild.querySelector('[name="studentName"]').value = demo.studentName;
-        firstChild.querySelector('[name="grade"]').value = gradeNumber(demo.grade) || "5";
+        firstChild.querySelector('[name="grade"]').value = gradeNumber(demo.grade) || "7";
         var list = firstChild.querySelector(".goal-reward-list");
         list.innerHTML = "";
         demo.goals.forEach(function (goal) {
@@ -3031,6 +3307,14 @@
           nameInput?.focus();
           return false;
         }
+        if (nameInput.value.trim().length > 4 && nameInput.value.trim() !== profile.dataset.savedStudentName) {
+          activeChildIndex = i;
+          updateChildCards();
+          completionTitle.textContent = "Shorten the child name";
+          completionText.textContent = "Child names can be up to 4 characters.";
+          nameInput.focus();
+          return false;
+        }
         var grade = Number(gradeInput && gradeInput.value);
         if (!gradeInput || !Number.isFinite(grade) || grade < 1 || grade > 12) {
           activeChildIndex = i;
@@ -3038,6 +3322,12 @@
           completionTitle.textContent = "Choose a grade";
           completionText.textContent = "Choose a grade from 1 through 12 before saving.";
           gradeInput?.focus();
+          return false;
+        }
+        if (openGoalRowCount(profile) > 2) {
+          activeChildIndex = i;
+          updateChildCards();
+          setGoalLimitWarning(profile, "Only 2 open goals are allowed at a time. Complete or remove one before saving.");
           return false;
         }
       }
@@ -3159,8 +3449,9 @@
         });
         var result = await response.json();
         if (!response.ok) {
-          var err = new Error(result.error || "Stripe checkout failed");
+          var err = new Error(result.message || result.error || "Stripe checkout failed");
           err.temporary = response.status === 503;
+          err.consentRequired = result.error === "parental_consent_required";
           throw err;
         }
         if (result.url) {
@@ -3182,6 +3473,9 @@
         if (error.temporary) {
           completionTitle.textContent = "Checkout temporarily unavailable";
           completionText.textContent = "We couldn't reach checkout just now. Please try again in a few minutes.";
+        } else if (error.consentRequired) {
+          completionTitle.textContent = "Parent consent needed";
+          completionText.textContent = "Record your consent choice in Overview before starting a trial.";
         } else {
           completionTitle.textContent = "Checkout needs attention";
           completionText.textContent = "Check the Stripe Price ID in Admin, then try checkout again.";
@@ -3375,20 +3669,6 @@
       renderIcons();
     }
 
-    function renderUpgradeOffer() {
-      var el = document.getElementById("upgrade-offer");
-      if (!el) return;
-      var show = upgradeYearly && !upgradeYearly.classList.contains("hidden");
-      el.hidden = !show;
-      if (!show) return;
-      var o = yearlyUpgradeOffer();
-      var price = o.discountAmount > 0
-        ? "<span class='strike'>$" + o.baseStr + "</span><b>$" + o.priceStr + "/yr</b>"
-        : "<b>$" + o.priceStr + "/yr</b>";
-      el.innerHTML = price + (o.bonusMonths > 0 ? " · <b>+" + o.bonusMonths + " bonus mo</b>" : "") +
-        "<br>plus your unused days this month" + (o.note ? "<br>" + text(o.note) : "");
-    }
-
     function openUpgradeModal() {
       var o = yearlyUpgradeOffer();
       var trialing = onStripeTrial();
@@ -3503,12 +3783,19 @@
       startStripeCheckout();
     }
     upgradeYearly.addEventListener("click", function () {
-      if (!paid || onNoCardTrial()) return choosePlanAndCheckout("monthly");
+      if (needsInitialCheckout()) return choosePlanAndCheckout("monthly");
+      if (!parentEntitlement?.active) return;
       openUpgradeModal();
     });
     if (upgradeYearlyTileButton) upgradeYearlyTileButton.addEventListener("click", function () {
-      if (!paid || onNoCardTrial()) return choosePlanAndCheckout("yearly");
+      if (needsInitialCheckout()) return choosePlanAndCheckout("yearly");
+      if (!parentEntitlement?.active) return;
       openUpgradeModal();
+    });
+    if (retrySubscriptionCheck) retrySubscriptionCheck.addEventListener("click", function () {
+      entitlementLoadError = "";
+      renderSubscriptionState();
+      syncSubscriptionFromEntitlement().catch(function () {});
     });
     var railYearlyPromo = document.getElementById("rail-yearly-promo");
     if (railYearlyPromo) railYearlyPromo.addEventListener("click", function () { setParentTab("subscription"); openUpgradeModal(); });
@@ -3771,10 +4058,12 @@
       removeCloneIds(clone);
       clone.dataset.slideIndex = String(count);
       var profile = clone.querySelector(".child-profile");
+      setGoalLimitWarning(profile, "");
       profile.dataset.childId = "child_" + makeId();
+      profile.dataset.savedStudentName = "";
       profile.dataset.readingLevel = "";
       profile.querySelector('[name="studentName"]').value = "";
-      profile.querySelector('[name="grade"]').value = "5";
+      profile.querySelector('[name="grade"]').value = "7";
       var goalList = profile.querySelector(".goal-reward-list");
       if (goalList) {
         goalList.innerHTML = "";
@@ -3862,6 +4151,22 @@
       if (acceptParentalConsent) acceptParentalConsent.disabled = !parentalConsentCheckbox.checked;
     });
     if (acceptParentalConsent) acceptParentalConsent.addEventListener("click", acceptParentalConsentAndContinue);
+    var reviewChildDataButton = document.getElementById("review-child-data");
+    if (reviewChildDataButton) reviewChildDataButton.addEventListener("click", reviewChildData);
+    var downloadChildDataButton = document.getElementById("download-child-data");
+    if (downloadChildDataButton) downloadChildDataButton.addEventListener("click", downloadChildData);
+    var requestChildDataDeletionButton = document.getElementById("request-child-data-deletion");
+    if (requestChildDataDeletionButton) requestChildDataDeletionButton.addEventListener("click", function () {
+      var message = document.getElementById("support-message");
+      if (!message) return;
+      message.value = "Please delete the child learning profiles and associated learning activity from my family account. Please confirm what will be removed and whether any records must be retained.";
+      message.dispatchEvent(new Event("input", { bubbles: true }));
+      message.scrollIntoView({ behavior: "smooth", block: "center" });
+      message.focus();
+      if (privacyActionStatus) privacyActionStatus.textContent = "Review the request above, then select Send message.";
+    });
+    var withdrawConsentButton = document.getElementById("withdraw-parental-consent");
+    if (withdrawConsentButton) withdrawConsentButton.addEventListener("click", withdrawParentalConsent);
     if (addChild) addChild.addEventListener("click", function () {
       if (studentWorkspace && studentWorkspace.classList.contains("consent-required")) return;
       addBlankChildProfile();
@@ -3896,11 +4201,16 @@
       var addGoal = event.target.closest(".add-goal");
       if (addGoal) {
         var goalProfile = addGoal.closest(".child-profile");
+        if (openGoalRowCount(goalProfile) >= 2) {
+          setGoalLimitWarning(goalProfile, "Only 2 open goals are allowed at a time. Complete one before adding another.");
+          return;
+        }
         if (goalProfile.querySelectorAll(".goal-reward-row").length >= 7) {
           updateGoalRows(goalProfile);
           return;
         }
         goalProfile.querySelector(".goal-reward-list").appendChild(createGoalRow());
+        setGoalLimitWarning(goalProfile, "");
         updateGoalRows(goalProfile);
         renderIcons();
         return;
@@ -3918,6 +4228,7 @@
         var rowProfile = deleteGoal.closest(".child-profile");
         if (rowProfile.querySelectorAll(".goal-reward-row").length > 1) {
           row.remove();
+          setGoalLimitWarning(rowProfile, "");
           updateGoalRows(rowProfile);
           preview();
         }
@@ -3936,7 +4247,14 @@
 
     childList.addEventListener("change", function (event) {
       var goalComplete = event.target.closest('[name="goalComplete"]');
-      if (goalComplete) updateGoalRows(goalComplete.closest(".child-profile"));
+      if (goalComplete) {
+        var changedProfile = goalComplete.closest(".child-profile");
+        if (!goalComplete.checked && openGoalRowCount(changedProfile) > 2) {
+          goalComplete.checked = true;
+          setGoalLimitWarning(changedProfile, "Only 2 open goals are allowed at a time. Complete one before reopening another.");
+        } else setGoalLimitWarning(changedProfile, "");
+        updateGoalRows(changedProfile);
+      }
       var completedToggle = event.target.closest(".show-completed");
       if (completedToggle) updateGoalRows(completedToggle.closest(".child-profile"));
       preview();
@@ -4077,9 +4395,15 @@
       preview();
       renderIcons();
     });
+    function refreshVisibleSubscription() {
+      if (document.hidden || !parentToken() || !document.querySelector('[data-parent-panel="subscription"].active')) return;
+      syncSubscriptionFromEntitlement().catch(function () {});
+    }
+    document.addEventListener("visibilitychange", refreshVisibleSubscription);
+    window.addEventListener("focus", refreshVisibleSubscription);
+    window.setInterval(refreshVisibleSubscription, 30000);
     updatePlanTiles();
     updateChildCards();
-    syncSubscriptionFromReturnUrl().catch(function () {});
     preview();
     renderIcons();
   }
@@ -4218,6 +4542,8 @@
     var subscriptionFilter = document.getElementById("subscription-filter");
     var signupSearch = document.getElementById("signup-search");
     var signupDateFilter = document.getElementById("signup-date-filter");
+    var endedSearch = document.getElementById("ended-search");
+    var endedHistoryFilter = document.getElementById("ended-history-filter");
     var renewalSubscriptionFilter = document.getElementById("renewal-subscription-filter");
     var renewalWindowFilter = document.getElementById("renewal-window-filter");
     var paidDateFilter = document.getElementById("paid-date-filter");
@@ -4358,7 +4684,14 @@
       var children = childrenOf(family);
       var issues = reconciliationIssues(family);
       var tags = Array.isArray(family.adminTags) ? family.adminTags.join(", ") : (family.adminTags || "");
-      var subscriptionActive = familySubscriptionActive(family);
+      var subscriptionActive = familySubscriptionActive(family) || family.subscriptionStatus === "trialing";
+      var planEnded = ["cancelled", "expired"].includes(family.subscriptionStatus);
+      var renewalAction = family.subscriptionStatus === "cancel_scheduled" ? "keep" : "cancel";
+      var renewalDate = family.subscriptionStatus === "cancel_scheduled"
+        ? family.cancelAccessUntil || family.cancellationAccessUntil
+        : family.subscriptionStatus === "trialing" ? family.trialEndsAt : family.currentPeriodEnd;
+      var canManageRenewal = Boolean(family.stripeSubscriptionId) && ["active", "trialing", "cancel_scheduled"].includes(family.subscriptionStatus) &&
+        Number.isFinite(Date.parse(renewalDate)) && Date.parse(renewalDate) > Date.now();
       var locked = familyLocked(family);
       var latestPayment = latestPaymentForFamily(family);
       customerDrawerTitle.textContent = family.parentName || "Parent details";
@@ -4366,7 +4699,7 @@
       customerDrawerBody.innerHTML =
         "<div class='drawer-summary-grid'>" +
           "<div><span>Plan</span><strong>" + escapeHtml(familySubscriptionLabel(family)) + "</strong><small>" + escapeHtml(family.subscriptionStatus || "pending") + "</small></div>" +
-          "<div><span>Risk</span>" + statusChip(risk.status) + "<small>" + escapeHtml(risk.label) + "</small></div>" +
+          "<div><span>" + (planEnded ? "Access" : "Risk") + "</span>" + (planEnded ? "<strong>Plan ended</strong>" : statusChip(risk.status) + "<small>" + escapeHtml(risk.label) + "</small>") + "</div>" +
           "<div><span>Next action</span><strong>" + escapeHtml(action.label) + "</strong><small>" + escapeHtml(action.detail) + "</small></div>" +
           "<div><span>Last extension use</span><strong>" + escapeHtml(rowDateTime(family.lastExtensionUseAt)) + "</strong><small>" + (daysSinceActivity(family) === 0 ? "Today" : daysSinceActivity(family) + " days ago") + "</small></div>" +
         "</div>" +
@@ -4374,14 +4707,31 @@
           "<button type='button' class='table-action' data-customer-action='email' data-family-id='" + escapeHtml(familyRowId(family)) + "'>Send email</button>" +
           "<button type='button' class='table-action " + (locked ? "" : "danger") + "' data-customer-action='lock' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (locked ? "Unlock account" : "Lock account") + "</button>" +
           "<button type='button' class='table-action " + (subscriptionActive ? "danger" : "") + "' data-customer-action='subscription' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (subscriptionActive ? "End subscription" : "Start subscription") + "</button>" +
+          (canManageRenewal ? "<button type='button' class='table-action' data-customer-action='renewal' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (renewalAction === "keep" ? "Keep renewal" : "Cancel renewal") + "</button>" : "") +
           "<button type='button' class='table-action' data-customer-action='exception' data-family-id='" + escapeHtml(familyRowId(family)) + "'>Billing adjustment</button>" +
+        "</div>" +
+        (canManageRenewal ? "<div class='drawer-renewal-confirm' data-customer-renewal-confirm hidden>" +
+          "<strong>" + (renewalAction === "keep" ? "Keep this plan renewing?" : "Cancel renewal at period end?") + "</strong>" +
+          "<p>" + (renewalAction === "keep"
+            ? "Auto-renewal will resume. The next charge is scheduled for " + escapeHtml(shortDate(renewalDate)) + "."
+            : family.subscriptionStatus === "trialing"
+              ? "The trial stays available through " + escapeHtml(shortDate(renewalDate)) + ", then ends without a charge."
+              : "The family keeps access through " + escapeHtml(shortDate(renewalDate)) + ". Billing stops after that date; this does not refund the current period.") + "</p>" +
+          "<div class='row-actions'><button type='button' class='button primary' data-customer-renewal-confirm-action='" + renewalAction + "' data-family-id='" + escapeHtml(familyRowId(family)) + "'>" + (renewalAction === "keep" ? "Keep renewal" : "Confirm cancellation") + "</button><button type='button' class='table-action' data-customer-renewal-dismiss>Back</button></div>" +
+          "<p class='drawer-email-status' data-customer-renewal-status role='status' aria-live='polite'></p>" +
+        "</div>" : "") +
+        "<div class='drawer-email-compose' data-customer-email-form hidden>" +
+          "<label class='drawer-field'>Subject<input type='text' data-customer-email-subject maxlength='160' placeholder='Subject'></label>" +
+          "<label class='drawer-field'>Message<textarea data-customer-email-message rows='4' maxlength='2000' placeholder='Write your message to the parent'></textarea></label>" +
+          "<div class='row-actions'><button type='button' class='button primary' data-customer-email-send data-family-id='" + escapeHtml(familyRowId(family)) + "'>Send email</button><button type='button' class='table-action' data-customer-email-cancel>Cancel</button></div>" +
+          "<p class='drawer-email-status' data-customer-email-status role='status' aria-live='polite'></p>" +
         "</div></div>" +
         (issues.length ? "<div class='drawer-alerts'><span class='drawer-section-label'>Needs review</span>" + issues.map(function (issue) { return "<div><i data-lucide='triangle-alert'></i><span>" + escapeHtml(issue) + "</span></div>"; }).join("") + "</div>" : "") +
         "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Family</span><span class='muted-note'>" + children.length + " student" + (children.length === 1 ? "" : "s") + "</span></div>" +
           "<div class='drawer-children'>" + children.map(function (child) { var usage = usageToday(child); return "<div><strong>" + escapeHtml(child.studentName || "Student") + "</strong><small>Grade " + escapeHtml(child.grade || "-") + " · " + escapeHtml(child.readingLevel || "-") + "</small><span>" + usage.math + " math today · " + usage.voiceMin + " min voice</span></div>"; }).join("") + "</div>" +
         "</section>" +
         "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Billing</span><a class='stripe-link' href='https://dashboard.stripe.com/test/customers/" + encodeURIComponent(family.stripeCustomerId || "") + "' target='_blank' rel='noreferrer'>Stripe customer</a></div>" +
-          "<div class='drawer-facts'><div><span>Payment status</span><strong>" + escapeHtml(paymentStatus(family)) + "</strong></div><div><span>Next renewal</span><strong>" + escapeHtml(familyNextRenewal(family)) + "</strong></div><div><span>Latest payment</span><strong>" + (latestPayment ? escapeHtml(moneyFromCents(latestPayment.amountCents)) : "-") + "</strong></div><div><span>Subscription ID</span><strong class='mono-text'>" + escapeHtml(family.stripeSubscriptionId || "-") + "</strong></div></div>" +
+          "<div class='drawer-facts'><div><span>Payment status</span><strong>" + escapeHtml(paymentStatus(family)) + "</strong></div><div><span>Next renewal</span><strong>" + escapeHtml(familyNextRenewal(family)) + "</strong></div><div><span>Latest payment</span><strong>" + (latestPayment ? escapeHtml(moneyFromCents(latestPayment.amountCents)) : "No charge") + "</strong></div><div><span>Subscription ID</span><strong class='mono-text'>" + escapeHtml(family.stripeSubscriptionId || "-") + "</strong></div></div>" +
         "</section>" +
         "<section class='drawer-section'><div class='drawer-section-head'><span class='drawer-section-label'>Operator notes</span><span class='muted-note'>Saved to family record</span></div>" +
           "<label class='drawer-field'>Notes<textarea data-customer-notes rows='3' placeholder='Add context for the next support or billing decision.'>" + escapeHtml(family.adminNote || "") + "</textarea></label>" +
@@ -4616,8 +4966,14 @@
         return family.trialEndsAt || "";
       }
       if (family.subscriptionStatus !== "active") return "";
-      return (family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) ||
+      return activeYearlyRenewal(family) ||
         family.currentPeriodEnd || family.nextRenewalAt || "";
+    }
+
+    function activeYearlyRenewal(family) {
+      var upgrade = family.yearlyUpgrade;
+      return upgrade && upgrade.status === "scheduled" && upgrade.yearlySubscriptionId === family.stripeSubscriptionId &&
+        String(family.plan || "").toLowerCase().includes("year") ? upgrade.yearlyNextRenewalAt : null;
     }
 
     // Cancel-scheduled accounts are deliberately excluded: they are not renewing,
@@ -4674,12 +5030,52 @@
       });
     }
 
+    function isEndedFamily(family) {
+      return family && !familyDeleted(family) && ["cancelled", "expired"].includes(family.subscriptionStatus);
+    }
+
+    function endedPlanHistory(family) {
+      var hadPaidPlan = hasEverPaid(family);
+      var upgrade = family.yearlyUpgrade || {};
+      var currentYearly = String(family.plan || "").toLowerCase().includes("year");
+      var yearlyPaid = hadPaidPlan && (Boolean(upgrade.chargedAt) ||
+        (["scheduled", "ended"].includes(upgrade.status) && (currentYearly || Boolean(upgrade.monthlyPaymentAt))) ||
+        (currentYearly && upgrade.status !== "trialing"));
+      var monthlyPaid = hadPaidPlan && (!currentYearly || Boolean(upgrade.monthlyPaymentAt || Number(upgrade.monthlyPaymentAmountCents) > 0));
+      var history = [];
+      if (monthlyPaid) history.push("Monthly");
+      if (yearlyPaid) history.push("Yearly");
+      if (!history.length) history.push(family.trialUsedAt || family.trialStartedAt || family.trialEndedAt ? "Trial only" : "No paid plan");
+      return history;
+    }
+
+    function endedFamilyDate(family) {
+      return family.cancellationCompletedAt || family.cancelledAt || family.trialEndedAt || family.currentPeriodEnd || family.trialEndsAt || "";
+    }
+
+    function filteredEndedFamilies(families) {
+      var query = endedSearch ? endedSearch.value.trim().toLowerCase() : "";
+      var historyFilter = endedHistoryFilter ? endedHistoryFilter.value : "all";
+      return (families || []).filter(function (family) {
+        if (!isEndedFamily(family)) return false;
+        var haystack = [family.parentName, family.email, family.studentName].concat(childrenOf(family).map(function (child) {
+          return child.studentName;
+        })).join(" ").toLowerCase();
+        return (!query || haystack.includes(query)) &&
+          (historyFilter === "all" || endedPlanHistory(family).some(function (label) { return label.toLowerCase().startsWith(historyFilter); }));
+      }).sort(function (a, b) { return new Date(endedFamilyDate(b) || 0) - new Date(endedFamilyDate(a) || 0); });
+    }
+
     function hasEverPaid(family) {
       if (!family) return false;
       if (family.lastPaymentAt) return true;
       if (["paid", "refunded", "partial_refunded"].indexOf(family.paymentStatus) >= 0) return true;
       return paymentsCache.some(function (payment) {
-        return objectMatchesFamily(payment, family) && Number(payment.amountCents || 0) > 0;
+        if (Number(payment.amountCents || 0) <= 0) return false;
+        if (payment.familyId) return payment.familyId === familyRowId(family);
+        if (payment.customerId && family.stripeCustomerId) return payment.customerId === family.stripeCustomerId;
+        if (payment.subscriptionId && family.stripeSubscriptionId) return payment.subscriptionId === family.stripeSubscriptionId;
+        return Boolean(payment.email && family.email && normalizeEmail(payment.email) === normalizeEmail(family.email));
       });
     }
 
@@ -4853,11 +5249,6 @@
       return Math.round(planNumericAmount(plan) * 100);
     }
 
-    function moneyFromCents(amountCents) {
-      var amount = Number(amountCents || 0) / 100;
-      return "$" + amount.toFixed(amount % 1 === 0 ? 0 : 2);
-    }
-
     function cleanStripeSuffix(value) {
       return String(value || "family").replace(/[^a-z0-9_]/gi, "_");
     }
@@ -4868,7 +5259,13 @@
 
     function latestPaymentForFamily(family) {
       return paymentsCache
-        .filter(function (payment) { return objectMatchesFamily(payment, family) && Number(payment.amountCents || 0) > 0; })
+        .filter(function (payment) {
+          if (Number(payment.amountCents || 0) <= 0 || !["paid", "refunded", "partial_refunded"].includes(payment.status)) return false;
+          if (payment.familyId) return payment.familyId === familyRowId(family);
+          if (payment.customerId && family.stripeCustomerId) return payment.customerId === family.stripeCustomerId;
+          if (payment.subscriptionId && family.stripeSubscriptionId) return payment.subscriptionId === family.stripeSubscriptionId;
+          return Boolean(payment.email && family.email && normalizeEmail(payment.email) === normalizeEmail(family.email));
+        })
         .sort(function (a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); })[0] || null;
     }
 
@@ -5313,7 +5710,7 @@
         return until ? "Ends " + shortDate(until) : "Ending";
       }
       if (status !== "active") return "—";
-      var explicit = (family.yearlyUpgrade && family.yearlyUpgrade.yearlyNextRenewalAt) || family.currentPeriodEnd || family.nextRenewalAt;
+      var explicit = activeYearlyRenewal(family) || family.currentPeriodEnd || family.nextRenewalAt;
       if (explicit) return shortDate(explicit);
       var isYearly = String(family.plan || "").toLowerCase().indexOf("year") >= 0;
       var base = family.lastPaymentAt || family.createdAt;
@@ -5332,7 +5729,7 @@
     }
 
     function familyHealth(family) {
-      if (family.subscriptionStatus === "cancelled") return { label: "Winback", status: "error", score: 22 };
+      if (["cancelled", "expired"].includes(family.subscriptionStatus)) return { label: "Plan ended", status: "ready", score: 100 };
       if (family.subscriptionStatus === "paused") return { label: "Paused", status: "paused", score: 48 };
       if (family.paymentStatus === "failed") return { label: "Payment risk", status: "pending", score: 42 };
       if (daysSinceActivity(family) > 10) return { label: "Inactive", status: "pending", score: 55 };
@@ -6944,15 +7341,13 @@
         return bTime - aTime;
       }).map(function (family) {
         var consent = family.parentalConsent;
-        var accepted = Boolean(consent && consent.acceptedAt);
-        var scope = accepted ? "Child profiles + learning tools" : "Awaiting parent consent";
+        var consentStatus = family.consentStatus || "pending";
         return "<tr>" +
           "<td>" + text(family.parentName || "—") + "</td>" +
           "<td>" + text(family.email || "—") + "</td>" +
-          "<td>" + (accepted ? statusChip("active") : statusChip("pending")) + "</td>" +
-          "<td>" + (accepted ? rowDateTime(consent.acceptedAt) : "—") + "</td>" +
+          "<td>" + statusChip(consentStatus) + "</td>" +
+          "<td>" + (consent?.acceptedAt ? rowDateTime(consent.acceptedAt) : "—") + "</td>" +
           "<td>" + text(consent?.policyVersion || "—") + "</td>" +
-          "<td>" + text(scope) + "</td>" +
           "<td>" + childrenOf(family).length + "</td>" +
           "</tr>";
       }));
@@ -7255,6 +7650,20 @@
         "</tr>";
       }) : ["<tr><td colspan='10'><div class='empty-state'>No signups waiting to subscribe.</div></td></tr>"]);
 
+      var endedRows = filteredEndedFamilies(families);
+      renderRows("ended-table", endedRows.length ? endedRows.map(function (family) {
+        return "<tr class='family-row' data-family-open='" + familyRowId(family) + "'>" +
+          "<td>" + text(family.parentName) + "</td>" +
+          "<td>" + text(family.email) + "</td>" +
+          "<td>" + childrenOf(family).length + "</td>" +
+          "<td>" + endedPlanHistory(family).map(function (label) { return "<span class='state-chip ready'>" + escapeHtml(label) + "</span>"; }).join(" ") + "</td>" +
+          "<td>" + statusChip(family.subscriptionStatus) + "</td>" +
+          "<td>" + rowDateTime(endedFamilyDate(family)) + "</td>" +
+          "<td>" + rowDateTime(family.lastLoginAt) + "</td>" +
+          "<td><button type='button' class='table-action' data-customer-open data-family-id='" + familyRowId(family) + "'>View</button></td>" +
+        "</tr>";
+      }) : ["<tr><td colspan='8'><div class='empty-state'>No ended plans or trials match these filters.</div></td></tr>"]);
+
       renderRows("trial-table", trialFamilies.length ? trialFamilies.map(function (family) {
         // Anything Stripe owns — including a cancelled trial still running out
         // its term — must not offer local delete: removing the family here would
@@ -7538,6 +7947,8 @@
     if (subscriptionFilter) subscriptionFilter.addEventListener("change", renderAdmin);
     if (signupSearch) signupSearch.addEventListener("input", renderAdmin);
     if (signupDateFilter) signupDateFilter.addEventListener("change", renderAdmin);
+    if (endedSearch) endedSearch.addEventListener("input", renderAdmin);
+    if (endedHistoryFilter) endedHistoryFilter.addEventListener("change", renderAdmin);
     if (renewalSubscriptionFilter) renewalSubscriptionFilter.addEventListener("change", renderAdmin);
     if (renewalWindowFilter) renewalWindowFilter.addEventListener("change", renderAdmin);
     if (paidDateFilter) paidDateFilter.addEventListener("change", renderAdmin);
@@ -7756,11 +8167,92 @@
         }
         return;
       }
+      var emailCancel = event.target.closest ? event.target.closest("[data-customer-email-cancel]") : null;
+      if (emailCancel) {
+        var cancelForm = customerDrawerBody.querySelector("[data-customer-email-form]");
+        if (cancelForm) cancelForm.hidden = true;
+        return;
+      }
+      var emailSend = event.target.closest ? event.target.closest("[data-customer-email-send]") : null;
+      if (emailSend) {
+        var emailFamily = familyById(emailSend.dataset.familyId);
+        var emailForm = customerDrawerBody.querySelector("[data-customer-email-form]");
+        if (!emailFamily || !emailForm) return;
+        var subject = emailForm.querySelector("[data-customer-email-subject]").value.trim();
+        var message = emailForm.querySelector("[data-customer-email-message]").value.trim();
+        var emailStatus = emailForm.querySelector("[data-customer-email-status]");
+        if (!subject || !message) {
+          emailStatus.textContent = "Enter a subject and message before sending.";
+          return;
+        }
+        emailSend.disabled = true;
+        emailStatus.textContent = "Sending…";
+        try {
+          var delivery = await fetchJson("/api/admin/trigger-email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: emailFamily.email, template: "Admin parent email", subject: subject, message: message })
+          });
+          if (delivery.mode === "mock") {
+            emailStatus.textContent = "Email was not sent. Configure Postmark or SMTP, then try again.";
+          } else {
+            emailStatus.textContent = "Email sent to " + emailFamily.email + ".";
+            emailForm.querySelector("[data-customer-email-message]").value = "";
+          }
+        } catch (error) {
+          emailStatus.textContent = error.error || error.detail || "Email could not be sent. Please try again.";
+        } finally {
+          emailSend.disabled = false;
+        }
+        return;
+      }
+      var renewalDismiss = event.target.closest ? event.target.closest("[data-customer-renewal-dismiss]") : null;
+      if (renewalDismiss) {
+        var renewalPanel = customerDrawerBody.querySelector("[data-customer-renewal-confirm]");
+        if (renewalPanel) renewalPanel.hidden = true;
+        return;
+      }
+      var renewalConfirm = event.target.closest ? event.target.closest("[data-customer-renewal-confirm-action]") : null;
+      if (renewalConfirm) {
+        var renewalFamily = familyById(renewalConfirm.dataset.familyId);
+        var renewalStatus = customerDrawerBody.querySelector("[data-customer-renewal-status]");
+        if (!renewalFamily || !renewalStatus) return;
+        renewalConfirm.disabled = true;
+        renewalStatus.textContent = "Updating subscription…";
+        try {
+          await fetchJson("/api/admin/subscription-action", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: renewalConfirm.dataset.customerRenewalConfirmAction, email: renewalFamily.email })
+          });
+          await loadBackendState();
+          renderAdmin();
+          openCustomerDrawer(familyRowId(renewalFamily));
+        } catch (error) {
+          renewalStatus.textContent = error.error || "Could not update renewal. No change was confirmed.";
+          renewalConfirm.disabled = false;
+        }
+        return;
+      }
       var customerActionButton = event.target.closest ? event.target.closest("[data-customer-action]") : null;
       if (!customerActionButton) return;
       var actionFamily = familyById(customerActionButton.dataset.familyId);
       if (!actionFamily) return;
       var customerAction = customerActionButton.dataset.customerAction;
+      if (customerAction === "email") {
+        var compose = customerDrawerBody.querySelector("[data-customer-email-form]");
+        if (compose) {
+          compose.hidden = false;
+          compose.querySelector("[data-customer-email-subject]").focus();
+        }
+        return;
+      }
+      if (customerAction === "renewal") {
+        var confirmation = customerDrawerBody.querySelector("[data-customer-renewal-confirm]");
+        if (confirmation) {
+          confirmation.hidden = false;
+          confirmation.querySelector("[data-customer-renewal-confirm-action]").focus();
+        }
+        return;
+      }
       if (customerAction === "exception") {
         closeCustomerDrawer();
         activePaymentTable = "exceptions";
@@ -7773,13 +8265,7 @@
       }
       customerActionButton.disabled = true;
       try {
-        if (customerAction === "email") {
-          await fetchJson("/api/admin/trigger-email", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ to: actionFamily.email, template: "Admin triggered parent email" })
-          });
-          writeDevOutput("Customer email sent", { email: actionFamily.email });
-        } else if (customerAction === "lock") {
+        if (customerAction === "lock") {
           await fetchJson("/api/admin/users/" + encodeURIComponent(familyRowId(actionFamily)) + "/lock", {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locked: !familyLocked(actionFamily) })
           });
@@ -7787,7 +8273,7 @@
           renderAdmin();
           openCustomerDrawer(familyRowId(actionFamily));
         } else if (customerAction === "subscription") {
-          var subscriptionAction = familySubscriptionActive(actionFamily) ? "end" : "start";
+          var subscriptionAction = familySubscriptionActive(actionFamily) || actionFamily.subscriptionStatus === "trialing" ? "end" : "start";
           await fetchJson("/api/admin/users/" + encodeURIComponent(familyRowId(actionFamily)) + "/subscription-toggle", {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: subscriptionAction })
           });

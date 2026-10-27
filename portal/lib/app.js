@@ -289,7 +289,7 @@ function defaultPricing() {
       yearlyAmount: 75,
       planKey: "monthly",
       price: "",
-      description: "Limited-time family starter offer",
+      description: "Intro price on the first payment only; standard rate applies at renewal.",
       showAfterDays: 3,
       durationDays: 7
     },
@@ -327,6 +327,7 @@ function normalisePricing(pricing = {}) {
   const yearly = { ...defaults.yearly, ...(pricing.yearly || {}) };
   const rawPromotion = pricing.promotion || {};
   const promotion = { ...defaults.promotion, ...rawPromotion };
+  if (promotion.description === "Limited-time family starter offer") promotion.description = defaults.promotion.description;
   const hasMonthlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "monthlyAmount");
   const hasYearlyAmount = Object.prototype.hasOwnProperty.call(rawPromotion, "yearlyAmount");
   const hasLegacyPrice = Object.prototype.hasOwnProperty.call(rawPromotion, "price") && rawPromotion.price !== "";
@@ -427,7 +428,34 @@ const DEFAULT_EXPLAIN_MAX_WORDS = {
 };
 const DEFAULT_STANDARD_FRACTION = 0.5;
 const DEEP_DIVE_BANDS = ["3-5", "6-8", "9-12"];
-const PARENTAL_CONSENT_VERSION = "v1";
+const PARENTAL_CONSENT_VERSION = "v2";
+
+function parentalConsentStatus(family) {
+  const consent = family?.parentalConsent;
+  if (!consent?.acceptedAt) return consent?.withdrawnAt ? "withdrawn" : "pending";
+  if (consent.policyVersion !== PARENTAL_CONSENT_VERSION) return "reconsent_required";
+  if (consent.withdrawnAt && Date.parse(consent.withdrawnAt) >= Date.parse(consent.acceptedAt)) return "withdrawn";
+  return "accepted";
+}
+
+function parentalConsentPublic(family) {
+  const consent = family?.parentalConsent;
+  return {
+    status: parentalConsentStatus(family),
+    policyVersion: consent?.policyVersion || "",
+    currentPolicyVersion: PARENTAL_CONSENT_VERSION,
+    acceptedAt: consent?.acceptedAt || "",
+    withdrawnAt: consent?.withdrawnAt || ""
+  };
+}
+
+function requireParentalConsent(req, res, next) {
+  const family = parentFamilyForIdentity(readDb(), req.auth);
+  if (!family) return res.status(404).json({ error: "family_not_found" });
+  const status = parentalConsentStatus(family);
+  if (status !== "accepted") return res.status(403).json({ error: "parental_consent_required", consentStatus: status, message: "A parent must record consent in the parent portal before learning tools can be used." });
+  return next();
+}
 
 // Local provider-isolation switch. When enabled, persisted OpenAI credentials
 // are ignored so a Meta-only test cannot accidentally call OpenAI.
@@ -746,6 +774,47 @@ function promotionForPlan(pricing, planName) {
     basePrice,
     amountOffCents: Math.round((basePrice - promoPrice) * 100)
   };
+}
+
+function recordCheckoutBillingSnapshot(family, metadata, subscription, pricing) {
+  const plan = pricing[planKeyForName(metadata.planName || family.plan)];
+  const baseCents = Number(subscription?.items?.data?.[0]?.price?.unit_amount)
+    || Math.round(Number(plan?.amount || 0) * 100);
+  const promotionalCents = Math.round(Number(metadata.promoPrice || 0) * 100);
+  if (baseCents <= 0) return;
+  const hasLaunchDiscount = Boolean(metadata.promoCode && promotionalCents > 0 && promotionalCents < baseCents);
+  family.checkoutFirstChargeCents = hasLaunchDiscount ? promotionalCents : baseCents;
+  family.checkoutRegularChargeCents = baseCents;
+  family.checkoutPromotionCode = hasLaunchDiscount ? String(metadata.promoCode) : "";
+}
+
+function trialHasLaunchDiscount(family) {
+  return family?.subscriptionStatus === "trialing"
+    && Boolean(family.checkoutPromotionCode)
+    && Number(family.checkoutFirstChargeCents) > 0
+    && Number(family.checkoutFirstChargeCents) < Number(family.checkoutRegularChargeCents);
+}
+
+async function recoverTrialCheckoutBillingSnapshot(family) {
+  if (family?.subscriptionStatus !== "trialing" || Number(family.checkoutFirstChargeCents) > 0
+      || !family.stripeCheckoutSessionId || !family.stripeSubscriptionId) return;
+  const stripe = stripeClient();
+  if (!stripe) return;
+  try {
+    const [session, subscription] = await Promise.all([
+      stripe.checkout.sessions.retrieve(family.stripeCheckoutSessionId),
+      stripe.subscriptions.retrieve(family.stripeSubscriptionId)
+    ]);
+    if (stripeId(session.subscription) !== family.stripeSubscriptionId) return;
+    mutateDb(db => {
+      const current = db.families.find(item => item.id === family.id);
+      if (current && current.subscriptionStatus === "trialing") {
+        recordCheckoutBillingSnapshot(current, session.metadata || {}, subscription, normalisePricing(db.pricing));
+      }
+    });
+  } catch (_) {
+    // Billing access must remain available if Stripe is temporarily unreachable.
+  }
 }
 
 function couponIdForPromotion(promo) {
@@ -1771,7 +1840,9 @@ async function saveBillingOperation(op) {
 function billingKey(...parts) { return "kg_" + crypto.createHash("sha256").update(parts.join(":")).digest("hex"); }
 
 async function billingGuard(req, res, next) {
-  const email = normalizeEmail(req.auth?.role === "parent" ? req.auth.email : req.body?.email || req.body?.parentEmail || "");
+  const email = normalizeEmail(req.auth?.role === "parent" ? req.auth.email
+    : req.params?.id ? readDb().families.find(item => item.id === req.params.id)?.email || ""
+    : req.body?.email || req.body?.parentEmail || "");
   if (!email) return res.status(400).json({ error: "Select a parent account." });
   try {
     const release = await acquireBillingLock(billingLockPool, email);
@@ -2054,6 +2125,13 @@ function unixToIso(timestamp) {
   return seconds ? new Date(seconds * 1000).toISOString() : "";
 }
 
+function subscriptionPeriodEnd(subscription) {
+  const itemEnds = (subscription?.items?.data || [])
+    .map((item) => Number(item.current_period_end || 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return unixToIso(itemEnds.length ? Math.min(...itemEnds) : subscription?.current_period_end);
+}
+
 // Accepts either a unix-seconds timestamp or a date string and normalises to
 // ISO. Anything that does not parse comes back empty rather than "Invalid Date".
 function isoDateOrEmpty(value) {
@@ -2084,7 +2162,10 @@ const REFUND_WINDOW_DAYS = 0;
 const BILLING_COOLDOWN_MS = 24 * 3600000;
 const BILLING_COOLDOWN_MINUTES = 1440;
 function retentionOfferEligible(family, promo) {
-  return Boolean(family) && Number(family.retentionUsesCount || 0) < Math.min(99, Math.max(1, Number(promo?.maxRedemptions) || 1));
+  return Boolean(family)
+    && (family.subscriptionStatus !== "trialing"
+      || (Number(family.checkoutFirstChargeCents) > 0 && !trialHasLaunchDiscount(family)))
+    && Number(family.retentionUsesCount || 0) < Math.min(99, Math.max(1, Number(promo?.maxRedemptions) || 1));
 }
 function retentionOfferPendingUnconsumed(family) {
   const accepted = Date.parse(family?.retentionLastAcceptedAt);
@@ -2118,7 +2199,7 @@ function statusFromStripeSubscription(stripeStatus) {
 // A Stripe trial entitles the family until trial_end. Access during the trial is
 // the whole point, so this counts as entitled.
 function stripeTrialActive(family) {
-  if (family?.subscriptionStatus !== "trialing") return false;
+  if (family?.subscriptionStatus !== "trialing" || family.paymentStatus !== "trial" || family.lastPaymentAt) return false;
   const endsAt = new Date(family.trialEndsAt || 0).getTime();
   // No end date recorded yet (webhook race) — trust the trialing status.
   if (!Number.isFinite(endsAt) || !endsAt) return true;
@@ -2193,7 +2274,7 @@ function markCancellationScheduled(family, subscription, reason = "", source = "
 // forcing plan back to "Family Yearly" and stripeSubscriptionId back to the
 // dead subscription — which silently breaks re-enrolment.
 function retireYearlyUpgrade(family, at = nowIso()) {
-  if (family?.yearlyUpgrade && family.yearlyUpgrade.status === "scheduled") {
+  if (family?.yearlyUpgrade && ["trialing", "scheduled"].includes(family.yearlyUpgrade.status)) {
     family.yearlyUpgrade = { ...family.yearlyUpgrade, status: "ended", endedAt: at };
   }
   return family;
@@ -2596,6 +2677,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     const incomingSubId = event.type.startsWith("customer.subscription.") ? object.id : stripeId(object.subscription);
     const currentSubId = effectiveFamilySubscriptionId(family);
+    if (family.subscriptionStatus === "cancelled" && family.cancelledAt && event.created
+      && (event.type === "checkout.session.completed" || event.type.startsWith("customer.subscription.")
+        || event.type === "invoice.paid" || event.type === "invoice.payment_succeeded")
+      && event.created * 1000 <= Date.parse(family.cancelledAt)) {
+      if (event.type.startsWith("invoice.")) recordStripePayment(db, event, object, null);
+      return family;
+    }
+    if (event.type === "checkout.session.completed" && family.stripeCheckoutSessionId === object.id
+      && (family.paymentStatus === "paid" || family.subscriptionStatus === "cancelled")) return family;
     const wasPaymentRestricted = Boolean(family.dunning || ["past_due", "unpaid"].includes(family.subscriptionStatus) || family.paymentStatus === "failed");
     if (incomingSubId && family.dispute?.subscriptionCancelled && incomingSubId === family.dispute.subscriptionId) {
       // Late active/payment events cannot revive the subscription we stopped.
@@ -2617,7 +2707,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       // A fresh Checkout supersedes any earlier yearly upgrade; retire it first
       // so normaliseFamily() does not overwrite the new plan/subscription id.
       retireYearlyUpgrade(family);
-      delete family.pendingCheckout;
+      family.stripeCheckoutSessionId = object.id;
+      if (family.pendingCheckout?.sessionId === object.id) delete family.pendingCheckout;
       // Checkout completing means the card was collected, NOT that money moved.
       // On a trial nothing is charged until trial_end, so marking paid here would
       // report revenue that does not exist and put the family in the paying book.
@@ -2639,6 +2730,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       delete family.pendingPlanName;
       family.stripeCustomerId = stripeId(object.customer) || family.stripeCustomerId;
       family.stripeSubscriptionId = stripeId(object.subscription) || family.stripeSubscriptionId;
+      family.currentPeriodEnd = subscriptionPeriodEnd(subscriptionObject) || (trialing ? family.trialEndsAt : "");
+      recordCheckoutBillingSnapshot(family, metadata, subscriptionObject, normalisePricing(db.pricing));
       family.lastLoginAt = family.lastLoginAt || nowIso();
     }
 
@@ -2648,12 +2741,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
       const mapped = paidDeferred && object.status === "trialing" ? "active" : statusFromStripeSubscription(object.status);
       if (object.trial_end && !paidDeferred && !["trialing", "scheduled"].includes(family.yearlyUpgrade?.status)) family.trialEndsAt = unixToIso(object.trial_end) || family.trialEndsAt;
-      if (object.status === "trialing" && !paidDeferred) {
+      if (object.status === "trialing" && !paidDeferred && !family.lastPaymentAt) {
         family.paymentStatus = "trial";
         family.trialUsedAt = family.trialUsedAt || nowIso();
       }
       if (mapped && !object.cancel_at_period_end && event.type !== "customer.subscription.deleted") {
-        family.subscriptionStatus = mapped;
+        if (!(mapped === "trialing" && family.lastPaymentAt)) family.subscriptionStatus = mapped;
       }
     }
     if (event.type === "invoice.payment_failed") {
@@ -2704,7 +2797,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       family.cancelledAt = nowIso();
     }
     if (event.type === "customer.subscription.updated") {
-      if (object.current_period_end && !paidDeferred && family.yearlyUpgrade?.status !== "trialing") family.currentPeriodEnd = unixToIso(object.current_period_end) || family.currentPeriodEnd;
+      if (!paidDeferred && family.yearlyUpgrade?.status !== "trialing") family.currentPeriodEnd = subscriptionPeriodEnd(object) || family.currentPeriodEnd;
       if (object.cancel_at_period_end) {
         markCancellationScheduled(family, object, "", "other");
       } else {
@@ -2990,7 +3083,9 @@ const EMAIL_TEMPLATES = [
   { key: "deletion_completed", name: "Account deletion completed", stage: "Support & account", subject: () => "Your KiddieGPT account has been deleted",
     build: d => ({ chip: "Account", title: "Your account deletion is complete", greeting: `Hi ${d.parentName},`, paragraphs: ["Your account and learning profiles have been anonymized, and you can no longer sign in to this account.", "Limited records may be retained where required. Contact support if you have questions about your request."] }) },
   { key: "consent_receipt", name: "Parental consent receipt", stage: "Account & access", subject: () => "Your KiddieGPT consent confirmation",
-    build: d => ({ chip: "Confirmed", title: "Your consent is recorded", greeting: `Hi ${d.parentName},`, paragraphs: ["You confirmed parental consent for child profiles and learning tools.", `Recorded at: <b>${escHtml(d.acceptedAt)}</b><br>Policy version: <b>${escHtml(d.policyVersion)}</b>`, "Contact support if you did not provide this consent or would like to withdraw it."] }) },
+    build: d => ({ chip: "Recorded", title: "Your parent consent is recorded", greeting: `Hi ${d.parentName},`, paragraphs: ["Your consent choice is recorded for child profiles and learning tools.", `Recorded at: <b>${escHtml(d.acceptedAt)}</b><br>Policy version: <b>${escHtml(d.policyVersion)}</b>`, "You can review your child's data or withdraw consent in the parent portal."] }) },
+  { key: "consent_withdrawn", name: "Parental consent withdrawn", stage: "Account & access", subject: () => "Your KiddieGPT consent was withdrawn",
+    build: d => ({ chip: "Privacy", title: "Your consent is withdrawn", greeting: `Hi ${d.parentName},`, paragraphs: ["Your child’s learning tools have been locked because parental consent was withdrawn.", "This does not cancel your subscription. You can manage billing separately in the parent portal or contact support for help."] }) },
   { key: "email_changed", name: "Email address changed", stage: "Account & access", subject: () => "Your KiddieGPT email address changed",
     build: d => ({ chip: "Security", title: "Your sign-in email has changed", greeting: `Hi ${d.parentName},`, paragraphs: [`Your account's sign-in email was changed to <b>${escHtml(d.newEmail)}</b>.`, "This notice was sent to your previous email address. If you did not make this change, contact support immediately."] }) },
   { key: "verify_email", name: "Verify your email", stage: "Account & access", subject: () => "Verify your KiddieGPT email",
@@ -3524,7 +3619,7 @@ app.post("/api/auth/signup", async (req, res) => {
     } else {
       family.parentName = name || family.parentName;
     }
-    family.parentalConsentPending = !family.parentalConsent?.acceptedAt;
+    family.parentalConsentPending = parentalConsentStatus(family) !== "accepted";
 
     const parentUser = existingUser || {
       id: makeId("usr"),
@@ -3559,13 +3654,17 @@ app.post("/api/auth/signup", async (req, res) => {
   if (pending.existing) {
     return res.status(409).json({ ok: false, error: "Account already exists. Sign in instead." });
   }
+  let delivery;
   try {
-    await sendSignupOtp(email, otp);
+    delivery = await sendSignupOtp(email, otp);
   } catch (error) {
     mutateDb((db) => monitor(db, "error", "email", "Signup verification email failed", { email, detail: error.message }, email));
     return res.status(500).json({ ok: false, pendingVerification: true, email, error: "Account created, but the verification email could not be sent.", detail: error.message });
   }
-  return res.json({ ok: true, pendingVerification: true, email, message: "Verification code sent. Enter the 6-digit code to finish signup." });
+  return res.json({ ok: true, pendingVerification: true, email, deliveryMode: delivery.mode,
+    message: delivery.mode === "mock"
+      ? "No email was sent: delivery is not configured. For local testing, find the code with docker logs kiddiegpt-web."
+      : "Verification code sent. Enter the 6-digit code to finish signup." });
 });
 
 app.post("/api/auth/resend-otp", async (req, res) => {
@@ -3595,13 +3694,17 @@ app.post("/api/auth/resend-otp", async (req, res) => {
   });
   if (!pending) return res.status(404).json({ ok: false, error: "No pending signup found for this email." });
   if (pending.alreadyVerified) return res.status(409).json({ ok: false, error: "Email is already verified. Sign in instead." });
+  let delivery;
   try {
-    await sendSignupOtp(email, otp);
+    delivery = await sendSignupOtp(email, otp);
   } catch (error) {
     mutateDb((db) => monitor(db, "error", "email", "Signup OTP resend failed", { email, detail: error.message }, email));
     return res.status(500).json({ ok: false, error: "Unable to resend verification email.", detail: error.message });
   }
-  return res.json({ ok: true, pendingVerification: true, email, message: "New verification code sent." });
+  return res.json({ ok: true, pendingVerification: true, email, deliveryMode: delivery.mode,
+    message: delivery.mode === "mock"
+      ? "No email was sent: delivery is not configured. For local testing, find the new code with docker logs kiddiegpt-web."
+      : "New verification code sent." });
 });
 
 app.post("/api/auth/verify-otp", (req, res) => {
@@ -3629,7 +3732,7 @@ app.post("/api/auth/verify-otp", (req, res) => {
     if (family) {
       family.emailVerified = true;
       // Email verification establishes account ownership, not child-data consent.
-      family.parentalConsentPending = !family.parentalConsent?.acceptedAt;
+      family.parentalConsentPending = parentalConsentStatus(family) !== "accepted";
     }
     db.emailOtps = (db.emailOtps || []).filter((item) => item.id !== record.id);
     audit(db, "auth.signup.otp_verified", { userId: user.id, familyId: family?.id || "", email }, email);
@@ -3813,10 +3916,7 @@ app.get("/api/auth/me", async (req, res) => {
       parentName: family.parentName || "",
       email: family.email || "",
       plan: family.plan || "",
-      parentalConsent: family.parentalConsent ? {
-        acceptedAt: family.parentalConsent.acceptedAt || "",
-        policyVersion: family.parentalConsent.policyVersion || ""
-      } : null,
+      parentalConsent: parentalConsentPublic(family),
       children: (Array.isArray(family.children) ? family.children : []).map((child) => ({
         id: child.id,
         studentName: child.studentName || "",
@@ -3834,23 +3934,57 @@ app.get("/api/auth/me", async (req, res) => {
 });
 
 // Parent profile edits are deliberately separate from onboarding and billing.
+function learningGoalId(childId, goal) {
+  return crypto.createHash("sha256").update(JSON.stringify([childId, goal.goal, goal.reward])).digest("hex");
+}
+
+function studentGoals(family, child) {
+  return (child.learningGoals || []).map(goal => {
+    const id = learningGoalId(child.id, goal);
+    return { id, goal: goal.goal, reward: goal.reward,
+      status: goal.completed ? "completed" : family.goalProgress?.[id] || "ready" };
+  });
+}
+
+app.post("/api/student/goals/status", requireParent, requireParentalConsent, (req, res) => {
+  const { childId, goalId, status } = req.body || {};
+  if (!["in_progress", "pending_review"].includes(status)) return res.status(400).json({ error: "Invalid goal status." });
+  const result = mutateDb(db => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    const child = family?.children?.find(c => c.id === childId);
+    const goal = child?.learningGoals?.find(g => learningGoalId(child.id, g) === goalId);
+    if (!goal) return null;
+    family.goalProgress ||= {};
+    if (!goal.completed) {
+      const previous = family.goalProgress[goalId] || "ready";
+      if (status === "in_progress" && previous === "ready") family.goalProgress[goalId] = status;
+      if (status === "pending_review" && previous === "in_progress") family.goalProgress[goalId] = status;
+    }
+    return { goals: studentGoals(family, child) };
+  });
+  return result ? res.json(result) : res.status(404).json({ error: "Goal not found." });
+});
+
 // Saving a child goal should never be able to rewrite plan or subscription
 // fields, and it should not depend on Stripe entitlement timing.
-app.put("/api/parent/family/profile", requireParent, (req, res) => {
+app.put("/api/parent/family/profile", requireParent, requireParentalConsent, (req, res) => {
   const body = req.body || {};
-  const consentFamily = parentFamilyForIdentity(readDb(), req.auth);
-  if (!consentFamily?.parentalConsent?.acceptedAt) {
-    return res.status(403).json({ error: "parental_consent_required", message: "Accept parental consent before adding a learning profile." });
-  }
   const inputChildren = Array.isArray(body.children) ? body.children.slice(0, 3) : [];
   if (!inputChildren.length) {
     return res.status(400).json({ error: "Add at least one student profile before saving." });
   }
+  const savedChildren = parentFamilyForIdentity(readDb(), req.auth)?.children || [];
+  if (inputChildren.some((child) => {
+    const name = String(child.studentName || "").trim();
+    return name.length > 4 && !savedChildren.some((saved) => saved.id === child.id && saved.studentName === name);
+  })) {
+    return res.status(400).json({ error: "Child names can be up to 4 characters. Existing names can stay unchanged." });
+  }
 
   const children = inputChildren.map((child) => {
     const studentName = String(child.studentName || "").trim().slice(0, 25);
-    const rawGrade = String(child.grade || "").match(/\d+/)?.[0] || "5";
-    const grade = Math.min(12, Math.max(1, Number(rawGrade) || 5));
+    const rawGrade = String(child.grade || "").match(/\d+/)?.[0] || "7";
+    const grade = Math.min(12, Math.max(1, Number(rawGrade) || 7));
     const goals = Array.isArray(child.learningGoals) ? child.learningGoals.slice(0, 7).map((goal) => ({
       goal: String(goal?.goal || "").trim().slice(0, 75),
       reward: String(goal?.reward || "").trim().slice(0, 75),
@@ -3871,12 +4005,21 @@ app.put("/api/parent/family/profile", requireParent, (req, res) => {
   if (children.some((child) => !child.studentName)) {
     return res.status(400).json({ error: "Each student profile needs a name before saving." });
   }
+  if (children.some((child) => child.learningGoals.filter((goal) => !goal.completed).length > 2)) {
+    return res.status(400).json({ error: "Only 2 open goals are allowed per child at a time. Complete or remove one before saving." });
+  }
 
   const saved = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
     if (!family) return null;
     for (const child of children) {
       const previous = family.children?.find(c => c.id === child.id);
+      family.goalStars ||= {};
+      family.goalStars[child.id] ||= [];
+      for (const goal of [...(previous?.learningGoals || []), ...(child.learningGoals || [])]) {
+        const id = learningGoalId(child.id, goal);
+        if (goal.completed && !family.goalStars[child.id].includes(id)) family.goalStars[child.id].push(id);
+      }
       for (const goal of child.learningGoals || []) if (goal.completed && !previous?.learningGoals?.some(g => g.goal === goal.goal && g.reward === goal.reward && g.completed)) {
         audit(db, "goal.completed", { familyId: family.id, childName: child.studentName, goalId: crypto.createHash("sha256").update(JSON.stringify([child.id, goal.goal, goal.reward])).digest("hex") }, family.email);
       }
@@ -3906,19 +4049,52 @@ app.post("/api/parent/consent", requireParent, (req, res) => {
   const saved = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
     if (!family) return null;
-    if (family.parentalConsent?.acceptedAt) return family.parentalConsent;
+    if (parentalConsentStatus(family) === "accepted") return family.parentalConsent;
     family.parentalConsent = {
       acceptedAt: nowIso(),
       policyVersion: PARENTAL_CONSENT_VERSION,
       parentEmail: family.email || req.auth.email,
-      scope: "child_profiles_and_learning_tools"
+      scope: "child_profiles_and_learning_tools",
+      withdrawnAt: ""
     };
+    family.parentalConsentHistory = [...(family.parentalConsentHistory || []), { event: "accepted", at: family.parentalConsent.acceptedAt, policyVersion: PARENTAL_CONSENT_VERSION }];
     family.parentalConsentPending = false;
     audit(db, "privacy.parental_consent.accepted", { familyId: family.id, policyVersion: PARENTAL_CONSENT_VERSION }, family.email);
     return family.parentalConsent;
   });
   if (!saved) return res.status(404).json({ error: "Family account not found." });
-  return res.json({ ok: true, parentalConsent: { acceptedAt: saved.acceptedAt, policyVersion: saved.policyVersion } });
+  return res.json({ ok: true, parentalConsent: parentalConsentPublic({ parentalConsent: saved }) });
+});
+
+app.post("/api/parent/consent/withdraw", requireParent, (req, res) => {
+  const saved = mutateDb((db) => {
+    const family = parentFamilyForIdentity(db, req.auth);
+    if (!family) return null;
+    family.parentalConsent = { ...(family.parentalConsent || {}), acceptedAt: "", withdrawnAt: nowIso() };
+    family.parentalConsentHistory = [...(family.parentalConsentHistory || []), { event: "withdrawn", at: family.parentalConsent.withdrawnAt, policyVersion: family.parentalConsent.policyVersion || "" }];
+    family.parentalConsentPending = true;
+    audit(db, "privacy.parental_consent.withdrawn", { familyId: family.id }, family.email);
+    return parentalConsentPublic(family);
+  });
+  if (!saved) return res.status(404).json({ error: "Family account not found." });
+  return res.json({ ok: true, parentalConsent: saved });
+});
+
+app.get("/api/parent/privacy", requireParent, (req, res) => {
+  const db = readDb();
+  const family = parentFamilyForIdentity(db, req.auth);
+  if (!family) return res.status(404).json({ error: "Family account not found." });
+  return res.json({
+    parentalConsent: parentalConsentPublic(family),
+    children: (family.children || []).map((child) => ({
+      id: child.id,
+      name: child.studentName || "",
+      grade: child.grade || "",
+      learningGoals: child.learningGoals || [],
+      usage: child.usage || {},
+      progress: progressRowsForChild(db, child.id)
+    }))
+  });
 });
 
 app.delete("/api/parent/family/children/:childId", requireParent, (req, res) => {
@@ -4106,7 +4282,7 @@ app.post("/api/account/delete-request", requireParent, billingGuard, async (req,
 
 app.get("/api/admin/state", requireAdmin, (req, res) => {
   const db = readDb();
-  res.json({ families: db.families, pricing: db.pricing, deletedUserSequence: Number(db.deletedUserSequence || 0), payments: db.payments.slice(0, 100), auditLogs: db.auditLogs.slice(0, 300), emailLogs: db.emailLogs.slice(0, 100), monitorEvents: (db.monitorEvents || []).slice(0, 100) });
+  res.json({ families: db.families.map((family) => ({ ...family, consentStatus: parentalConsentStatus(family) })), pricing: db.pricing, deletedUserSequence: Number(db.deletedUserSequence || 0), payments: db.payments.slice(0, 100), auditLogs: db.auditLogs.slice(0, 300), emailLogs: db.emailLogs.slice(0, 100), monitorEvents: (db.monitorEvents || []).slice(0, 100) });
 });
 
 // ---- Free trials ------------------------------------------------------------
@@ -4536,7 +4712,7 @@ function ownedChild(family, childId) {
   return children[0] || null;
 }
 
-app.post("/api/progress", requireParent, (req, res) => {
+app.post("/api/progress", requireParent, requireParentalConsent, (req, res) => {
   const body = req.body || {};
   const date = String(body.date || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "bad_date" });
@@ -4572,7 +4748,7 @@ app.get("/api/progress", requireParent, (req, res) => {
   res.json({ days: progressRowsForChild(db, child.id, req.query.days) });
 });
 
-app.post("/api/usage/report", requireParent, (req, res) => {
+app.post("/api/usage/report", requireParent, requireParentalConsent, (req, res) => {
   const body = req.body || {};
   const tool = String(body.tool || "").trim();
   const result = mutateDb((db) => {
@@ -5080,7 +5256,7 @@ function releaseAiSlot(familyId) {
   if (!state.active && !state.hits.length) aiRateState.delete(familyId || "unknown");
 }
 
-app.post("/api/ai/responses", requireParent, async (req, res) => {
+app.post("/api/ai/responses", requireParent, requireParentalConsent, async (req, res) => {
   const body = req.body || {};
   const tool = String(body.tool || "").trim();
   const db = readDb();
@@ -5268,7 +5444,7 @@ async function runAiResponse({ req, res, body, tool, isMath, settings, family, p
   }
 }
 
-app.post("/api/ai/speech", requireParent, async (req, res) => {
+app.post("/api/ai/speech", requireParent, requireParentalConsent, async (req, res) => {
   const body = req.body || {};
   const db = readDb();
   const settings = normaliseAiSettings(db.aiSettings);
@@ -5358,7 +5534,7 @@ async function runAiSpeech({ req, res, body, settings, family }) {
 // into "clean" would silently let unscreened text through, which is the opposite
 // of what a kids product wants. Moderation does not count against usage caps: a
 // safety check should never be rationed.
-app.post("/api/ai/moderations", requireParent, async (req, res) => {
+app.post("/api/ai/moderations", requireParent, requireParentalConsent, async (req, res) => {
   const input = String(req.body?.input || "").trim();
   if (!input) return res.json({ flagged: false, categories: [] });
   const db = readDb();
@@ -5631,7 +5807,7 @@ function renderCaptureExpiredPage() {
 }
 
 // 1) Mint a short-lived, single-use capture token bound to {family, child}.
-app.post("/api/capture/session", requireParent, (req, res) => {
+app.post("/api/capture/session", requireParent, requireParentalConsent, (req, res) => {
   const body = req.body || {};
   const result = mutateDb((db) => {
     const family = parentFamilyForIdentity(db, req.auth);
@@ -5679,6 +5855,7 @@ app.post("/api/capture/:token/image", async (req, res) => {
     if (captureExpired(session)) { session.status = "expired"; return { error: "expired" }; }
     if (session.used) return { error: "used" };
     const fam = (db.families || []).find((f) => f.id === session.familyId);
+    if (parentalConsentStatus(fam) !== "accepted") return { error: "parental_consent_required" };
     // A paused account must not be able to spend through the capture path
     // either — the token is scoped to the family, so the pause applies.
     if (aiPaused(fam)) return { error: "paused" };
@@ -5686,6 +5863,7 @@ app.post("/api/capture/:token/image", async (req, res) => {
     session.status = "solving";
     return { ok: true, gradeBand: session.gradeBand, familyId: session.familyId, childId: session.childId };
   });
+  if (claim.error === "parental_consent_required") return res.status(403).json({ error: "parental_consent_required" });
   if (claim.error === "paused") return res.status(403).json({ error: "ai_paused" });
   if (claim.error === "not_found" || claim.error === "expired") return res.status(410).json({ error: claim.error });
   if (claim.error === "used") return res.status(409).json({ error: "already_used" });
@@ -5856,10 +6034,21 @@ app.post("/api/admin/users/:id/lock", requireAdmin, (req, res) => {
   res.json(updated);
 });
 
-app.post("/api/admin/users/:id/subscription-toggle", requireAdmin, async (req, res) => {
+app.post("/api/admin/users/:id/subscription-toggle", requireAdmin, billingGuard, async (req, res) => {
   const action = req.body?.action === "start" ? "start" : "end";
   const existingFamily = readDb().families.find((item) => item.id === req.params.id);
   if (!existingFamily) return res.status(404).json({ error: "Family not found." });
+
+  if (action === "end" && ["active", "cancel_scheduled"].includes(existingFamily.subscriptionStatus)
+    && existingFamily.stripePaymentId && (renewalRefundWindowFor(existingFamily).eligible || existingFamily.pendingRefundOperation)) {
+    try {
+      const refund = await refundFamilyPayment(existingFamily, { reason: "Admin ended subscription within 24 hours of payment", admin: true });
+      return res.json({ ok: true, action, family: readDb().families.find(item => item.id === existingFamily.id), refund, stripeResult: [] });
+    } catch (error) {
+      monitorBillingFailure(existingFamily.email, "Admin cancellation refund needs attention", error);
+      return res.status(502).json({ error: "Refund or cancellation is not yet complete. Retry safely or review the payment in Stripe." });
+    }
+  }
 
   let stripeResult = [];
   if (action === "end" && process.env.STRIPE_SECRET_KEY) {
@@ -5994,21 +6183,52 @@ app.get("/api/entitlements/me", async (req, res) => {
     return res.status(400).json({ active: false, reason: "email_domain_blocked", error: parentEmailError(email) });
   }
   if (auth?.role === "parent") await recoverBillingOperations(email);
-  const family = readDb().families.find((item) => item.email === email);
+  let family = readDb().families.find((item) => item.email === email);
   if (!family) {
     mutateDb((db) => monitor(db, "warning", "entitlement", "Entitlement check could not find family", { email }, email));
     return res.status(404).json({ active: false, reason: "family_not_found" });
   }
+  if (family.subscriptionStatus === "trialing" && family.lastPaymentAt && family.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const subscription = await stripeClient().subscriptions.retrieve(family.stripeSubscriptionId, {}, { timeout: 3500, maxNetworkRetries: 0 });
+      if (subscription.status === "canceled" || subscription.status === "active") {
+        mutateDb(db => {
+          const current = db.families.find(item => item.id === family.id);
+          if (!current || current.stripeSubscriptionId !== subscription.id || current.subscriptionStatus !== "trialing") return;
+          if (subscription.status === "canceled") {
+            markSubscriptionEndedNow(current, "Stripe subscription ended", subscription.id, "other");
+            if (current.paymentStatus === "trial") current.paymentStatus = "paid";
+          }
+          else { current.subscriptionStatus = "active"; current.paymentStatus = "paid"; }
+        });
+        family = readDb().families.find(item => item.id === family.id) || family;
+      }
+    } catch (_) {
+      // A temporary Stripe outage must not prevent the parent from opening the portal.
+    }
+  }
+  if (family.subscriptionStatus === "cancelled" && family.paymentStatus === "trial" && family.lastPaymentAt) {
+    mutateDb(db => {
+      const current = db.families.find(item => item.id === family.id);
+      if (current?.subscriptionStatus === "cancelled" && current.paymentStatus === "trial" && current.lastPaymentAt) current.paymentStatus = "paid";
+    });
+    family = readDb().families.find(item => item.id === family.id) || family;
+  }
+  await recoverTrialCheckoutBillingSnapshot(family);
+  family = readDb().families.find(item => item.id === family.id) || family;
   const overrideActive = hasActiveOverride(family);
   const cancellationPromo = normalisePricing(readDb().pricing).cancellationPromo;
   // Single source of truth — this used to re-implement the rule inline and drifted
   // (it missed free trials, so a trialling family reported active: false).
   const active = isFamilyEntitled(family);
+  const consentStatus = parentalConsentStatus(family);
   // Admin-controlled tutor voice policy — the extension builds its student voice
   // picker (shortlist + default) from these fields on the session.
   const voiceSettings = normaliseAiSettings(readDb().aiSettings);
   res.json({
     active,
+    childAccessAllowed: active && consentStatus === "accepted",
+    parentalConsent: parentalConsentPublic(family),
     status: family.subscriptionStatus,
     locked: family.accountLocked,
     plan: effectiveFamilyPlan(family),
@@ -6020,7 +6240,9 @@ app.get("/api/entitlements/me", async (req, res) => {
     children: (Array.isArray(family.children) ? family.children : []).map((c) => ({
       id: c.id,
       name: c.studentName || c.name || "",
-      grade: c.grade || ""
+      grade: c.grade || "",
+      goals: studentGoals(family, c),
+      goalStars: new Set([...(family.goalStars?.[c.id] || []), ...(c.learningGoals || []).filter(g => g.completed).map(g => learningGoalId(c.id, g))]).size
     })),
     ttsAllowedVoices: voiceSettings.ttsAllowedVoices,
     ttsDefaultVoice: voiceSettings.ttsDefaultVoice,
@@ -6077,7 +6299,7 @@ app.get("/api/entitlements/me", async (req, res) => {
       //              matches it).
       status: family.subscriptionStatus === "trial"
         ? "trial"
-        : (family.subscriptionStatus === "trialing" ||
+        : ((family.subscriptionStatus === "trialing" && family.paymentStatus === "trial" && !family.lastPaymentAt) ||
            (family.stripeSubscriptionId && family.paymentStatus === "trial" && !family.lastPaymentAt &&
             new Date(family.trialEndsAt || 0).getTime() > Date.now()))
           ? "trialing"
@@ -6085,9 +6307,9 @@ app.get("/api/entitlements/me", async (req, res) => {
       endsAt: family.trialEndsAt || "",
       days: Number(family.trialDays) || TRIAL_PERIOD_DAYS,
       cardOnFile: Boolean(family.stripeSubscriptionId),
-      // Whether a NEW self-serve trial would be granted at checkout — lets the
-      // portal avoid promising a free week to someone who has already had one.
-      eligible: eligibleForTrial(family),
+      firstChargeCents: Number(family.checkoutFirstChargeCents) || 0,
+      regularChargeCents: Number(family.checkoutRegularChargeCents) || 0,
+      launchDiscountApplied: trialHasLaunchDiscount(family),
       // Whether a NEW self-serve trial would be granted at checkout.
       eligible: eligibleForTrial(family)
     },
@@ -6113,6 +6335,9 @@ app.post("/api/stripe/create-checkout-session", requireParent, billingGuard, asy
     return res.status(400).json({ error: parentEmailError(parentEmail) });
   }
   const checkoutExisting = readDb().families.find(f => f.email === parentEmail);
+  if (parentalConsentStatus(checkoutExisting) !== "accepted") {
+    return res.status(403).json({ error: "parental_consent_required", message: "Record parental consent in the parent portal before starting a subscription trial." });
+  }
   if (checkoutExisting?.pendingRefundOperation || checkoutExisting?.pendingUpgradeOperation) return res.status(409).json({ error: "Resolve the pending billing change before starting another purchase." });
   if (billingCooldownFor(checkoutExisting)) return res.status(429).json(billingCooldownPayload(checkoutExisting));
   if (checkoutExisting && (["active", "trialing"].includes(checkoutExisting.subscriptionStatus) || cancellationStillActive(checkoutExisting))) {
@@ -6354,6 +6579,11 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       family.trialDays = trialDays;
       family.trialUsedAt = trialing ? nowIso() : family.trialUsedAt || "";
       family.trialEndsAt = trialEndsAt;
+      recordCheckoutBillingSnapshot(family, {
+        planName: family.plan,
+        promoCode: pending?.promoCode || "",
+        promoPrice: Number(pending?.amountCents || 0) / 100
+      }, null, normalisePricing(db.pricing));
       if (trialing) {
         delete family.lastPaymentAt;
         delete family.lastPaymentAmountCents;
@@ -6468,6 +6698,11 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
         });
       }
       if (!next) return null;
+      const checkoutSubscriptionId = stripeId(subscription?.id || session.subscription);
+      const earlierCheckout = next.stripeCheckoutSessionId === session.id;
+      const endedBeforeCheckout = next.cancelledAt && session.created * 1000 <= Date.parse(next.cancelledAt);
+      if ((earlierCheckout && (next.paymentStatus === "paid" || next.subscriptionStatus === "cancelled"))
+        || endedBeforeCheckout || subscription?.status === "canceled") return next;
       next.subscriptionStatus = isTrialing ? "trialing" : "active";
       // Records whether THIS subscription began as a trial or an immediate paid
       // charge. A trial conversion already had its risk-free week, but a paid
@@ -6485,13 +6720,17 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
         next.trialUsedAt = next.trialUsedAt || nowIso();
         if (trialEnd) next.trialEndsAt = trialEnd;
       }
+      if (next.yearlyUpgrade?.yearlySubscriptionId && next.yearlyUpgrade.yearlySubscriptionId !== checkoutSubscriptionId) retireYearlyUpgrade(next);
       const keepYearlyUpgrade = hasConfirmedYearlyUpgrade(next);
       next.plan = keepYearlyUpgrade ? "Family Yearly" : metadata.planName || next.pendingPlanName || next.plan;
       next.stripeCustomerId = stripeId(session.customer) || next.stripeCustomerId;
       next.stripeSubscriptionId = keepYearlyUpgrade
         ? next.yearlyUpgrade.yearlySubscriptionId
-        : stripeId(subscription?.id || session.subscription) || next.stripeSubscriptionId;
+        : checkoutSubscriptionId || next.stripeSubscriptionId;
+      next.currentPeriodEnd = subscriptionPeriodEnd(subscription) || (isTrialing ? trialEnd : "");
       next.stripeCheckoutSessionId = session.id;
+      recordCheckoutBillingSnapshot(next, metadata, subscription, normalisePricing(db.pricing));
+      if (next.pendingCheckout?.sessionId === session.id) delete next.pendingCheckout;
       next.lastLoginAt = next.lastLoginAt || nowIso();
       delete next.pendingPlanName;
       // Record the charge synchronously so the ledger does not depend on the
@@ -6514,7 +6753,7 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
     if (!family) return res.status(404).json({ error: "Paid Stripe session could not be matched to a family." });
     return res.json({
       mode: "stripe",
-      active: true,
+      active: isFamilyEntitled(family),
       familyId: family.id,
       plan: effectiveFamilyPlan(family),
       status: family.subscriptionStatus,
@@ -6579,6 +6818,16 @@ app.post("/api/stripe/apply-retention-discount", requireParent, async (req, res)
   const trialing = existingFamily.subscriptionStatus === "trialing";
   if (!trialing && existingFamily.subscriptionStatus !== "active") {
     return res.status(400).json({ error: "A cancellation save offer can only be applied to an active subscription or card-upfront trial." });
+  }
+  if (trialing) {
+    await recoverTrialCheckoutBillingSnapshot(existingFamily);
+    existingFamily = readDb().families.find(item => item.id === existingFamily.id) || existingFamily;
+    if (!Number(existingFamily.checkoutFirstChargeCents)) {
+      return res.status(409).json({ error: "The trial's first-charge price could not be verified. Please try again later." });
+    }
+    if (trialHasLaunchDiscount(existingFamily)) {
+      return res.status(409).json({ error: "Your Launch price is already applied to the first charge. The cancellation offer cannot replace it." });
+    }
   }
   // A discount still sitting on the upcoming invoice is fine to re-confirm
   // (pendingUnconsumed, handled below and never charged twice). Otherwise the
@@ -7379,8 +7628,28 @@ app.post("/api/admin/subscription-action", requireAdmin, billingGuard, async (re
   if (!allowed.has(action)) {
     return res.status(400).json({ error: "Unsupported subscription action." });
   }
+  if (action === "cancel" && !["active", "trialing"].includes(selectedFamily.subscriptionStatus)) {
+    return res.status(409).json({ error: selectedFamily.subscriptionStatus === "cancel_scheduled" ? "Renewal is already canceled." : "This plan is not active." });
+  }
+  if (action === "keep" && selectedFamily.subscriptionStatus !== "cancel_scheduled") {
+    return res.status(409).json({ error: "This plan is not scheduled to cancel." });
+  }
+  if (action === "end_now" && ["active", "cancel_scheduled"].includes(selectedFamily.subscriptionStatus)
+    && selectedFamily.stripePaymentId && (renewalRefundWindowFor(selectedFamily).eligible || selectedFamily.pendingRefundOperation)) {
+    try {
+      const refund = await refundFamilyPayment(selectedFamily, { reason: "Admin ended subscription within 24 hours of payment", admin: true });
+      return res.json({ ok: true, action, family: readDb().families.find(item => item.id === selectedFamily.id), refund,
+        message: refund.message });
+    } catch (error) {
+      monitorBillingFailure(selectedFamily.email, "Admin cancellation refund needs attention", error);
+      return res.status(502).json({ error: "Refund or cancellation is not yet complete. Retry safely or review the payment in Stripe." });
+    }
+  }
   const isYearly = (plan) => String(plan || "").toLowerCase().includes("year");
   const liveStripe = Boolean(process.env.STRIPE_SECRET_KEY) && subscriptionId && !String(subscriptionId).startsWith("sub_mock");
+  if (["cancel", "keep"].includes(action) && subscriptionId && !String(subscriptionId).startsWith("sub_mock") && !liveStripe) {
+    return res.status(503).json({ error: "Stripe is unavailable. Renewal was not changed." });
+  }
 
   // Best-effort Stripe side-effect for the actions that touch a live sub. A
   // reactivate can't resurrect a cancelled Stripe subscription, so it is
@@ -7389,7 +7658,10 @@ app.post("/api/admin/subscription-action", requireAdmin, billingGuard, async (re
     try {
       const stripe = stripeClient();
       if (action === "pause") await stripe.subscriptions.update(subscriptionId, { pause_collection: { behavior: "void" } });
-      else if (action === "cancel") scheduledSubscription = await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
+      else if (action === "cancel") {
+        scheduledSubscription = await scheduleStripeCancellationAtPeriodEnd(stripe, subscriptionId);
+        if (scheduledSubscription.status === "canceled") return res.status(409).json({ error: "This subscription has already ended." });
+      }
       else if (action === "keep") await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
       else if (action === "end_now") {
         const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["schedule"] });
@@ -7868,7 +8140,9 @@ async function reconcileWithStripe() {
   for (const family of targets) {
     try {
       const sub = await stripe.subscriptions.retrieve(family.stripeSubscriptionId);
-      observed.push({ id: family.id, subscriptionId: family.stripeSubscriptionId, status: sub.status });
+      observed.push({ id: family.id, subscriptionId: family.stripeSubscriptionId, status: sub.status,
+        periodEnd: subscriptionPeriodEnd(sub), interval: sub.items?.data?.[0]?.price?.recurring?.interval || "",
+        hasSchedule: Boolean(sub.schedule) });
     } catch (error) {
       observed.push({ id: family.id, status: error?.code === "resource_missing" ? "canceled" : "" });
     }
@@ -7880,6 +8154,19 @@ async function reconcileWithStripe() {
       if (!family || !obs.status || family.pendingUpgradeOperation || family.pendingRefundOperation || (obs.subscriptionId && obs.subscriptionId !== family.stripeSubscriptionId)) return;
       const stripeActive = obs.status === "active" || obs.status === "trialing";
       const stripeCanceled = obs.status === "canceled" || obs.status === "incomplete_expired";
+      if (stripeActive && family.yearlyUpgrade?.yearlySubscriptionId !== obs.subscriptionId &&
+          ["trialing", "scheduled"].includes(family.yearlyUpgrade?.status)) {
+        retireYearlyUpgrade(family);
+        reconciled += 1;
+      }
+      if (stripeActive && obs.interval === "month" && !obs.hasSchedule && String(family.plan || "").toLowerCase().includes("year")) {
+        family.plan = "Family Monthly";
+        reconciled += 1;
+      }
+      if (stripeActive && obs.periodEnd && family.currentPeriodEnd !== obs.periodEnd) {
+        family.currentPeriodEnd = obs.periodEnd;
+        reconciled += 1;
+      }
       if (stripeCanceled && !["cancelled", "deleted"].includes(family.subscriptionStatus)) {
         family.subscriptionStatus = "cancelled";
         family.cancellationStatus = "completed";
